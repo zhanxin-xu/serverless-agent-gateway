@@ -50,7 +50,8 @@ function view(c: ChatSummary) {
 
 /**
  * Events as the model reads them, for the events tab: whether the model sees
- * each one, and for what arrived while a step was running, the step/end it's
+ * each one, that the compaction summary is read first, and for what arrived
+ * while a step was running, the step/end it's
  * read after (`readAfter`), or `readAfterStep` while that step still runs.
  * A message only moves within the events given, so polls include the running step.
  */
@@ -59,6 +60,8 @@ function asModelReads(events: StoredEvent[]) {
   return events.map((e) => ({
     ...e,
     modelSees: modelSees(e.type),
+    // The model reads the summary of what came before ahead of everything else.
+    ...(e.type === "compaction/summary" ? { readFirst: true } : {}),
     ...(moved.has(e.seq) ? (moved.get(e.seq) === undefined ? { readAfterStep: true } : { readAfter: moved.get(e.seq) }) : {}),
   }));
 }

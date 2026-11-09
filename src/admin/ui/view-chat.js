@@ -184,17 +184,6 @@ const REASONS = {
   unreachable: ["bad", "平台连不上"],
 };
 
-const FILTERS = {
-  all: ["全部", () => true],
-  // Exactly the model's input, in its order (plus the compaction summary it starts from).
-  seen: ["模型看到的", (e) => e.modelSees],
-  messages: ["消息", (e) => e.type.startsWith("user/") || e.type === "bot/sent" || e.type === "admin/message" || e.type === "session/reset"],
-  model: ["模型", (e) => e.type.startsWith("assistant/") || e.type === "developer/message" || e.type === "compaction/summary"],
-  tools: ["工具", (e) => e.type.startsWith("tool/")],
-  errors: ["出错", (e) => (e.type === "turn/end" && e.data.reason !== "completed") || e.type === "assistant/attempt" || (e.type === "tool/result" && e.data.output.startsWith("Error:"))],
-};
-
-const cut = (text, n = 240) => (text.length > n ? `${text.slice(0, n)}…` : text);
 const usageCost = (u) => (typeof u?.cost === "number" ? u.cost : undefined);
 
 function outputSummary(output) {
@@ -202,8 +191,8 @@ function outputSummary(output) {
   const reasoning = output.filter((i) => i.type === "reasoning").length;
   if (reasoning) parts.push(pill("mute", `思考 ${reasoning} 段`));
   for (const item of output) {
-    if (item.type === "message") parts.push(`“${cut((item.content ?? []).map((c) => c.text ?? "").join(""))}”`);
-    if (item.type === "function_call") parts.push(h("code", null, `${item.name}(${cut(item.arguments ?? "", 120)})`));
+    if (item.type === "message") parts.push(`“${(item.content ?? []).map((c) => c.text ?? "").join("")}”`);
+    if (item.type === "function_call") parts.push(h("code", null, `${item.name}(${item.arguments ?? ""})`));
   }
   return parts.flatMap((p, i) => (i ? [" ", p] : [p]));
 }
@@ -215,7 +204,7 @@ function summarize(e) {
       return [
         h("b", null, d.sender),
         "：",
-        cut(d.text),
+        d.text,
         d.images?.length ? ` [图片×${d.images.length}]` : "",
         d.mentioned ? [" ", pill("info", "@")] : null,
         d.quiet ? [" ", pill("mute", "只记录")] : null,
@@ -228,13 +217,13 @@ function summarize(e) {
     case "turn/start":
       return d.trigger === "direct" ? "开始（被 @ 或私聊）" : "开始（旁观）";
     case "turn/end":
-      return [pill(...(REASONS[d.reason] ?? ["mute", d.reason])), d.error ? ` ${cut(d.error)}` : ""];
+      return [pill(...(REASONS[d.reason] ?? ["mute", d.reason])), d.error ? ` ${d.error}` : ""];
     case "step/start":
       return `第 ${d.step} 步`;
     case "step/end":
       return `第 ${d.step} 步结束`;
     case "developer/message":
-      return h("span", { class: "muted" }, cut(d.text));
+      return h("span", { class: "muted" }, d.text);
     case "assistant/message": {
       const u = d.usage;
       return [
@@ -243,19 +232,19 @@ function summarize(e) {
       ];
     }
     case "assistant/attempt":
-      return [pill("bad", "调用失败"), ` ${cut(d.error)}`];
+      return [pill("bad", "调用失败"), ` ${d.error}`];
     case "tool/call":
       return h("code", null, d.name);
     case "tool/result":
-      return d.output.startsWith("Error:") ? [pill("bad", "失败"), ` ${cut(d.output)}`] : cut(d.output);
+      return d.output.startsWith("Error:") ? [pill("bad", "失败"), ` ${d.output}`] : d.output;
     case "tool/images":
       return `打开了 ${d.images.length} 张图片`;
     case "compaction/summary":
-      return `压缩了第 ${d.fromSeq} 条之前的内容：${cut(d.summary)}`;
+      return `压缩了第 ${d.fromSeq} 条之前的内容：${d.summary}`;
     case "admin/message":
       return [pill("info", "管理员代发"), ` ${d.text}`];
     case "bot/sent":
-      return [pill("ok", "已发出"), ` ${cut(d.text)}`];
+      return [pill("ok", "已发出"), ` ${d.text}`];
     default:
       return "";
   }
@@ -263,12 +252,13 @@ function summarize(e) {
 
 /** Events of one turn (or loose messages between turns), newest group first. */
 /**
- * The events in the order the model reads them (the server marks what arrived
- * mid-step: readAfter = the step/end it follows, readAfterStep while that step
- * runs), oldest first.
+ * The events in the order the model reads them, oldest first: the compaction
+ * summary first; what arrived while a step ran right after that step (the
+ * server marks it: readAfter = the step/end it follows, readAfterStep while
+ * the step runs); everything else as logged.
  */
 function inModelOrder(events) {
-  const position = (e) => (e.readAfter !== undefined ? [e.readAfter, 1] : e.readAfterStep ? [Infinity, 1] : [e.seq, 0]);
+  const position = (e) => (e.readFirst ? [-Infinity, 0] : e.readAfter !== undefined ? [e.readAfter, 1] : e.readAfterStep ? [Infinity, 1] : [e.seq, 0]);
   return [...events].sort((a, b) => {
     const [pa, ma] = position(a);
     const [pb, mb] = position(b);
@@ -277,29 +267,34 @@ function inModelOrder(events) {
 }
 
 /**
- * Turns as groups, newest first. Whatever the model read between a turn's
- * start and end (a message that came in meanwhile) belongs to that turn.
+ * One group per turn, closed where the turn ended (end_turn, or an error,
+ * a pause…), newest first. A group lists only what the model read or wrote,
+ * the messages that were waiting for that turn included; the log's own
+ * markers (turn/start, steps, tool-call markers…) only set the header.
  */
-function groupByTurn(ordered) {
+function turnsAsRead(ordered) {
   const groups = [];
-  let open = null;
+  let group = { lines: [], log: [] };
   for (const e of ordered) {
-    if (e.type === "turn/start") open = e.data.turn;
-    const turn = typeof e.data?.turn === "number" ? e.data.turn : open;
-    const last = groups.at(-1);
-    if (last && last.turn === turn) last.events.push(e);
-    else groups.push({ turn, events: [e] });
-    if (e.type === "turn/end") open = null;
+    group.log.push(e);
+    if (e.modelSees) group.lines.push(e);
+    if (e.type === "turn/end") {
+      groups.push(group);
+      group = { lines: [], log: [] };
+    }
   }
+  if (group.lines.length) groups.push(group);
   return groups.reverse();
 }
 
 function turnHeader(group) {
-  const start = group.events.find((e) => e.type === "turn/start");
-  const end = group.events.find((e) => e.type === "turn/end");
-  const steps = group.events.filter((e) => e.type === "step/start").length;
+  const start = group.log.find((e) => e.type === "turn/start");
+  const end = group.log.find((e) => e.type === "turn/end");
+  const turn = end?.data.turn ?? start?.data.turn;
+  if (turn === undefined) return h("div", { class: "turn-head" }, h("b", null, "等着下一轮"));
+  const steps = group.log.filter((e) => e.type === "step/start").length;
   let input = 0, cached = 0, output = 0, cost = 0, priced = false;
-  for (const e of group.events) {
+  for (const e of group.log) {
     const u = e.type === "assistant/message" ? e.data.usage : undefined;
     if (!u) continue;
     input += u.input_tokens ?? 0;
@@ -310,7 +305,7 @@ function turnHeader(group) {
   return h(
     "div",
     { class: "turn-head" },
-    h("b", null, `第 ${group.turn} 轮`),
+    h("b", null, `第 ${turn} 轮`),
     start ? ` · ${start.data.trigger === "direct" ? "被叫" : "旁观"}` : "",
     ` · ${steps} 步 · 输入 ${fmtTokens(input)}（缓存 ${fmtTokens(cached)}）输出 ${fmtTokens(output)}`,
     priced ? ` · ${fmtUsd(cost)}` : "",
@@ -323,13 +318,7 @@ function eventRow(e) {
   const json = h("pre", { class: "json", hidden: true }, JSON.stringify(e, null, 2));
   const row = h(
     "div",
-    {
-      class: `ev${e.modelSees ? "" : " log-only"}`,
-      tabindex: "0",
-      role: "button",
-      "aria-expanded": "false",
-      title: e.modelSees ? "模型看得到" : "只在日志里，模型看不到",
-    },
+    { class: "ev", tabindex: "0", role: "button", "aria-expanded": "false" },
     h("span", { class: "seq" }, e.seq),
     h("span", { class: "time" }, fmtClock(e.time)),
     h("span", { class: "type" }, e.type),
@@ -337,7 +326,7 @@ function eventRow(e) {
       "span",
       { class: "what" },
       summarize(e),
-      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 这一步运行时收到，模型在这一步之后读到") : null,
+      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 上一步运行时收到") : null,
     ),
   );
   const toggle = () => {
@@ -351,25 +340,19 @@ function eventRow(e) {
 
 function renderEvents(body, chat, info) {
   const events = new Map();
-  let filter = "all";
   let session = null;
   const list = h("div", { class: "events" });
   const meta = h("span", { class: "muted" });
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
 
   const draw = () => {
-    const test = FILTERS[filter][1];
-    const groups = groupByTurn(inModelOrder(events.values()));
+    const groups = turnsAsRead(inModelOrder(events.values()));
     meta.textContent = !session ? "" : session.minSeq > 0 ? `共 ${session.nextSeq} 条事件，第 ${session.minSeq} 条之前的已压缩成摘要` : `共 ${session.nextSeq} 条事件`;
     more.hidden = !events.size || Math.min(...events.keys()) <= (session?.minSeq ?? 0);
     fill(
       list,
       groups.length
-        ? groups.map((g) => {
-            const shown = g.events.filter(test);
-            if (!shown.length) return null;
-            return h("section", { class: "turn" }, g.turn !== null ? turnHeader(g) : null, [...shown].reverse().map(eventRow));
-          })
+        ? groups.map((g) => (g.lines.length ? h("section", { class: "turn" }, turnHeader(g), g.lines.map(eventRow)) : null))
         : h("p", { class: "muted" }, "没有事件。"),
     );
   };
@@ -396,28 +379,12 @@ function renderEvents(body, chat, info) {
     draw();
   });
 
-  const seg = h(
-    "span",
-    { class: "seg", role: "group" },
-    Object.entries(FILTERS).map(([id, [label]]) =>
-      h("button", {
-        type: "button",
-        class: id === filter ? "on" : "",
-        onClick(e) {
-          filter = id;
-          for (const b of seg.children) b.classList.toggle("on", b === e.currentTarget);
-          draw();
-        },
-      }, label),
-    ),
-  );
-
   fill(
     body,
     h(
       "div",
       { class: "row between" },
-      seg,
+      h("span", { class: "muted" }, meta),
       h(
         "span",
         { class: "row" },
@@ -434,7 +401,7 @@ function renderEvents(body, chat, info) {
         }),
       ),
     ),
-    h("p", null, meta, h("span", { class: "muted" }, " · 按模型读到的顺序 · 灰色的只记在日志里，模型看不到 · 点一行看原始 JSON · 每 3 秒刷新")),
+    h("p", { class: "help" }, "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组，最新的在上面。点一行看原始 JSON，每 3 秒刷新。"),
     list,
     h("div", { class: "row" }, more),
   );

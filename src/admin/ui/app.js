@@ -75,6 +75,8 @@ async function route() {
     return;
   }
   renderNav();
+  // A view may give the page its own layout (the chat view fills the screen); start each one plain.
+  main.className = "main";
   fill(main, h("p", { class: "muted" }, "加载中…"));
   try {
     const stop = await view(main, args, app);

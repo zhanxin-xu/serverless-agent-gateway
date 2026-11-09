@@ -14,18 +14,26 @@ const TABS = [
 export async function renderChat(main, [chat, tabId], app) {
   const info = await api.get("chat", { chat });
   const tab = TABS.some(([id]) => id === tabId) ? tabId : "history";
-  const body = h("div", { class: "tab-body" });
+  const body = h("div", { class: `tab-body tab-${tab}` });
+  const speakers = info.chatType === "group" ? speakersText(info) : "";
+  const metaLine = [chatKind(info), chat, info.turn ? `第 ${info.turn} 轮` : "", speakers ? `最近：${speakers}` : ""].filter(Boolean).join(" · ");
+  // The page doesn't scroll: the header stays, and the tab's own list takes the rest of the height.
+  main.classList.add("fill");
   fill(
     main,
+    // One thin bar: who this is on the left, the tabs on the right. The list below is the only thing that scrolls.
     h(
       "header",
-      { class: "page-head" },
-      h("p", null, h("a", { href: "#/chats" }, icon("back", 14), "聊天")),
-      h("h1", null, chatName(info), " ", modePill(info), info.locked ? [" ", pill("info", "运行中")] : null),
-      info.chatType === "group" && speakersText(info) ? h("p", null, `最近说话的人：${speakersText(info)}`) : null,
-      h("p", { class: "muted mono small" }, `${chatKind(info)} · ${chat}${info.turn ? ` · 第 ${info.turn} 轮` : ""}`),
+      { class: "chat-head" },
+      h("a", { href: "#/chats", class: "back", title: "返回聊天列表", "aria-label": "返回聊天列表" }, icon("back", 18)),
+      h(
+        "div",
+        { class: "chat-id" },
+        h("div", { class: "chat-title" }, h("h1", null, chatName(info)), modePill(info), info.locked ? pill("info", "运行中") : null),
+        h("p", { class: "chat-meta", title: metaLine }, metaLine),
+      ),
+      h("nav", { class: "seg chat-tabs" }, TABS.map(([id, label]) => h("a", { href: `#/chat/${encodeURIComponent(chat)}/${id}`, class: id === tab ? "on" : "" }, label))),
     ),
-    h("nav", { class: "tabs" }, TABS.map(([id, label]) => h("a", { href: `#/chat/${encodeURIComponent(chat)}/${id}`, class: id === tab ? "on" : "" }, label))),
     body,
   );
   if (tab === "events") return renderEvents(body, chat, info);
@@ -48,11 +56,12 @@ function renderHistory(body, chat, info) {
   const entries = new Map();
   const list = h("div", { class: "chat-log", "aria-live": "polite" });
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
+  const moreRow = h("div", { class: "more-row" }, more);
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 80;
 
   const draw = (stick) => {
     const sorted = [...entries.values()].sort((a, b) => a.seq - b.seq);
-    fill(list, sorted.length ? sorted.map(bubble) : h("p", { class: "muted" }, "还没有消息。"));
+    fill(list, moreRow, sorted.length ? sorted.map(bubble) : h("p", { class: "muted" }, "还没有消息。"));
     if (stick) list.scrollTop = list.scrollHeight;
   };
   // The newest event read so far: polling asks only for what's after it.
@@ -71,7 +80,7 @@ function renderHistory(body, chat, info) {
   });
 
   const composer = renderComposer(chat, info, () => refresh(true));
-  fill(body, h("div", { class: "row" }, more), list, composer.el);
+  fill(body, list, composer.el);
   const refresh = async (stick) => {
     const before = entries.size;
     const wasNear = nearBottom();
@@ -90,7 +99,7 @@ function renderComposer(chat, info, onSent) {
   let mode = "say";
   // A record-only or blocked chat never answers, so there's no one to whisper to.
   const canWhisper = info.mode === "normal" || info.mode === "mention";
-  const text = h("textarea", { id: "compose", rows: 3, placeholder: `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` });
+  const text = h("textarea", { id: "compose", rows: 2, placeholder: `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` });
   const windowLine = h("span", { class: "window" });
   let state = info.replyWindow;
 
@@ -361,6 +370,7 @@ function renderEvents(body, chat, info) {
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 80;
   const meta = h("span", { class: "muted" });
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
+  const moreRow = h("div", { class: "more-row" }, more);
 
   /** Redraw; `keep`: "bottom" to follow new events, "top-anchor" to keep the view when older ones are added above. */
   const draw = (keep = nearBottom() ? "bottom" : "stay") => {
@@ -371,6 +381,7 @@ function renderEvents(body, chat, info) {
     more.hidden = !events.size || Math.min(...events.keys()) <= (session?.minSeq ?? 0);
     fill(
       list,
+      moreRow,
       groups.length
         ? groups.map((g) => (g.lines.length ? h("section", { class: "turn" }, turnHeader(g), g.lines.map(eventRow)) : null))
         : h("p", { class: "muted" }, "没有事件。"),
@@ -406,8 +417,13 @@ function renderEvents(body, chat, info) {
     body,
     h(
       "div",
-      { class: "row between" },
-      h("span", { class: "muted" }, meta),
+      { class: "toolbar" },
+      h(
+        "p",
+        { class: "toolbar-text" },
+        meta,
+        h("span", { class: "help", title: "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组。最新的在下面，往上翻看更早的。点一行看原始 JSON，每 3 秒刷新。" }, "按模型读的顺序，每轮一组，点一行看 JSON"),
+      ),
       h(
         "span",
         { class: "row" },
@@ -424,8 +440,6 @@ function renderEvents(body, chat, info) {
         }),
       ),
     ),
-    h("p", { class: "help" }, "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组。最新的在下面，往上翻看更早的。点一行看原始 JSON，每 3 秒刷新。"),
-    h("div", { class: "row" }, more),
     list,
   );
   load().then(() => draw("bottom"));

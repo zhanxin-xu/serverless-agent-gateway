@@ -4,7 +4,7 @@
  */
 import { settingValue } from "../config.js";
 import { select } from "../modules/capability.js";
-import { MODULES, moduleStatus } from "../modules/registry.js";
+import { MODULES, moduleStatus, switchedOn, switchSetting } from "../modules/registry.js";
 import type { Module } from "../modules/types.js";
 
 export interface ModuleView {
@@ -13,7 +13,9 @@ export interface ModuleView {
   summary: string;
   core: boolean;
   requires: string[];
-  /** On (configured, requirements met), ignoring any chat's switches. */
+  /** Its switch (optional modules): the setting, and whether it's on. A module switched on may still be off: see `ok`. */
+  switch: { setting: string; on: boolean } | null;
+  /** On (switched on, configured, requirements met), ignoring any chat's switches. */
   ok: boolean;
   reason?: string;
   /** The module's own settings group. */
@@ -38,12 +40,14 @@ export function describeModule(m: Module): ModuleView {
   const status = moduleStatus(m);
   const capability = m.capability;
   const selection = capability ? select(capability) : undefined;
+  const setting = switchSetting(m);
   return {
     id: m.id,
     label: m.label,
     summary: m.summary,
     core: Boolean(m.core),
     requires: m.requires ?? [],
+    switch: setting ? { setting, on: switchedOn(m) } : null,
     ok: status.ok,
     ...(status.ok ? {} : { reason: status.reason }),
     settings: m.settings ?? null,

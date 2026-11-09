@@ -31,10 +31,11 @@
 
 按顺序判断（`src/modules/registry.ts` 的 `moduleStatus`）：
 
-1. 它的能力选得出一个实现（见下面的选择规则）。
-2. 它自己的 `ready()` 说可以（没有能力的模块用这个）。
-3. 它 `requires` 的模块都开着。
-4. 在某个聊天里：这个聊天没关掉它（聊天设置里的 `disabledModules`）。
+1. 它的开关开着：每个可选模块有一个全局开关，配置项 `MODULE_<ID>`（比如 `MODULE_SEARCH`），默认 `on`，在管理端的模块页切换。核心模块没有开关。
+2. 它的能力选得出一个实现（见下面的选择规则）。
+3. 它自己的 `ready()` 说可以（没有能力的模块用这个）。
+4. 它 `requires` 的模块都开着。
+5. 在某个聊天里：这个聊天没关掉它（聊天设置里的 `disabledModules`）。
 
 管理端的“模块”页、引导页和 `/api/health` 的 `modules` 字段都会写出没开启的原因。
 
@@ -81,7 +82,7 @@
    - 依赖外部服务的话，再加 `capability.ts`（统一接口和实现列表）、`providers/<实现>/`、`settings.ts`。
 2. 在 `src/prompt/order.ts` 的 `ORDER.module` 里给它一个序号。
 3. 把它加进 `src/modules/registry.ts` 的 `MODULES`。
-4. 有配置项的话，把它的 `settings.ts` 加进 `src/settings/catalog.ts` 的 `MODULE_SETTINGS`。
+4. 有配置项的话，把它的 `settings.ts` 加进 `src/settings/catalog.ts` 的 `MODULE_SETTINGS`。可选模块的 `settings.ts` 里要有它的开关 `MODULE_<ID>`（`enum`，`on` / `off`，默认 `on`），测试会检查。
 5. 在 `src/modules/types.ts` 的 `ModuleId` 里加上它的 id。
 
 ```ts

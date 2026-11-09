@@ -218,7 +218,7 @@ const STEP_VIEWS = {
           return h(
             "div",
             { class: "card" },
-            h("h3", null, m.label, " ", moduleState(m)),
+            h("div", { class: "row between" }, h("h3", null, m.label, " ", moduleState(m)), h("a", { class: "btn btn-small", href: `#/modules/${m.id}` }, "全部配置")),
             h("p", { class: "muted" }, m.summary, m.requires.length ? ` 需要先开启${m.requires.map((id) => byId.get(id)?.label ?? id).join("、")}。` : ""),
             h("p", { class: "help" }, `${provider.label}：${provider.description}`, cap.providers.length > 1 ? `（还有 ${cap.providers.length - 1} 个实现可选，在配置页切换）` : ""),
             form.el,

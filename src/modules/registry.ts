@@ -6,10 +6,11 @@
  * and listing it here. The system prompt, the chats' switches, quotas,
  * balances and the console follow from the list.
  *
- * A module is on when its capability has a usable provider (capability.ts),
- * its own `ready` says so, every module it requires is on, and (for a chat)
- * the chat hasn't turned it off.
+ * A module is on when its switch is on (optional modules: MODULE_<ID>), its
+ * capability has a usable provider (capability.ts), its own `ready` says so,
+ * every module it requires is on, and (for a chat) the chat hasn't turned it off.
  */
+import { settingValue } from "../config.js";
 import { basicsModule } from "./basics/index.js";
 import { readiness, select } from "./capability.js";
 import { chatModule } from "./chat/index.js";
@@ -30,8 +31,18 @@ export const OPTIONAL_MODULES = MODULES.filter((m) => !m.core);
 
 export const moduleById = (id: string): Module | undefined => MODULES.find((m) => m.id === id);
 
+/** The setting that turns an optional module on or off everywhere ("on" by default); core modules have none. */
+export const switchSetting = (module: Module): string | undefined => (module.core ? undefined : `MODULE_${module.id.toUpperCase()}`);
+
+/** Whether the module's switch is on (always, for core modules). */
+export function switchedOn(module: Module): boolean {
+  const setting = switchSetting(module);
+  return !setting || settingValue(setting) !== "off";
+}
+
 /** Whether a module could be on (configured, its requirements met), ignoring any chat's switches. */
 export function moduleStatus(module: Module, off: ReadonlySet<string> = new Set()): Readiness {
+  if (!switchedOn(module)) return { ok: false, reason: "已关闭" };
   if (off.has(module.id)) return { ok: false, reason: "这个聊天关掉了" };
   if (module.capability) {
     const selected = readiness(select(module.capability));

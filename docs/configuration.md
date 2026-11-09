@@ -75,6 +75,18 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 
 没配置 Supabase 时退化为内存存储：单实例能用，但多实例之间历史不共享，锁、去重和采样也会失效。Supabase 需要先执行 [`supabase/schema.sql`](../supabase/schema.sql)，见[部署文档](deployment.md#存储supabase)。聊天数据保留多久见[数据保留](deployment.md#存储supabase)。
 
+## 模块开关
+
+每个可选模块一个全局开关，默认开；关掉后所有聊天都不提供它，依赖它的模块也跟着关（画图依赖沙盒）。一般在管理端的模块页切换。
+
+| 变量 | 可选值 | 说明 |
+|---|---|---|
+| `MODULE_MEMORY` | `on`（默认）、`off` | 长期记忆 |
+| `MODULE_SEARCH` | `on`（默认）、`off` | 搜索 |
+| `MODULE_SANDBOX` | `on`（默认）、`off` | 沙盒 |
+| `MODULE_IMAGE` | `on`（默认）、`off` | 画图 |
+| `MODULE_VOICE` | `on`（默认）、`off` | 语音 |
+
 ## 模块用哪家服务
 
 每个可选模块背后的服务可以有多个实现，同一时间只用一个（见[模块](modules.md)）。下面这些配置项选用哪个实现；**留空表示自动**：只有一个实现配好了就用它，有多个配好了就要在这里指定。目前每种服务只有一个实现，所以都可以不填。

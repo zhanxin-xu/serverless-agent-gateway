@@ -125,6 +125,25 @@ await test("a module whose requirement is off is off too, saying why", async () 
   assert.ok(!new Toolset({ disabled: new Set(["sandbox"]) }).has("generate_image"));
 });
 
+await test("an optional module's switch turns it off everywhere, and what requires it with it", async () => {
+  for (const m of OPTIONAL_MODULES) {
+    const def = settingDef(`MODULE_${m.id.toUpperCase()}`)!;
+    assert.ok(def, `${m.id} has a switch`);
+    assert.equal(def.default, "on");
+    assert.equal(def.group, m.settings);
+  }
+  await withEnv({ MODULE_SEARCH: "off" }, () => {
+    const search = MODULES.find((m) => m.id === "search")!;
+    assert.deepEqual(moduleStatus(search), { ok: false, reason: "已关闭" });
+    assert.ok(!new Toolset().has("web_search"));
+    assert.ok(!prompt("group").prompt.includes("web_search"));
+  });
+  await withEnv({ MODULE_SANDBOX: "off" }, () => {
+    assert.match((moduleStatus(MODULES.find((m) => m.id === "image")!) as { reason: string }).reason, /需要先开启沙盒（已关闭）/);
+  });
+  assert.equal(settingDef("MODULE_CHAT"), undefined, "core modules have no switch");
+});
+
 await test("choosing a provider: chosen, automatic, missing, unconfigured, none, several", async () => {
   const provider = (id: string, ok: boolean) => ({
     id,

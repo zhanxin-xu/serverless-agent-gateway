@@ -7,6 +7,18 @@ export const GROUPS: SettingGroup[] = [
 
 export const SETTINGS: SettingDef[] = [
   {
+    key: "MODULE_SANDBOX",
+    group: "sandbox",
+    label: "开关",
+    kind: "enum",
+    default: "on",
+    options: [
+      { value: "on", label: "开" },
+      { value: "off", label: "关" },
+    ],
+    help: "关掉后所有聊天都不提供这个模块；依赖它的模块也会跟着关。",
+  },
+  {
     key: "SANDBOX_PROVIDER",
     group: "sandbox",
     label: "沙盒服务",

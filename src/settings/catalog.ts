@@ -75,7 +75,13 @@ const OPENROUTER = "https://openrouter.ai/api/v1";
 const MODULE_SETTINGS = [image, openrouterImages, voice, openaiSpeech, search, deepseek, memory, upstashVector, sandbox, vercelSandbox];
 
 const CORE_GROUPS: SettingGroup[] = [
-  { id: "llm", label: "模型", help: "任何兼容 OpenAI Responses API 的服务（POST {服务地址}/responses），默认 OpenRouter。", enabledBy: "OPENAI_RESPONSES_API_KEY" },
+  {
+    id: "llm",
+    label: "模型",
+    help: "任何兼容 OpenAI Responses API 的服务（POST {服务地址}/responses），默认 OpenRouter。",
+    enabledBy: "OPENAI_RESPONSES_API_KEY",
+    module: "model",
+  },
   {
     id: "qq",
     label: "QQ",

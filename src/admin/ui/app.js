@@ -1,5 +1,5 @@
 // The console's shell: sign-in, navigation, and a hash router that mounts one view at a time.
-//   #/setup  #/overview  #/chats  #/chat/<chat>/<tab>  #/modules  #/config/<group>  #/log
+//   #/setup  #/overview  #/chats  #/chat/<chat>/<tab>  #/modules  #/modules/<id>  #/config/<group>  #/log
 import { api } from "./api.js";
 import { action, fill, h, toast } from "./dom.js";
 import { icon } from "./icons.js";

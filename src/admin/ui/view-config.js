@@ -1,28 +1,31 @@
-// Every setting, by group (#/config/<group>), with each group's checks.
-// A module's page (src/modules) shows its own settings, which include the choice
-// of provider, and below them a card per provider with that provider's settings.
+// The settings that don't belong to a module (#/config/<group>): channels, the agent, the
+// console. Each module is configured on its own page (#/modules/<id>, view-modules.js).
 import { api } from "./api.js";
 import { action, copyable, fill, h, pill, toast } from "./dom.js";
 import { groupActions, loadSettings, settingsForm } from "./form.js";
-import { moduleState } from "./view-modules.js";
 
 export async function renderConfig(main, [groupParam], app) {
   const [index, status] = [await loadSettings(), await app.refreshStatus()];
-  // Providers' groups are shown inside their module's page, not in the list.
-  const pages = index.groups.filter((g) => !g.provider);
+  const pages = index.groups.filter((g) => !g.module);
   const group = pages.find((g) => g.id === groupParam) ?? pages[0];
   const channel = group.channel ? status.channels.find((c) => c.name === group.channel) : undefined;
-  const module = group.module ? status.modules.find((m) => m.id === group.module) : undefined;
-  const reload = async () => {
-    await app.refreshStatus();
-    app.go(`#/config/${group.id}`);
-  };
   const slot = h("p", { class: "check-result" });
-  const form = settingsForm(index, index.keysOf(group.id), { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) });
+  const form = settingsForm(index, index.keysOf(group.id), {
+    onSaved: async () => {
+      await app.refreshStatus();
+      app.go(`#/config/${group.id}`);
+    },
+    actions: (f) => groupActions(index, group, status, f, slot),
+  });
 
   fill(
     main,
-    h("header", { class: "page-head" }, h("h1", null, "配置"), h("p", { class: "muted" }, "保存后 30 秒内所有实例生效，不用重新部署。密钥只能替换，不能查看。")),
+    h(
+      "header",
+      { class: "page-head" },
+      h("h1", null, "配置"),
+      h("p", { class: "muted" }, "渠道、Agent 参数和管理端自己的设置。模型、画图、语音、搜索、记忆、沙盒在", h("a", { href: "#/modules" }, "模块"), "页里配置。保存后 30 秒内所有实例生效，不用重新部署；密钥只能替换，不能查看。"),
+    ),
     h(
       "div",
       { class: "config" },
@@ -34,40 +37,15 @@ export async function renderConfig(main, [groupParam], app) {
       h(
         "section",
         { class: "panel" },
-        h("h2", null, group.label, " ", channel ? (channel.configured ? pill("ok", "已配置") : pill("mute", "未配置")) : module ? moduleState(module) : null),
+        h("h2", null, group.label, " ", channel ? (channel.configured ? pill("ok", "已配置") : pill("mute", "未配置")) : null),
         h("p", { class: "muted" }, group.help),
-        module && !module.ok && module.reason ? h("p", { class: "help" }, `没开启：${module.reason}`) : null,
         channel ? h("p", null, "回调地址：", copyable(channel.webhook)) : null,
         form.el,
         slot,
-        module?.capability ? providerCards(index, status, module, reload) : null,
         group.id === "console" ? databaseCard(status, app) : null,
       ),
     ),
   );
-}
-
-/** One card per provider of the module's capability: in use, usable, or what it's missing; and its settings. */
-function providerCards(index, status, module, reload) {
-  const cap = module.capability;
-  return [
-    h("h3", null, `${cap.label}（${cap.providers.length} 个实现，同一时间只用一个）`),
-    cap.providers.map((p) => {
-      const group = index.groups.find((g) => g.id === p.settings);
-      const inUse = cap.selected === p.id;
-      const slot = h("p", { class: "check-result" });
-      const form = settingsForm(index, index.keysOf(p.settings), { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) });
-      return h(
-        "div",
-        { class: "card" },
-        h("h3", null, p.label, " ", inUse ? pill("ok", "在用") : p.available ? pill("info", "可用") : pill("mute", "未配置")),
-        h("p", { class: "muted" }, p.description),
-        !p.available && p.reason ? h("p", { class: "help" }, p.reason) : null,
-        form.el,
-        slot,
-      );
-    }),
-  ];
 }
 
 function databaseCard(status, app) {

@@ -20,6 +20,8 @@ export const modelModule: Module = {
   label: "模型",
   summary: "查聊天模型 key 的额度和花费。每个聊天都有。",
   core: true,
+  // The chat model's own settings (key, model, prices…) are configured on this module's page.
+  settings: "llm",
   tools: [llmKeyLimit],
   section: { order: ORDER.module.model, text: guide },
   balance: () => (config.llm.apiKey ? modelBalance() : undefined),

@@ -7,8 +7,8 @@ import type { Tool } from "./types.js";
 export const REPLY_TO = {
   type: "integer",
   description:
-    "Which message this replies to: the N of its 第N条 label. Default: the turn's main message, named in the system note. " +
-    "Each message takes a limited number of replies; every send reports how many are used.",
+    "The message you want to quote: the N of its 第N条 label, used with quote: true. " +
+    "Without a quote, leave it out: where the message goes is handled for you.",
 };
 
 export const replyTo = (args: Record<string, unknown>): number | undefined =>

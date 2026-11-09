@@ -36,9 +36,37 @@ export class RunLock {
     }
   }
 
-  async release(): Promise<void> {
+  /**
+   * Stop renewing but keep the lease, renewed once more so whoever continues
+   * has a whole lease to take it over in (takeOver). False when this run no
+   * longer holds the lock: then there's nothing to hand over.
+   */
+  async handOver(): Promise<boolean> {
+    this.stop();
+    return this.store.lock(this.chat, this.owner, LOCK_TTL_MS, "renew");
+  }
+
+  private stop() {
     clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  async release(): Promise<void> {
+    this.stop();
     await this.store.lock(this.chat, this.owner, LOCK_TTL_MS, "release");
   }
+}
+
+/**
+ * Continue a run handed over by the lock holder (Host.handoff): the holder
+ * keeps its lock and passes on its owner id, which only it and the store know,
+ * so presenting it proves the hand-over is genuine. Releasing by that owner
+ * succeeds once (the ticket is used up), then the lock is taken under a new
+ * owner. "invalid": not the holder (forged, used, or the lease went to another
+ * run); "busy": someone took the chat in between, and carries on from the log.
+ */
+export async function takeOver(store: ChatStore, chat: string, owner: string): Promise<RunLock | "invalid" | "busy"> {
+  if (!(await store.lock(chat, owner, LOCK_TTL_MS, "release"))) return "invalid";
+  const lock = new RunLock(store, chat);
+  return (await lock.acquire()) ? lock : "busy";
 }

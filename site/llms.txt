@@ -11,7 +11,7 @@
 
 - **多渠道统一接入**：QQ、Telegram、HTTP 实现统一渠道适配器接口（`src/channels/`），Webhook 验签后立即返回 200 回执，通过 `waitUntil` 在后台运行 Agent。
 - **只追加事件流（Event Log）**：每个聊天一条只追加的事件流（消息、含思维链的模型输出、工具调用与结果全量入库），模型输入从事件流推导，线上一轮对话提示词缓存命中率达 97.8% 以上；达到 20 万 token 自动压缩上下文摘要。
-- **一个聊天一个 Agent**：基于 Supabase 会话行租约锁（`src/runtime/lock.ts`），收消息与跑 Agent 解耦；临近 300 秒函数时限自动收尾或签名接力给 `/api/worker` 新实例，支持崩溃恢复。
+- **一个聊天一个 Agent**：基于 Supabase 会话行租约锁（`src/runtime/lock.ts`），收消息与跑 Agent 解耦；临近 300 秒函数时限自动收尾，或带着运行锁接力给 `/api/worker` 新实例，支持崩溃恢复。
 - **任意 Responses API 模型**：直接调用 `POST /responses`，默认走 OpenRouter，支持透传供应商路由与推理强度参数。
 - **内置全能工具**：
   - 群聊交互：`send_message`（分条连发、`reply_to` 指定回复）、`send_sticker`（表情包）、`send_voice`（语音合成）、`end_turn`（主动挂断）

@@ -19,7 +19,7 @@
 
 | 组合里的 | 是什么 | Vercel 部署 | 本地 Node 部署 |
 |---|---|---|---|
-| `host` | 宿主：后台任务、一次运行能跑多久、跑不完时怎么接力、自己的配置项、CDN 缓存头 | `waitUntil`、`maxDuration`、签名请求 `/api/worker`、`WORKER_SECRET` | 常驻进程，每次运行最长 `AGENT_RUN_BUDGET_SECONDS`（默认 30 分钟），不接力 |
+| `host` | 宿主：后台任务、一次运行能跑多久、跑不完时怎么接力、自己的配置项、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` 接着做 | 常驻进程，每次运行最长 `AGENT_RUN_BUDGET_SECONDS`（默认 30 分钟），不接力 |
 | `persona` | 人设 | 大肥鱼 | 大肥鱼 |
 | `modules` | 加载哪些模块、什么顺序 | 全部 8 个 | 全部 8 个 |
 | `providers` | 各能力的实现 | DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 | 同左 |

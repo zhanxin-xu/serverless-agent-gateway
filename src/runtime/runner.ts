@@ -10,7 +10,7 @@
  *
  * Time: a run lasts as long as the host allows (Host.runBudgetMs). When a
  * turn can't finish in that time, it ends "paused" or "interrupted" without
- * moving the cursor, and the run hands the chat over (Host.handoff: on Vercel
+ * moving the cursor, and the run hands the chat over with its lock (Host.handoff: on Vercel
  * a fresh function), which continues that turn from the log (unfinishedTurn). A turn that keeps
  * getting interrupted is given up after MAX_INTERRUPTIONS. Sync channels, and
  * hosts that can't hand over, can't continue elsewhere: their turns end with a
@@ -105,19 +105,26 @@ export async function runChat(adapter: ChannelAdapter, meta: ChatMeta, opts: Run
     try {
       ({ end, session } = await drain(store, adapter, meta, { collect: opts.collect, ambientClaimed, deadline, continuable, owner: lock.owner }));
     } catch (err) {
+      await lock.release();
       if (!(err instanceof LockLostError)) throw err;
       // The lease ran out and another run took the chat; that run carries on from the log.
       console.warn(`[runner] ${chatKey}: lost the lock, stopping`);
       return true;
-    } finally {
-      await lock.release();
     }
 
     if (end.outcome === "handoff") {
-      // If the worker can't be reached, the work stays in the log for the next message's run.
-      await host().handoff!(meta.origin!, { chatKey, ambientClaimed: end.ambientClaimed });
+      // The lock goes along: whoever continues takes it over with its owner id (takeOver in lock.ts),
+      // so no message's run can slip in between. If no one takes it, release it: the work stays in
+      // the log for the next message's run. (Releasing after a takeover is a no-op: the owner changed.)
+      if (!(await lock.handOver())) {
+        console.warn(`[runner] ${chatKey}: lost the lock before handing over; the run holding it carries on`);
+        return true;
+      }
+      const accepted = await host().handoff!(meta.origin!, { chatKey, lockOwner: lock.owner, ambientClaimed: end.ambientClaimed });
+      if (!accepted) await lock.release();
       return true;
     }
+    await lock.release();
     if (end.outcome === "stopped" || !session) return true;
     // Something may have arrived after the last check, while its webhook couldn't get the lock.
     // (If another run took over meanwhile, a stale read only costs a lock attempt: that run handles it.)

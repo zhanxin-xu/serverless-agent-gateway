@@ -109,7 +109,6 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `SANDBOX_ENABLED` | 自动 | 部署在 Vercel 上或本地有 `VERCEL_OIDC_TOKEN` 时自动启用；设为 `0` 关闭，设为 `1` 强制启用 |
 | `SANDBOX_REGION` | `iad1` | 沙盒和工作区盘所在的区域。盘建好以后区域不能再改，请在第一次使用前设置 |
 | `SANDBOX_COMMAND_TIMEOUT_SECONDS` | `60` | 单条 `bash` 命令的时间上限，临近函数时限时会自动缩短 |
-| `WORKER_SECRET` | 由其他密钥派生 | Vercel 部署才有，在配置页的“Vercel”分组：请求 `/api/worker` 的签名密钥。不设置时由管理密码和模型 Key 派生；建议设成一个随机字符串 |
 | `STICKER_BASE_URL` | 梗鲸 CDN | 表情包图片的根地址，自托管时修改。属于“聊天”模块，在它的模块页里改 |
 
 ## 画图

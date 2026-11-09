@@ -32,8 +32,13 @@ export interface Host {
   /**
    * Continue a chat's run elsewhere when this one is out of time (Vercel: a
    * fresh function). Hosts without a time limit don't need it. True once accepted.
+   *
+   * The run still holds the chat's lock; `lockOwner` is its owner id, which
+   * only the run and the store know. Whatever continues takes the lock over
+   * with it (takeOver in src/runtime/lock.ts), which also proves the request
+   * came from the run: no shared secret is needed.
    */
-  handoff?(origin: string, request: { chatKey: string; ambientClaimed?: boolean }): Promise<boolean>;
+  handoff?(origin: string, request: HandoffRequest): Promise<boolean>;
   /** Its own settings, collected into the catalog. */
   config?: ConfigDecl;
   /** Response headers that let its CDN keep a static file (the console's page and scripts). */
@@ -57,6 +62,15 @@ export interface DatabaseStatus {
   applyNote: string;
   /** How to run schema() by hand. */
   manualNote: string;
+}
+
+/** A run handing its chat over (Host.handoff). */
+export interface HandoffRequest {
+  chatKey: string;
+  /** The run lock's owner id: the ticket to take the run over. */
+  lockOwner: string;
+  /** The sampler window was already claimed for this run (an ambient message woke it). */
+  ambientClaimed?: boolean;
 }
 
 /** The store's own setup (create or upgrade its tables), for the console. */

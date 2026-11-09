@@ -25,7 +25,6 @@ for (const name of [
   "VERCEL",
   "VERCEL_OIDC_TOKEN",
   "SANDBOX_ENABLED",
-  "WORKER_SECRET",
   "SUPABASE_URL",
   "SUPABASE_SECRET_KEY",
 ]) {
@@ -1299,8 +1298,12 @@ await test("worker: the webhook runs the agent itself; /api/worker is only for c
   await drain();
   assert.equal(workerCalls().length, 0, "a turn that fits in the function never leaves it");
   assert.deepEqual(sentTo("/v2/users/WORKER/messages").map((b) => b.msg_id), ["run-w1"]);
-  const forged = await handleWorker(new Request("https://bot.example.com/api/worker", { method: "POST", body: '{"chatKey":"qq:c2c:WORKER"}', headers: { "x-worker-signature": "00" } }));
-  assert.equal(forged.status, 401);
+  const post = (body: object) => handleWorker(new Request("https://bot.example.com/api/worker", { method: "POST", body: JSON.stringify(body) }));
+  const before = llmCalls;
+  assert.equal((await post({ chatKey: "qq:c2c:WORKER" })).status, 400, "no lock owner, no hand-over");
+  assert.equal((await post({ chatKey: "qq:c2c:WORKER", lockOwner: crypto.randomUUID() })).status, 401, "only the lock holder can hand over");
+  await drain();
+  assert.equal(llmCalls, before, "a forged hand-over runs nothing");
 });
 
 await test("worker: unreachable when a turn pauses → the work stays in the log and the next message's run continues it", async () => {
@@ -1331,12 +1334,24 @@ await test("worker: unreachable when a turn pauses → the work stays in the log
 
 await test("pause: not enough time for the next step → the turn ends paused and a fresh worker continues it", async () => {
   // The first model call "takes" 201s of the 300: the next step would start with < 100s left.
-  await withModelHook((n) => void (n === 1 && (clockOffset += 201_000)), async () => {
-    await handleWebhook(c2c("run-p1", "算一下", "PAUSE"), "qq");
-    await drain();
-  });
+  const original = worker!;
+  let intruder: boolean | undefined;
+  // While the hand-over is in flight the run still holds the lock: no message's run can slip in.
+  worker = async (req) => ((intruder = await getStore().lock("qq:c2c:PAUSE", "intruder", 60_000, "acquire")), original(req));
+  try {
+    await withModelHook((n) => void (n === 1 && (clockOffset += 201_000)), async () => {
+      await handleWebhook(c2c("run-p1", "算一下", "PAUSE"), "qq");
+      await drain();
+    });
+  } finally {
+    worker = original;
+  }
+  assert.equal(intruder, false, "the lock goes along with the hand-over");
   assert.equal(workerCalls().length, 1, "the webhook's run hands over once");
-  assert.deepEqual(workerCalls()[0]!.body, { chatKey: "qq:c2c:PAUSE", ambientClaimed: false });
+  const handoff = workerCalls()[0]!.body;
+  assert.deepEqual({ ...handoff, lockOwner: typeof handoff.lockOwner }, { chatKey: "qq:c2c:PAUSE", lockOwner: "string", ambientClaimed: false });
+  const replay = await handleWorker(new Request("https://bot.example.com/api/worker", { method: "POST", body: JSON.stringify(handoff) }));
+  assert.equal(replay.status, 401, "a hand-over is used once");
   assert.deepEqual(await turnEnds("qq:c2c:PAUSE"), ["paused", "completed"]);
   assert.equal(llmCalls, 2, "no forced wrap-up step: the calculation's result is answered in the fresh function");
   const resumed = llmRequests()[1]!.body.input.findLast((i: any) => i.role === "developer").content;

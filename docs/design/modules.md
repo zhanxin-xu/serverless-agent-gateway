@@ -509,7 +509,8 @@ P1–P6 可以一起上线，P7 至少隔一周。
 - **组合**（`src/composition.ts`）：部署调用一次 `compose()`，交给核心宿主（`Host`）、人设、模块、实现、渠道、存储（和建表的 `Database`）、模型余额（`ModelAccount`）和管理端文案（`ConsoleGuide`）。核心只从这里读，相当于 dsh 的 `cordis.yml`。模块清单 `src/modules/index.ts` 只导出模块定义，加载哪些由组合决定。
 - **适配器**搬到 `src/adapters/<服务>/`：每个实现自带 `capability` 字段，能力的实现列表从组合里按能力 id 取；渠道带自己的配置项（`ChannelAdapter.config`），QQ 的 SILK 编码搬进 `adapters/qq`；Supabase 的连接配置、`PostgresStore` 和建表搬进 `adapters/supabase`。
 - **人设**搬到 `src/personas/dafeiyu/`，导出一个 `Persona` 对象。用到人设的默认值（形象图、参考音频）、`send_sticker` 的表情清单、`{{bot_name}}`、管理端标题和头像都在组合之后读。人设没有表情包就没有 `send_sticker`。
-- **宿主**：`webhook.ts` 和管理端的悄悄话用 `host().background`，运行的截止时间用 `host().runBudgetMs()`，只有宿主有 `handoff` 时一轮才会交给别处接着做。Vercel 的 `waitUntil`、`AGENT_MAX_DURATION_SECONDS`、`/api/worker` 签名和 `WORKER_SECRET`（现在在配置页的“Vercel”分组）都在 `deploy/vercel`。`WORKER_SECRET` 不填时改由管理密码和模型 Key 派生（原来还拼了渠道密钥），什么都没有时拒绝所有 worker 请求。
+- **宿主**：`webhook.ts` 和管理端的悄悄话用 `host().background`，运行的截止时间用 `host().runBudgetMs()`，只有宿主有 `handoff` 时一轮才会交给别处接着做。Vercel 的 `waitUntil`、`AGENT_MAX_DURATION_SECONDS` 和 `/api/worker` 都在 `deploy/vercel`。
+- **接力不再用密钥**：原来 `/api/worker` 的请求用 `WORKER_SECRET`（不填时由模型 Key 和渠道密钥拼出来）签名。现在运行者交接时不放锁，把锁的持有者 ID 交给 worker，worker 凭它接过锁（`src/runtime/lock.ts` 的 `takeOver`：按这个持有者释放，成功一次就作废，再以新持有者抢锁）。只有持锁的运行知道这个 ID，所以它本身就证明请求来自自己；`WORKER_SECRET` 删掉了，接力和任何配置都无关。顺带去掉了“先放锁再抢锁”空隙里被别人抢先的情况。
 - **两个部署**：`deploy/vercel`（`api/*.ts` 只转给它）和 `deploy/node`（常驻进程，`npm run dev` / `npm start`，没有接力，每次运行最长 `AGENT_RUN_BUDGET_SECONDS`）。原来的 `scripts/dev-server.ts` 是在本地模拟 Vercel，删了。
 - **管理端跟着部署走**：没设密码时的步骤、换密码的说明、连数据库的步骤来自组合的 `guide`；数据库状态来自 `Database.status()`（不再写死 Supabase）；CDN 缓存头来自 `Host.cdnCache`。
 - **测试**：`moduletest` 加了分层检查（核心只依赖核心，适配器只依赖核心和自己，人设只依赖类型，部署之间互不依赖，`api/` 只依赖 `deploy/vercel`，核心不用 `@vercel/functions`），人设名字的检查扩大到整个核心（包括提示词和管理端）。`loadtest` 覆盖 `src` 和 `deploy` 全部 143 个文件。

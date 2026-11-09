@@ -49,7 +49,7 @@
                          │ 抢到锁
                          ▼
           每一步：读事件流 → 调用模型 → 输出和工具结果写回事件流
-                         │ 这个函数的时间不够：POST /api/worker（签名），新的函数接着这一轮做
+                         │ 这个函数的时间不够：POST /api/worker（带着运行锁），新的函数接着这一轮做
                          │
       OpenRouter Responses API · Supabase · Upstash Vector · Vercel Sandbox
 ```
@@ -137,11 +137,11 @@ src/                     核心 + 适配器 + 人设（同一个仓库，按层�
   personas/
     dafeiyu/             人设：提示词、示例、表情包、形象图和声音的路径
 deploy/                  部署：每种一个组合 + 宿主 + 管理端文案
-  vercel/                Vercel Functions：waitUntil、maxDuration、/api/worker 接力（WORKER_SECRET）
+  vercel/                Vercel Functions：waitUntil、maxDuration、/api/worker 接力
   node/                  常驻 Node 服务：npm run dev / npm start
 api/                     Vercel 的函数入口，只转给 deploy/vercel
   webhook/[channel].ts   POST /api/webhook/{qq|telegram|http}
-  worker.ts              POST /api/worker：一轮做不完时由新的函数接着做（内部，带签名）
+  worker.ts              POST /api/worker：一轮做不完时由新的函数接着做（内部，凭运行锁）
   health.ts              GET /api/health
   admin.ts               /admin 页面和 /api/admin/* 接口
 assets/                  人设的参考声音和形象图

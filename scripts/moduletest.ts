@@ -267,7 +267,7 @@ await test("settings: each module brings its own, the catalog collects them, swi
   assert.equal(groups.find((g) => g.id === "llm")!.module, "model");
   assert.equal(settingDef("STICKER_BASE_URL")!.group, "chat", "the sticker CDN comes with the chat module");
   assert.equal(groups.find((g) => g.id === "qq")!.channel, "qq", "a channel's settings come with its adapter");
-  assert.equal(settingDef("WORKER_SECRET")!.group, "vercel", "the host's settings come with the host");
+  assert.equal(settingDef("WORKER_SECRET"), undefined, "a hand-over needs no secret: the run's lock is the ticket");
   assert.equal(settingDef("IMAGE_SELF_REFERENCE")!.default, persona.picture, "defaults about her come from the composed persona");
 });
 

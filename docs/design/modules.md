@@ -530,6 +530,9 @@ P1–P6 可以一起上线，P7 至少隔一周。
 为了能拆开，改了这些：
 
 - **不再按当前目录找文件**：管理端页面按 core 自己的位置找（`src/admin/ui` 或构建后的 `dist/admin/ui`），`schema.sql` 按 adapters 自己的位置找；人设的形象图和声音这类“部署里的文件”相对组合新增的 `baseDir`（部署包的目录）。配置里存的路径还是 `assets/…`，线上已有的值不用改。
-- **构建**：Vercel 自己编译 `api/` 和部署包里的 TypeScript，但不支持 project references，所以 core 和 adapters 先用 `tsc` 编译到 `dist/`（带类型声明）。包的 `exports` 有三个条件：`source`（源码，开发、测试和类型检查用 `--conditions=source` / `customConditions`，不用先构建）、`types`、`default`（`dist/`，Vercel 上用）。构建放在 `vercel.json` 的 `installCommand` 里（`cd ../.. && npm ci && npm run build`），因为设了 Build Command 而没有框架时，Vercel 会要求一个静态输出目录。
+- **构建**：Vercel 自己编译 `api/` 和部署包里的 TypeScript，但不支持 project references，所以 core 和 adapters 先用 `tsc` 编译到 `dist/`（带类型声明）。包的 `exports` 有三个条件：`source`（源码，开发、测试和类型检查用 `--conditions=source` / `customConditions`，不用先构建）、`types`、`default`（`dist/`，Vercel 上用）。构建放在安装命令里（`cd ../.. && npm ci && npm run build`），因为设了 Build Command 而没有框架时，Vercel 会要求一个静态输出目录。安装命令必须写在 `functions` 条目里（见下面的事故记录）。
 - **打包**：在本地用 `vercel build`（Root Directory 设为 `packages/vercel`）检查过每个函数带上了 core 和 adapters 的 `dist/`、管理端页面、`schema.sql`、`pg`、`@vercel/sandbox`、人设素材；`silk.wasm` 不会被自动追踪，`includeFiles` 里写成 `../../node_modules/silk-wasm/lib/silk.wasm`。
+- **包之间的依赖写成 `file:../core`、`file:../adapters`**，不写 `*`：安装万一没走 workspaces，npm 也不会去公开仓库找同名的包。
 - **测试**：分层测试改成按包检查：core 不引用任何 `@gateway/*`；adapters 只引用 `@gateway/core`，厂商之间不互相引用；vercel 只用两个包的公开入口；人设只是数据；每个文件用到的 npm 包必须写在自己包的 `package.json` 里。
+
+**事故（2026-11-09 19:17–19:24）**：第一次推送拆包后线上全部 500。Vercel 对只有 `api/` 函数、没有框架的项目不认 `vercel.json` 顶层的 `installCommand`，只在包目录里跑了默认的 `npm install`，core 和 adapters 没有编译，函数加载 `@gateway/core` 时找不到 `dist/`。本地的 `vercel build` 没发现，是因为那份副本里还留着上一次构建的 `dist/`。处理：回滚到 `6633cb4` 的部署；安装命令移到 `functions["api/**/*.ts"].installCommand`；验证改成在没有 `node_modules`、没有 `dist/` 的干净副本里 `vercel build`，再把每个函数连同要上传的文件拷到源码目录之外单独运行。

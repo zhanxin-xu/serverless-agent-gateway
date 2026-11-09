@@ -137,7 +137,7 @@ packages/
       supabase/          store/ 存储实现和建表；schema.sql 表和函数；config.ts 连接
       qq/ telegram/ http/      渠道（各自带配置项；QQ 的 SILK 编码在 qq/silk.ts）
   vercel/                @gateway/vercel：部署包，Vercel 项目的 Root Directory
-    vercel.json          函数时长、打包的文件、改写规则；安装时构建 core 和 adapters
+    vercel.json          函数时长、打包的文件、改写规则；函数的安装命令里构建 core 和 adapters
     api/                 函数入口，只转给 src/index.ts
       webhook/[channel].ts   POST /api/webhook/{qq|telegram|http}
       worker.ts          POST /api/worker：一轮做不完时由新的函数接着做（凭运行锁）

@@ -9,8 +9,8 @@
     "dev": "tsx watch --conditions=source scripts/dev.ts"
   },
   "dependencies": {
-    "@gateway/adapters": "*",
-    "@gateway/core": "*",
+    "@gateway/adapters": "file:../adapters",
+    "@gateway/core": "file:../core",
     "@vercel/functions": "^3.10.6"
   },
   "engines": {

@@ -3,17 +3,9 @@
   "regions": [
     "sin1"
   ],
-  "installCommand": "cd ../.. && npm ci && npm run build",
   "functions": {
-    "api/webhook/[channel].ts": {
-      "maxDuration": 300,
-      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
-    },
-    "api/worker.ts": {
-      "maxDuration": 300,
-      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
-    },
-    "api/admin.ts": {
+    "api/**/*.ts": {
+      "installCommand": "cd ../.. && npm ci && npm run build",
       "maxDuration": 300,
       "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
     }

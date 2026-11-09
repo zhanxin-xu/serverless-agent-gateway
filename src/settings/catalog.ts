@@ -170,15 +170,14 @@ const CORE_SETTINGS: SettingDef[] = [
   { key: "WORKER_SECRET", group: "console", label: "Worker 签名密钥", kind: "secret", help: "一轮跑不完交给新函数时用来签名。留空时由其他密钥拼出来。", generate: true },
 ];
 
-/** A provider choice lists the capability's providers, after "automatic". */
+/**
+ * A provider choice lists the capability's providers. Unset, the one that's
+ * configured is used (src/modules/capability.ts), so a new deployment needs no choice.
+ */
 function withProviderOptions(def: SettingDef): SettingDef {
   if (!def.capability) return def;
   const providers = SETTING_GROUPS.filter((g) => g.provider?.capability === def.capability);
-  return {
-    ...def,
-    default: "",
-    options: [{ value: "", label: "自动（只有一个可用时用它）" }, ...providers.map((g) => ({ value: g.provider!.id, label: g.label }))],
-  };
+  return { ...def, default: "", options: providers.map((g) => ({ value: g.provider!.id, label: g.label })) };
 }
 
 export const SETTINGS: SettingDef[] = [...CORE_SETTINGS, ...MODULE_SETTINGS.flatMap((m) => m.SETTINGS)].map(withProviderOptions);

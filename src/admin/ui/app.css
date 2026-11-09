@@ -334,12 +334,8 @@ h1 .pill { font-size: 12px; }
 .manual summary { cursor: pointer; color: var(--accent); font-weight: 500; }
 .manual { display: grid; gap: 10px; }
 .sql { max-height: 320px; overflow: auto; background: var(--surface-2); border: 1px solid var(--line); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; }
-/* The modules page: cards side by side, each opening its module's page. */
+/* The modules page: cards side by side. */
 .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: stretch; }
-.module-card { cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s; }
-.module-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
-.module-card h3 a { color: var(--fg); }
-.card.provider.in-use { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* A switch: a pill track with a knob, on = accent. */
 .switch-row { display: inline-flex; align-items: center; gap: 8px; flex: none; }

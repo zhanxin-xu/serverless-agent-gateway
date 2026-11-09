@@ -2,7 +2,7 @@
 // everything about it: its switch, which provider it uses and their settings, its own
 // settings, its tools and quota, and exactly what it gives the model.
 import { api } from "./api.js";
-import { action, fill, h, pill, toast } from "./dom.js";
+import { fill, h, pill, toast } from "./dom.js";
 import { groupActions, loadSettings, settingsForm } from "./form.js";
 import { icon } from "./icons.js";
 
@@ -46,22 +46,16 @@ function moduleSwitch(m, onChanged) {
 
 // ── The list ──
 
-function card(m, app) {
+function card(m) {
   const cap = m.capability;
   const selected = cap?.providers.find((p) => p.id === cap.selected);
-  const href = `#/modules/${m.id}`;
   return h(
     "div",
-    { class: "card module-card", onClick: () => (location.hash = href) },
-    h(
-      "div",
-      { class: "row between" },
-      h("h3", null, h("a", { href }, m.label), " ", moduleState(m)),
-      m.switch ? moduleSwitch(m, () => app.go("#/modules")) : null,
-    ),
+    { class: "card" },
+    h("div", { class: "row between" }, h("h3", null, m.label, " ", moduleState(m)), h("a", { class: "btn btn-small", href: `#/modules/${m.id}` }, "配置")),
     h("p", null, m.summary),
     m.switch?.on && !m.ok && m.reason ? h("p", { class: "help" }, `未就绪：${m.reason}`) : null,
-    cap ? h("p", { class: "help" }, `${cap.label}：${selected ? `${selected.label}${cap.chosen ? "（指定）" : "（自动）"}` : "无"}`) : null,
+    cap && selected ? h("p", { class: "help" }, `${cap.label}：${selected.label}`) : null,
   );
 }
 
@@ -73,63 +67,58 @@ async function renderList(main, app) {
       "header",
       { class: "page-head" },
       h("h1", null, "模块"),
-      h("p", { class: "muted" }, "机器人的每样本事是一个模块：一组工具，加上告诉模型怎么用它们的一段说明。打开并配好的模块，它的工具和说明才会出现在发给模型的请求里；每个聊天还能在“设置与额度”里单独关掉。点进模块可以配置。"),
+      h("p", { class: "muted" }, "机器人的每样本事是一个模块：一组工具，加上告诉模型怎么用它们的一段说明。打开并配好的模块，它的工具和说明才会出现在发给模型的请求里；每个聊天还能在“设置与额度”里单独关掉。"),
     ),
     h("h2", null, "核心"),
-    h("div", { class: "module-grid" }, modules.filter((m) => m.core).map((m) => card(m, app))),
+    h("div", { class: "module-grid" }, modules.filter((m) => m.core).map(card)),
     h("h2", null, "可选"),
-    h("div", { class: "module-grid" }, modules.filter((m) => !m.core).map((m) => card(m, app))),
+    h("div", { class: "module-grid" }, modules.filter((m) => !m.core).map(card)),
   );
 }
 
 // ── One module ──
 
-/** Which provider the module uses: automatic, or one chosen; a card per provider with its settings. */
+/** Which provider the module uses: one choice, and that provider's settings below it. */
 function providers(m, index, status, reload) {
   const cap = m.capability;
-  const choose = (id) =>
-    action(id ? "用这个" : "改回自动", async () => {
-      await api.put("settings", { changes: { [cap.setting]: id } });
-      toast(id ? "已切换" : "已改回自动");
-      await reload();
-    });
+  // The provider in use; before any is configured, the one chosen, else the first, to fill in.
+  const current = cap.providers.find((p) => p.id === cap.selected) ?? cap.providers.find((p) => p.id === cap.chosen) ?? cap.providers[0];
+  const id = `provider-${m.id}`;
+  const select = h(
+    "select",
+    {
+      id,
+      async onChange(e) {
+        select.disabled = true;
+        try {
+          await api.put("settings", { changes: { [cap.setting]: e.target.value } });
+          toast("已切换");
+          await reload();
+        } catch (err) {
+          toast(err.message, "bad");
+          select.disabled = false;
+        }
+      },
+    },
+    cap.providers.map((p) => h("option", { value: p.id, selected: p === current }, p.label)),
+  );
+  const group = index.groups.find((g) => g.id === current.settings);
+  const slot = h("p", { class: "check-result" });
+  const form = settingsForm(index, index.keysOf(current.settings), { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) });
   return h(
     "section",
     { class: "stack" },
     h("h2", null, cap.label),
     h(
       "div",
-      { class: "row between" },
-      h(
-        "p",
-        { class: "muted" },
-        cap.chosen
-          ? `指定用 ${cap.providers.find((p) => p.id === cap.chosen)?.label ?? cap.chosen}。`
-          : "自动：只有一个实现配好时就用它，有多个配好时要指定一个。",
-        cap.stateful ? " 数据存在服务那边，换实现后看不到旧数据。" : "",
-      ),
-      cap.chosen ? choose(null) : null,
+      { class: "field" },
+      h("label", { for: id }, "实现"),
+      select,
+      h("p", { class: "help" }, current.description, cap.stateful ? " 换实现后，原来实现里的数据不会跟过来。" : ""),
+      !current.available && current.reason ? h("p", { class: "field-error" }, current.reason) : null,
     ),
-    cap.providers.map((p) => {
-      const group = index.groups.find((g) => g.id === p.settings);
-      const inUse = cap.selected === p.id;
-      const slot = h("p", { class: "check-result" });
-      const form = settingsForm(index, index.keysOf(p.settings), { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) });
-      return h(
-        "div",
-        { class: `card provider${inUse ? " in-use" : ""}` },
-        h(
-          "div",
-          { class: "row between" },
-          h("h3", null, p.label, " ", inUse ? pill("ok", "在用") : p.available ? pill("info", "可用") : pill("mute", "未配置")),
-          cap.chosen === p.id ? null : choose(p.id),
-        ),
-        h("p", { class: "muted" }, p.description),
-        !p.available && p.reason ? h("p", { class: "help" }, p.reason) : null,
-        form.el,
-        slot,
-      );
-    }),
+    form.el,
+    slot,
   );
 }
 

@@ -252,7 +252,7 @@ await test("settings: every module and provider group exists; provider choices l
       assert.equal(choice.kind, "enum");
       assert.deepEqual(
         choice.options!.map((o) => o.value),
-        ["", ...m.capability.providers.map((p) => p.id)],
+        m.capability.providers.map((p) => p.id),
       );
     }
   }

@@ -321,15 +321,6 @@ create table if not exists gateway.chat_profiles (
   profile jsonb not null,
   updated_at timestamptz not null default now()
 );
--- Schema v5: a chat's switches are its modules (docs/design/modules.md 9.3). Profiles saved before
--- name them disabledTools (v4 copied them to disabledModules and marked "v": 2): move them over and
--- drop the old field and the marker. Runs any number of times.
-update gateway.chat_profiles
-  set profile = (profile - 'disabledTools' - 'v')
-        || case when profile ? 'disabledModules' then '{}'::jsonb
-                else jsonb_build_object('disabledModules', profile -> 'disabledTools') end,
-      updated_at = now()
-  where profile ? 'disabledTools' or profile ? 'v';
 
 create table if not exists gateway.usage_daily (
   chat text not null,

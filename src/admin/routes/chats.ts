@@ -5,7 +5,9 @@ import { daysBefore, utcDay } from "../../chats/day.js";
 import { historyAfter, historyBefore } from "../../chats/history.js";
 import { ambientInterval, parseProfile, PROFILE_CHOICES, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
 import { config } from "../../config.js";
-import { getStore, type ChatSummary } from "../../store/index.js";
+import { arrivedMidStep, modelSees } from "../../conversation/derive.js";
+import type { SessionEvent } from "../../conversation/events.js";
+import { getStore, type ChatSummary, type StoredEvent } from "../../store/index.js";
 import { replyWindow, resetChat, say, unlockChat, whisper } from "../chat-actions.js";
 import { field, HttpError, type AdminRequest, type Route } from "../http.js";
 
@@ -44,6 +46,21 @@ function view(c: ChatSummary) {
     ambientIntervalSeconds: ambientInterval(profile),
     canSend: Boolean(adapter?.send),
   };
+}
+
+/**
+ * Events as the model reads them, for the events tab: whether the model sees
+ * each one, and for what arrived while a step was running, the step/end it's
+ * read after (`readAfter`), or `readAfterStep` while that step still runs.
+ * A message only moves within the events given, so polls include the running step.
+ */
+function asModelReads(events: StoredEvent[]) {
+  const moved = arrivedMidStep(events as SessionEvent[]);
+  return events.map((e) => ({
+    ...e,
+    modelSees: modelSees(e.type),
+    ...(moved.has(e.seq) ? (moved.get(e.seq) === undefined ? { readAfterStep: true } : { readAfter: moved.get(e.seq) }) : {}),
+  }));
 }
 
 export const chatRoutes: Route[] = [
@@ -87,13 +104,17 @@ export const chatRoutes: Route[] = [
   },
   {
     method: "GET",
-    // The raw log: new events after `after` (polling), else a page before `before`, newest first.
+    // The log as the model reads it: events after `after` (polling), else a page before `before`.
     path: "chat/events",
-    handler(req) {
+    async handler(req) {
       const chat = chatParam(req);
       const after = seqParam(req, "after");
-      if (after !== undefined) return getStore().open(chat, after);
-      return getStore().recentEvents(chat, seqParam(req, "before") ?? Number.MAX_SAFE_INTEGER, limitParam(req));
+      const page =
+        after !== undefined
+          ? await getStore().open(chat, after)
+          : await getStore().recentEvents(chat, seqParam(req, "before") ?? Number.MAX_SAFE_INTEGER, limitParam(req));
+      const events = [...page.events].sort((a, b) => a.seq - b.seq);
+      return { session: page.session, events: asModelReads(events) };
     },
   },
   { method: "GET", path: "chat/reply-window", handler: (req) => replyWindow(chatParam(req)) },

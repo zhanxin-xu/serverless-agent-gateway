@@ -186,6 +186,8 @@ const REASONS = {
 
 const FILTERS = {
   all: ["全部", () => true],
+  // Exactly the model's input, in its order (plus the compaction summary it starts from).
+  seen: ["模型看到的", (e) => e.modelSees],
   messages: ["消息", (e) => e.type.startsWith("user/") || e.type === "bot/sent" || e.type === "admin/message" || e.type === "session/reset"],
   model: ["模型", (e) => e.type.startsWith("assistant/") || e.type === "developer/message" || e.type === "compaction/summary"],
   tools: ["工具", (e) => e.type.startsWith("tool/")],
@@ -260,13 +262,34 @@ function summarize(e) {
 }
 
 /** Events of one turn (or loose messages between turns), newest group first. */
-function groupByTurn(events) {
+/**
+ * The events in the order the model reads them (the server marks what arrived
+ * mid-step: readAfter = the step/end it follows, readAfterStep while that step
+ * runs), oldest first.
+ */
+function inModelOrder(events) {
+  const position = (e) => (e.readAfter !== undefined ? [e.readAfter, 1] : e.readAfterStep ? [Infinity, 1] : [e.seq, 0]);
+  return [...events].sort((a, b) => {
+    const [pa, ma] = position(a);
+    const [pb, mb] = position(b);
+    return pa - pb || ma - mb || a.seq - b.seq;
+  });
+}
+
+/**
+ * Turns as groups, newest first. Whatever the model read between a turn's
+ * start and end (a message that came in meanwhile) belongs to that turn.
+ */
+function groupByTurn(ordered) {
   const groups = [];
-  for (const e of events) {
-    const turn = typeof e.data?.turn === "number" ? e.data.turn : null;
+  let open = null;
+  for (const e of ordered) {
+    if (e.type === "turn/start") open = e.data.turn;
+    const turn = typeof e.data?.turn === "number" ? e.data.turn : open;
     const last = groups.at(-1);
     if (last && last.turn === turn) last.events.push(e);
     else groups.push({ turn, events: [e] });
+    if (e.type === "turn/end") open = null;
   }
   return groups.reverse();
 }
@@ -300,11 +323,22 @@ function eventRow(e) {
   const json = h("pre", { class: "json", hidden: true }, JSON.stringify(e, null, 2));
   const row = h(
     "div",
-    { class: "ev", tabindex: "0", role: "button", "aria-expanded": "false" },
+    {
+      class: `ev${e.modelSees ? "" : " log-only"}`,
+      tabindex: "0",
+      role: "button",
+      "aria-expanded": "false",
+      title: e.modelSees ? "模型看得到" : "只在日志里，模型看不到",
+    },
     h("span", { class: "seq" }, e.seq),
     h("span", { class: "time" }, fmtClock(e.time)),
     h("span", { class: "type" }, e.type),
-    h("span", { class: "what" }, summarize(e)),
+    h(
+      "span",
+      { class: "what" },
+      summarize(e),
+      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 这一步运行时收到，模型在这一步之后读到") : null,
+    ),
   );
   const toggle = () => {
     json.hidden = !json.hidden;
@@ -324,9 +358,8 @@ function renderEvents(body, chat, info) {
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
 
   const draw = () => {
-    const sorted = [...events.values()].sort((a, b) => a.seq - b.seq);
     const test = FILTERS[filter][1];
-    const groups = groupByTurn(sorted);
+    const groups = groupByTurn(inModelOrder(events.values()));
     meta.textContent = !session ? "" : session.minSeq > 0 ? `共 ${session.nextSeq} 条事件，第 ${session.minSeq} 条之前的已压缩成摘要` : `共 ${session.nextSeq} 条事件`;
     more.hidden = !events.size || Math.min(...events.keys()) <= (session?.minSeq ?? 0);
     fill(
@@ -346,7 +379,17 @@ function renderEvents(body, chat, info) {
     for (const e of page.events) events.set(e.seq, e);
     return page.events.length;
   };
-  const newest = () => (events.size ? Math.max(...events.keys()) : -1);
+  // Poll from the start of a step that's still running, so a message that came in during it moves into place when it ends.
+  const pollFrom = () => {
+    let from = -1;
+    let running = null;
+    for (const e of [...events.values()].sort((a, b) => a.seq - b.seq)) {
+      from = e.seq;
+      if (e.type === "step/start") running = e.seq;
+      else if (e.type === "step/end") running = null;
+    }
+    return running !== null ? running - 1 : from;
+  };
   more.addEventListener("click", async () => {
     const oldest = Math.min(...events.keys());
     if (!(await load({ before: oldest }))) more.hidden = true;
@@ -391,13 +434,13 @@ function renderEvents(body, chat, info) {
         }),
       ),
     ),
-    h("p", null, meta, h("span", { class: "muted" }, " · 点一行看原始 JSON · 每 3 秒刷新")),
+    h("p", null, meta, h("span", { class: "muted" }, " · 按模型读到的顺序 · 灰色的只记在日志里，模型看不到 · 点一行看原始 JSON · 每 3 秒刷新")),
     list,
     h("div", { class: "row" }, more),
   );
   load().then(draw);
   return every(3000, async () => {
-    if ((await load({ after: newest() })) > 0) draw();
+    if ((await load({ after: pollFrom() })) > 0) draw();
   });
 }
 

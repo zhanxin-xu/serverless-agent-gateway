@@ -202,6 +202,8 @@ tr.clickable:hover { background: var(--soft); }
 .ev { display: grid; grid-template-columns: 52px 70px 150px minmax(0, 1fr); gap: 10px; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 13px; cursor: pointer; align-items: baseline; }
 .turn > div:first-of-type .ev, .turn-head + div .ev { border-top: 0; }
 .ev:hover { background: var(--soft); }
+.ev.log-only { color: var(--muted); }
+.ev.log-only .type { opacity: 0.75; }
 .ev .seq, .ev .time { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ev .type { font-family: var(--mono); font-size: 12px; }
 .ev .what { word-break: break-word; }

@@ -2221,6 +2221,25 @@ await test("usage and quotas: tool calls are counted from the log; a used-up too
   assert.ok(toolset.tools.some((t) => t.name === "web_fetch"));
 });
 
+await test("model order: what arrived while a step ran is read after that step; the console shows it the same way", async () => {
+  const { arrivedMidStep, modelOrder, modelSees } = await import("../src/conversation/derive.js");
+  const ev = (seq: number, type: string) => ({ seq, type, time: seq, data: {} }) as any;
+  const log = [
+    ev(0, "turn/start"),
+    ev(1, "step/start"),
+    ev(2, "assistant/message"),
+    ev(3, "user/message"), // came in while the tool ran
+    ev(4, "tool/result"),
+    ev(5, "step/end"),
+    ev(6, "step/start"),
+    ev(7, "user/message"), // the step is still running
+    ev(8, "assistant/message"),
+  ];
+  assert.deepEqual([...arrivedMidStep(log)], [[3, 5], [7, undefined]]);
+  assert.deepEqual(modelOrder(log).map((e) => e.seq), [0, 1, 2, 4, 5, 3, 6, 8, 7]);
+  assert.deepEqual(log.filter((e) => modelSees(e.type)).map((e) => e.seq), [2, 3, 4, 7, 8]);
+});
+
 await test("history from the log: what people and the bot said; older logs fall back to the sending tools' calls", async () => {
   const { historyFromEvents } = await import("../src/chats/history.js");
   const ev = (seq: number, type: string, data: unknown) => ({ seq, type, time: seq * 1000, data }) as any;

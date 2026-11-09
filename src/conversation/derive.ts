@@ -5,12 +5,55 @@ const SUMMARY_PREFIX = "（系统提示）以下是更早对话的摘要，原�
 
 type Loader = (key: string) => Promise<string | null>;
 
+/** Event types that reach the model's input; the rest are only in the log (turns, steps, tool-call markers…). */
+const MODEL_VISIBLE = new Set(["user/message", "developer/message", "admin/message", "assistant/message", "tool/result", "tool/images", "compaction/summary"]);
+export const modelSees = (type: string): boolean => MODEL_VISIBLE.has(type);
+
+/** Events that can arrive while a step is running: messages from the chat, notes, an admin's words. */
+const ARRIVALS = new Set(["user/message", "developer/message", "admin/message"]);
+
 /**
- * Responses API input for the visible window, in log order. Two adjustments
- * keep the request valid without touching the log:
- *   - a message that arrived while a step was running (between its
- *     step/start and step/end) is shown after that step's tool results, so a
- *     function_call is always followed directly by its output;
+ * Messages logged while a step was running (between its step/start and
+ * step/end), which the model reads after that step's tool results, so a
+ * function_call is always followed directly by its output. Maps each one's
+ * seq to the step/end it follows, or to undefined while the step still runs.
+ */
+export function arrivedMidStep(events: SessionEvent[]): Map<number, number | undefined> {
+  const moved = new Map<number, number | undefined>();
+  let running: number[] | undefined;
+  for (const e of events) {
+    if (e.type === "step/start") running = [];
+    else if (e.type === "step/end") {
+      for (const seq of running ?? []) moved.set(seq, e.seq);
+      running = undefined;
+    } else if (running && ARRIVALS.has(e.type)) running.push(e.seq);
+  }
+  for (const seq of running ?? []) moved.set(seq, undefined);
+  return moved;
+}
+
+/** The events in the order the model reads them: as logged, except what arrived mid-step comes after that step (arrivedMidStep). */
+export function modelOrder(events: SessionEvent[]): SessionEvent[] {
+  const moved = arrivedMidStep(events);
+  const after = new Map<number, SessionEvent[]>();
+  const last: SessionEvent[] = [];
+  const ordered: SessionEvent[] = [];
+  for (const e of events) {
+    if (moved.has(e.seq)) {
+      const end = moved.get(e.seq);
+      if (end === undefined) last.push(e);
+      else after.set(end, [...(after.get(end) ?? []), e]);
+      continue;
+    }
+    ordered.push(e, ...(after.get(e.seq) ?? []));
+  }
+  return [...ordered, ...last];
+}
+
+/**
+ * Responses API input for the visible window, in the order the model reads
+ * it (modelOrder). Two adjustments keep the request valid without touching the log:
+ *   - what arrived while a step was running comes after that step's tool results;
  *   - a function_call whose result never made it into the log (the run was
  *     killed) gets a synthetic "interrupted" output. Recovery normally
  *     appends a real tool/result first (see recoverOpenTurn).
@@ -21,29 +64,17 @@ export async function deriveInput(events: SessionEvent[], loadImage: Loader): Pr
   if (summary) input.push({ role: "user", content: SUMMARY_PREFIX + summary.data.summary });
 
   const results = new Set(window.filter((e) => isEvent(e, "tool/result")).map((e) => (e as SessionEvent<"tool/result">).data.callId));
-  let openStep = false;
-  let deferred: unknown[] = [];
-  const emit = (item: unknown) => (openStep ? deferred.push(item) : input.push(item));
-
-  for (const e of window) {
+  for (const e of modelOrder(window)) {
     switch (e.type) {
-      case "step/start":
-        openStep = true;
-        break;
-      case "step/end":
-        openStep = false;
-        input.push(...deferred);
-        deferred = [];
-        break;
       case "user/message":
-        emit(await userMessageItem(e as SessionEvent<"user/message">, loadImage));
+        input.push(await userMessageItem(e as SessionEvent<"user/message">, loadImage));
         break;
       case "developer/message":
-        emit({ role: "developer", content: e.data.text });
+        input.push({ role: "developer", content: e.data.text });
         break;
       case "admin/message":
         // Said in the bot's name by an admin: as far as the model knows, it said this.
-        emit({ role: "assistant", content: e.data.text });
+        input.push({ role: "assistant", content: e.data.text });
         break;
       case "assistant/message":
         input.push(...e.data.output);
@@ -69,7 +100,6 @@ export async function deriveInput(events: SessionEvent[], loadImage: Loader): Pr
       }
     }
   }
-  input.push(...deferred);
   return input;
 }
 

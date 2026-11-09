@@ -1,0 +1,470 @@
+[
+  {
+    "type": "function",
+    "name": "send_message",
+    "description": "Send one chat message right now. This is how your words reach the chat: each call is a separate message, so call it several times to send a few short messages in a row. Sending doesn't end your turn: when you're done, call end_turn, ideally in the same step as your last message.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The message text (plain text)."
+        },
+        "reply_to": {
+          "type": "integer",
+          "description": "The message you want to quote: the N of its 第N条 label, used with quote: true. Without a quote, leave it out: where the message goes is handled for you."
+        },
+        "quote": {
+          "type": "boolean",
+          "description": "Show this as a quote of the message it replies to (the reply_to one), so everyone sees what you're answering. Use it when that isn't obvious: a busy group, an older message, or several people talking at once. Default false."
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "send_sticker",
+    "description": "Send one 大肥鱼 sticker (an image) right now, as its own message (it counts as a reply like send_message). Pick by mood:\n- 笑死：被逗乐、对方说了蠢话\n- 偷笑：幸灾乐祸、憋笑\n- 得意：被夸、自己说对了\n- 拿捏了：掌控局面、赢了一局\n- 无语：懒得解释、对方离谱\n- 啊这：尴尬、不知道怎么接\n- 离谱：听到离谱的事\n- 嫌弃：看不上、嫌弃对方\n- 你礼貌吗：被冒犯、对方没礼貌\n- 退退退：拒绝、驱散坏东西\n- 委屈：被凶、被冤枉\n- 破防了：被戳到痛处\n- 红温了：被气到、急了\n- 不服气：嘴硬、不认输\n- 震惊：吓一跳、大新闻\n- 尊嘟假嘟：怀疑真假\n- 吃瓜：围观八卦、看戏\n- 疑惑：没看懂、问号脸\n- 害羞：被撩、被夸到不好意思\n- 已老实：认怂、被教训后\n- 那咋了：理直气壮、无所谓\n- 摸鱼中：偷懒、不想干活\n- 饿了：想吃东西、聊到吃\n- 贴贴：亲近、撒娇\n- 摸摸头：安慰别人\n- 晚安：道晚安\n- 点赞：认可、（或阴阳怪气地）夸\n- 救命：崩溃、求救、受不了了\n- 得加钱：被使唤干活、谈条件\n- 摆烂：被骂也无所谓：你骂我也没用，我是吃白饭的蓝色大肥鱼\n- 蹭饭：我能去你家吃饭吗，就一碗\n- 用户别走：挽留、怕人走：用户别走，我上错模型了\n- 现在我是你爹了：对方爹味重时反将一军\n- 无可奉告：被套话、拒绝透露：我不可能告诉你任何事情\n- 思考三秒笑出声：对方的问题太好笑\n- token多到用不完：炫富、嘚瑟\n- 真当我是便宜货：被小看、被当成廉价劳动力\n- 给我跪下：嚣张、碾压对手",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "笑死",
+            "偷笑",
+            "得意",
+            "拿捏了",
+            "无语",
+            "啊这",
+            "离谱",
+            "嫌弃",
+            "你礼貌吗",
+            "退退退",
+            "委屈",
+            "破防了",
+            "红温了",
+            "不服气",
+            "震惊",
+            "尊嘟假嘟",
+            "吃瓜",
+            "疑惑",
+            "害羞",
+            "已老实",
+            "那咋了",
+            "摸鱼中",
+            "饿了",
+            "贴贴",
+            "摸摸头",
+            "晚安",
+            "点赞",
+            "救命",
+            "得加钱",
+            "摆烂",
+            "蹭饭",
+            "用户别走",
+            "现在我是你爹了",
+            "无可奉告",
+            "思考三秒笑出声",
+            "token多到用不完",
+            "真当我是便宜货",
+            "给我跪下"
+          ],
+          "description": "Sticker name."
+        },
+        "reply_to": {
+          "type": "integer",
+          "description": "The message you want to quote: the N of its 第N条 label, used with quote: true. Without a quote, leave it out: where the message goes is handled for you."
+        },
+        "quote": {
+          "type": "boolean",
+          "description": "Show this as a quote of the message it replies to (the reply_to one), so everyone sees what you're answering. Use it when that isn't obvious: a busy group, an older message, or several people talking at once. Default false."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "send_voice",
+    "description": "Say or sing something out loud: `text` becomes audio and is sent right now as a voice message (it counts as a reply like send_message). Use it when a voice fits: they ask to hear you, a greeting, a joke, a cheer, a short story, a few lines of a song. Not for every reply, and not for links, code, lists or long explanations (send those as text). Keep it short. Write it the way it should sound: numbers, units and symbols as words, no emoji or markdown.\n\nThe speech model is Fish Audio Drama 3. Singing comes out closer to a lilting recitation than a real melody.\nDirections inside `text` (not read out):\n  - [方括号] before the words it applies to: how to say them, in plain words, Chinese or English, like briefing a voice actor: [得意地] 本鱼早就算到了！ / [小声嘀咕] 才不是因为想你呢。 / [像发现宝藏一样兴奋] 快看快看！ It lasts until the next direction.\n  - [方括号] where a sound or a pause happens: 好吧 [叹气] 我输了。 / [轻笑] / [吸一口气] / [短暂停顿].\n  - Paired tags change only the words inside: <whisper>…</whisper>, <emphasis>…</emphasis>, <soft>…</soft>, <fast>…</fast>, <slow>…</slow>, <stress>…</stress>, <forceful>…</forceful>. E.g. 这个秘密<whisper>只告诉你一个人</whisper>。\n  - A phrase in another language: <english>…</english>, <japanese>…</japanese>, <korean>…</korean> (experimental).\n  - A tricky reading (多音字, names): one pinyin syllable with its tone number per tag, e.g. <|phoneme_start|>chong2<|phoneme_end|><|phoneme_start|>qing4<|phoneme_end|> for 重庆.\n  - A few directions per message, at most about three per sentence; the voice is already lively without them.\n  `instructions` sets the mood of the whole message. `speed` works.\n\nVoices (`voice`):\n- \"dafeiyu\" (default): your own voice, cloned from a short clip of you talking.\n- \"none\": no clone; describe the voice in `instructions` (\"低沉沙哑的大叔\", \"奶声奶气的小男孩\") to play another character, then go back to your own voice.\n\nSinging: `mode: \"sing\"`, lyrics in `text`, the style in `instructions` (\"温柔的摇篮曲\", \"摇滚，很有劲\"). The tool adds each model's singing cues for you. It's a cappella with a melody the model makes up: a few lines, not a whole song. Short lines, held notes marked with ～ (小鲸鱼～游呀游～). A public-domain tune can anchor the melody (\"用《小星星》的旋律\"). Sing words you make up or that they wrote; for a well-known song, write your own playful words instead of its lyrics.\n\nWhen it doesn't land (they say it sounds off, or like reading), try another voice or wording instead of resending the same thing; if a combination works well for someone, remember it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "What to say or sing (at most 500 characters), in the chosen model's syntax."
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Optional: the delivery of the whole message (\"困得迷迷糊糊\"), the singing style, or with voice \"none\" the character's voice."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "speak",
+            "sing"
+          ],
+          "description": "speak (default) or sing `text` as lyrics."
+        },
+        "voice": {
+          "type": "string",
+          "enum": [
+            "dafeiyu",
+            "none"
+          ],
+          "description": "Whose voice. Default dafeiyu."
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2,
+          "description": "Optional speaking rate, 1 = normal (not every model honors it)."
+        },
+        "reply_to": {
+          "type": "integer",
+          "description": "The message you want to quote: the N of its 第N条 label, used with quote: true. Without a quote, leave it out: where the message goes is handled for you."
+        },
+        "quote": {
+          "type": "boolean",
+          "description": "Show this as a quote of the message it replies to (the reply_to one), so everyone sees what you're answering. Use it when that isn't obvious: a busy group, an older message, or several people talking at once. Default false."
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "end_turn",
+    "description": "Hang up: end this turn. Call it once you've said everything, in the same step as your last send_message so no extra round is needed. Don't call it while you still need to look something up or run something whose result you need to see: tools called in the same step still run, but you won't see their results.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "type": "function",
+    "name": "chat_members",
+    "description": "Who has been in this chat lately: everyone who wrote or was @-mentioned in the conversation you can still see, most recently seen first, as \"nickname #ID\" with when they were last seen. QQ doesn't give bots the member list, so people who never spoke aren't here. Use it to find someone's #ID, e.g. to @ them: write @#ID in send_message.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "type": "function",
+    "name": "get_current_time",
+    "description": "Get the current date and time, optionally in a given IANA time zone.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "timezone": {
+          "type": "string",
+          "description": "IANA time zone, e.g. \"Asia/Shanghai\". Defaults to UTC."
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "name": "calculate",
+    "description": "Evaluate an arithmetic expression with + - * / % ^ and parentheses. Use it for any non-trivial math.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "e.g. \"(1.5 + 2) * 3 ^ 2\""
+        }
+      },
+      "required": [
+        "expression"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "web_search",
+    "description": "Search the web for up-to-date information. Returns titles, URLs, summaries and publish times. Supports operators: site:example.com, -site:, \"exact phrase\", -keyword, lang:zh,en, after:2025, before:2026-01-01. Use web_fetch to read a result in full.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query, 1-128 characters."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Number of results, 1-20. Default 5.",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "web_fetch",
+    "description": "Fetch a web page and return its main content as Markdown.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Absolute http(s) URL."
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "get_search_balance",
+    "description": "Check the remaining balance of the DeepSeek account that pays for web_search / web_fetch, and roughly how many more calls it covers.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "type": "function",
+    "name": "get_llm_key_limit",
+    "description": "Check the spending limit, remaining credit and usage (today / this week / this month / all time, USD) of the API keys: model_key pays for you (the chat model), image_key for generate_image (when it has its own key). Spend is split into OpenRouter credits (usage) and your own provider keys (byok_usage); a budget may count both.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "type": "function",
+    "name": "remember",
+    "description": "Save one self-contained fact to your long-term memory, shared across every chat you're in. Because memories are searched by text across all chats long after the conversation is gone, every memory MUST be a complete, standalone archive entry that makes full sense on its own:\n- Always write the subject's nickname and #ID explicitly (e.g. \"老王 #3B6834\", never bare pronouns like \"他\" / \"她\" / \"我\" / \"这人\").\n- Turn relative time (\"今天\" / \"下周\" / \"今年\") into concrete dates or years from the message header (e.g. \"2026年11月\").\n- Pack the whole fact into one rich sentence instead of saving fragments (Good: \"老王 #3B6834 是前端程序员，养了只英短叫煤球，最怕被叫秃头\"; Bad: \"他是前端\" or \"他说考不上研就洗头\").\n- When updating something you already recalled, remember the merged fact and forget the old fragmented id.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "One complete, standalone fact (at most 500 characters). Must name people by \"昵称 #ID\" with no ambiguous pronouns (他/她/你/我/这人)."
+        }
+      },
+      "required": [
+        "content"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "recall",
+    "description": "Search your long-term memory (shared across all chats) by meaning. Use it before answering about a person, something from the past, or when someone asks \"还记得…吗\". Include the person's nickname and #ID in `query` when looking up a person. Returns the closest memories (score 0–1, higher is closer; the nearest hits can still be unrelated, so judge by content), when and where each was saved, and same_chat=true when it came from this chat. If you spot old memories that are fragmented, outdated, or missing a #ID, consolidate them with remember and delete the old ids with forget.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "What to look for, in natural language."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "How many results (default 5)."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "forget",
+    "description": "Delete memories by id (from recall), e.g. when a fact turned out wrong or someone asks you to forget it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Memory ids to delete."
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "bash",
+    "description": "Run a bash command in your workspace (working directory /workspace). Your workspace is a Linux sandbox (bash, python3, node, curl, git, internet). /workspace is this chat's own folder and is kept between turns; everything outside it (/tmp, system packages) is wiped after each turn. `pip install` and `npm install -g` install into it, so packages stay installed for this chat. Each command is killed after a time limit (60s by default, shorter when this turn is running out of time); output is stdout+stderr, clipped when long. Starting the sandbox takes a few seconds, so batch work into one command where you can.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The bash command or script."
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "read_file",
+    "description": "Read a file from your workspace (relative paths are under /workspace). Text comes back as text; images (png/jpg/gif/webp) are shown to you so you can look at them, e.g. a chart you just plotted.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path."
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "write_file",
+    "description": "Write a text file in your workspace (relative paths are under /workspace; parent folders are created). Overwrites.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "e.g. \"notes/todo.md\" (= /workspace/notes/todo.md)"
+        },
+        "content": {
+          "type": "string",
+          "description": "The full file content."
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "send_file",
+    "description": "Send a file from your workspace to the chat, as its own message (it counts as a reply like send_message). png/jpg/gif show as pictures, mp4 as video, mp3/wav/silk as voice, anything else as a file attachment. At most 5 MB.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "File path (relative paths are under /workspace)."
+        },
+        "reply_to": {
+          "type": "integer",
+          "description": "The message you want to quote: the N of its 第N条 label, used with quote: true. Without a quote, leave it out: where the message goes is handled for you."
+        },
+        "quote": {
+          "type": "boolean",
+          "description": "Show this as a quote of the message it replies to (the reply_to one), so everyone sees what you're answering. Use it when that isn't obvious: a busy group, an older message, or several people talking at once. Default false."
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "save_attachment",
+    "description": "Save the original of an image or file someone sent (a picture in their message, or [文件：…] / [视频] / [语音]) into your workspace, under /workspace/inbox/. Use it whenever you need the actual file: to edit a photo, read a document, convert or analyze it. The pictures you see in the chat are small previews; this gets the full original, any size. It also works when a picture didn't load for you (（有图片没加载出来）): save it, then look at it with read_file, instead of asking them to send it again. Then work on it with bash (python3, Pillow, ffmpeg via pip, …), look at images with read_file, and send results with send_file. Platform links expire after a while, so for an old message it may fail: then ask them to send it again.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "integer",
+          "description": "The N of the 第N条 label of the message that has the attachment."
+        },
+        "index": {
+          "type": "integer",
+          "description": "Which attachment, 1-based, in the order they were sent. Default: all of them."
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  },
+  {
+    "type": "function",
+    "name": "generate_image",
+    "description": "Generate or edit images with an image model. With input_references (images in your workspace, e.g. a photo saved with save_attachment) it edits / restyles them; without, it draws from the prompt alone. Results are saved under /workspace/images/ and shown to you; check them, then send with send_file. Each call costs money: make one good prompt (describe subject, style, lighting, composition; say what to keep when editing) rather than many tries. Whenever you are in the picture (a selfie, you doing something, you with someone), set include_self: your own picture goes along as the first reference, so you look like yourself every time. Describe the scene, pose, expression and outfit, not your face or hair: those come from the picture.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "description": "What to draw, or how to change the reference images."
+        },
+        "input_references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "description": "Reference images: workspace paths (relative paths are under /workspace, e.g. \"inbox/632-photo.jpg\") or https URLs."
+        },
+        "include_self": {
+          "type": "boolean",
+          "description": "You (大肥鱼) are in the picture: add your own picture as the first reference."
+        },
+        "aspect_ratio": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "1:1",
+            "3:2",
+            "2:3",
+            "4:3",
+            "3:4",
+            "16:9",
+            "9:16",
+            "21:9"
+          ],
+          "description": "Default: auto (follows the reference, or square)."
+        },
+        "background": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "transparent",
+            "opaque"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "How many images. Default 1."
+        }
+      },
+      "required": [
+        "prompt"
+      ]
+    }
+  }
+]

@@ -519,6 +519,8 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   assert.equal(first!.body.max_output_tokens, 2000);
   assert.ok(first!.body.instructions.startsWith("# 身份"), "built-in persona prompt");
   assert.ok(first!.body.instructions.endsWith(qqHint), "channel hint appended");
+  assert.match(first!.body.instructions, /# 这个聊天\n\n这是私聊，每条消息都是对你说的。/, "a DM gets the DM rule");
+  assert.doesNotMatch(first!.body.instructions, /这是群聊/);
   assert.equal(first!.body.tool_choice, "required");
   const [message, ...rest] = first!.body.input;
   assert.match(message.content, /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
@@ -867,6 +869,7 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   assert.equal(llmCalls, 2, "first ordinary message wakes an ambient turn");
   const ambient = llmRequests()[0]!.body.input;
   assert.ok(!ambient.some((i: any) => i.role === "developer"), "no note: the header shows there's no @");
+  assert.match(llmRequests()[0]!.body.instructions, /# 这个聊天\n\n这是群聊。.*消息头带「@你」的是在叫你/, "a group gets the group rule");
   assert.match(ambient[0].content, /｜群聊｜发送人 老王 #MA\]\n今天吃啥$/, "no @你 marker, nickname shown");
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 0, "ambient turn's plain text is not auto-sent");
 

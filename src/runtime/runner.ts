@@ -24,7 +24,7 @@ import { config } from "../config.js";
 import { LAST_STEP_MIN_MS, NEW_STEP_MIN_MS, timeLeftMs } from "../agent/budget.js";
 import { runTurn, type TurnResult } from "../agent/loop.js";
 import { OutOfCreditError } from "../agent/model.js";
-import { SYSTEM_PROMPT } from "../agent/system-prompt.js";
+import { SCENE_RULES, SYSTEM_PROMPT } from "../agent/system-prompt.js";
 import { ambientInterval, chatProfile, type ChatProfile } from "../chats/profile.js";
 import { beijingTime, nextDayStart } from "../chats/day.js";
 import { costQuotaUsed, quotaPolicy, recordUsage, turnUsage, usageToday } from "../chats/usage.js";
@@ -58,9 +58,11 @@ export function outOfCreditText(resetsAt?: number): string {
 const quotaUsedText = (scene: "群聊" | "私聊") =>
   `${scene === "群聊" ? "这个群" : "这里"}今天的额度用完了，${beijingTime(nextDayStart())} 恢复。`;
 
-/** The persona, the channel's formatting hint, and the chat's own instructions. */
-function systemPrompt(adapter: ChannelAdapter, profile: ChatProfile): string {
-  return [SYSTEM_PROMPT, adapter.promptHint, profile.prompt ? `# 这个聊天的额外设定\n\n${profile.prompt}` : ""].filter(Boolean).join("\n\n");
+/** The persona, how turns work in this kind of chat, the channel's formatting hint, and the chat's own instructions. */
+function systemPrompt(adapter: ChannelAdapter, chatType: ChatMeta["chatType"], profile: ChatProfile): string {
+  return [SYSTEM_PROMPT, SCENE_RULES[chatType], adapter.promptHint, profile.prompt ? `# 这个聊天的额外设定\n\n${profile.prompt}` : ""]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export interface RunOptions {
@@ -219,7 +221,7 @@ async function drain(
         const result = await runTurn({
           session,
           ctx,
-          systemPrompt: systemPrompt(adapter, profile),
+          systemPrompt: systemPrompt(adapter, meta.chatType, profile),
           toolset: new Toolset(quotaPolicy(profile, today)),
           turn,
           trigger,

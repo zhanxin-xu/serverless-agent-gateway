@@ -5,6 +5,7 @@
 - 官网：https://serverless-agent.cnday.cn/
 - 源码仓库：https://github.com/zhanxin-xu/serverless-agent-gateway
 - 开源协议：MIT License
+- 与 DeepSeek 官方无关
 - 运行环境：Vercel Functions / Node.js 24 / TypeScript 5.9
 
 ## 核心架构与特性

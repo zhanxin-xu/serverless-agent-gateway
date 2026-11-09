@@ -23,7 +23,7 @@
 ## 特性
 
 - **多渠道接入**：QQ（单聊、群聊、频道，Ed25519 验签）、Telegram、通用 HTTP。所有渠道实现同一个适配器接口，新增渠道是写一个适配器、加进组合。目前只有 QQ 在真实环境里跑过，Telegram 和 HTTP 只有离线测试，见[渠道接入](docs/channels.md)。
-- **事件流架构**：参照 DeepSeek dsh 的会话日志，每个聊天一条只追加的事件流，消息、模型输出（含思维链）、工具调用和结果全部入库，模型输入从中推导，提示词缓存持续命中。上下文用到预算（默认 20 万 token）的 80% 时自动压缩。
+- **事件流架构**：参照 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的会话日志，每个聊天一条只追加的事件流，消息、模型输出（含思维链）、工具调用和结果全部入库，模型输入从中推导，提示词缓存持续命中。上下文用到预算（默认 20 万 token）的 80% 时自动压缩。
 - **一个聊天一个 agent**：收消息和跑 agent 解耦。几个人同时发消息只会有一个 agent 来回答；回复过程中来的新消息，下一步就能看到。
 - **为 Serverless 设计**：先回执、后处理（`waitUntil`），平台重推靠共享存储去重；每次模型和工具调用都按函数剩余时间限时，一轮做不完就交给新的函数（内部的 `/api/worker`）接着做，函数中途被杀也能从事件流恢复。
 - **任意 Responses API 模型**：直接调用 `POST /responses`，默认走 OpenRouter。请求体可以透传任意参数，比如锁定供应商、设置推理强度。
@@ -124,8 +124,12 @@ docs/         文档
 
 ## 致谢
 
+事件流、模块和组合的设计参考了 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh，MIT），没有使用它的代码。
+
 示例人设使用的「蓝色大肥鱼 / DeepSeek 娘」表情包来自社区整理的 [梗鲸 GengJing · 蓝色大肥鱼表情包档案馆](https://aigengtu.com)（[GitHub](https://github.com/the-beating-light-of-the-nail/deepseek-chan-meme-pack)）。本仓库不包含任何图片文件，只按原站公开的直链规则引用，版权说明见[工具文档](docs/tools.md#表情包出处与版权)。
 
 ## 许可证
 
 代码采用 [MIT](LICENSE) 许可证。MIT 只适用于代码，不适用于引用的表情包。
+
+本项目与 DeepSeek 官方无关；DeepSeek 及相关名称归其所有者。

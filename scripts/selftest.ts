@@ -303,16 +303,16 @@ function safeJson(text: string) {
 const { handleWebhook } = await import("../src/webhook.js");
 const { handleWorker } = await import("../src/worker.js");
 worker = handleWorker;
-const { activeTools, runTool } = await import("../src/tools/registry.js");
+const { activeTools, runTool } = await import("../src/modules/registry.js");
 const { callBudgetMs } = await import("../src/agent/budget.js");
-const { evaluate } = await import("../src/tools/utility.js");
+const { evaluate } = await import("../src/modules/basics/tools.js");
 const { messageHeader } = await import("../src/channels/format.js");
 const { getStore, resetStore, storeBackend } = await import("../src/store/index.js");
 const qqHint = (await import("../src/channels/qq.js")).qqAdapter.promptHint!;
 const { config } = await import("../src/config.js");
-const { setWorkspaceFactory } = await import("../src/tools/sandbox/workspace.js");
-const { attachmentFileName } = await import("../src/tools/sandbox/tools.js");
-const { driveName } = await import("../src/tools/sandbox/vercel.js");
+const { setWorkspaceFactory } = await import("../src/modules/sandbox/workspace.js");
+const { attachmentFileName } = await import("../src/modules/sandbox/tools.js");
+const { driveName } = await import("../src/modules/sandbox/providers/vercel-sandbox/client.js");
 (await import("../src/channels/net.js")).connectRetry.delayMs = 5;
 
 /** Tool context for calling tools directly, outside a conversation. */
@@ -431,7 +431,8 @@ await test("config: old OPENROUTER_* names still work; the new names win", () =>
 await test("DeepSeek-backed tools only enabled with DEEPSEEK_API_KEY", () => {
   assert.deepEqual(
     activeTools().map((t) => t.name),
-    ["send_message", "send_sticker", "end_turn", "chat_members", "get_current_time", "calculate", "web_search", "web_fetch", "get_search_balance", "get_llm_key_limit"],
+    // In module order (src/modules/registry.ts): chat, basics, model, search.
+    ["send_message", "send_sticker", "end_turn", "chat_members", "get_current_time", "calculate", "get_llm_key_limit", "web_search", "web_fetch", "get_search_balance"],
   );
   process.env.DEEPSEEK_API_KEY = "";
   assert.deepEqual(
@@ -466,29 +467,31 @@ await test("get_llm_key_limit: {baseUrl}/key with extra headers", async () => {
   assert.match(out.note, /00:00 UTC/);
 });
 
-await test("get_llm_key_limit: the image key is reported on its own, or marked as shared", async () => {
+await test("get_image_key_limit: the image module reports its own key, or says it shares the model's", async () => {
   process.env.IMAGE_API_KEY = "img-key";
   process.env.IMAGE_BASE_URL = "https://img.example.com/api/v1";
+  // The image module needs the workspace to be on.
+  process.env.SANDBOX_ENABLED = "1";
   try {
-    const out = JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx));
+    assert.equal(JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx)).image_key, undefined, "the model's report is about the model's key only");
+    const out = JSON.parse(await runTool("get_image_key_limit", "{}", noCtx));
     const req = calls.find((c) => c.url === "https://img.example.com/api/v1/key")!;
     assert.equal(req.headers.get("authorization"), "Bearer img-key");
     assert.equal(req.headers.get("x-title"), null, "the model's extra headers stay with the model key");
-    assert.equal(out.model_key.limit_remaining, 14.5);
     assert.deepEqual(out.image_key.usage, { today: 0.12, this_week: 0.12, this_month: 0.12, all_time: 0.12 });
     assert.equal(out.image_key.limit_remaining, 1.88);
+    assert.match(out.note, /00:00 UTC/);
 
     process.env.IMAGE_BASE_URL = "https://img.example.com/broken";
-    const broken = JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx));
-    assert.equal(broken.model_key.limit_remaining, 14.5, "one key failing doesn't hide the other");
-    assert.match(broken.image_key.error, /HTTP 404/);
+    assert.match(await runTool("get_image_key_limit", "{}", noCtx), /^Error: .*HTTP 404/);
 
     process.env.IMAGE_API_KEY = "test-key";
-    const shared = JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx));
+    const shared = JSON.parse(await runTool("get_image_key_limit", "{}", noCtx));
     assert.match(shared.image_key, /^same key as model_key/);
   } finally {
     delete process.env.IMAGE_API_KEY;
     delete process.env.IMAGE_BASE_URL;
+    delete process.env.SANDBOX_ENABLED;
   }
 });
 
@@ -518,7 +521,8 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   assert.deepEqual(first!.body.provider, { only: ["openai"], allow_fallbacks: false }, "extra body passed through");
   assert.equal(first!.body.max_output_tokens, 2000);
   assert.ok(first!.body.instructions.startsWith("# 身份"), "built-in persona prompt");
-  assert.ok(first!.body.instructions.endsWith(qqHint), "channel hint appended");
+  const instructions: string = first!.body.instructions;
+  assert.ok(instructions.includes(`\n\n${qqHint}\n\n# 发消息、表情包与结束一轮`), "the channel hint comes after the rules, before the modules' sections");
   assert.match(first!.body.instructions, /# 这个聊天\n\n这是私聊，每条消息都是对你说的。/, "a DM gets the DM rule");
   assert.doesNotMatch(first!.body.instructions, /这是群聊/);
   assert.equal(first!.body.tool_choice, "required");
@@ -607,7 +611,7 @@ await test("reply cap: 5 replies per message, the 6th is refused and the model s
 });
 
 await test("stickers: CDN hotlink by default, STICKER_BASE_URL override", async () => {
-  const { STICKERS, stickerUrl, DEFAULT_STICKER_BASE_URL } = await import("../src/tools/stickers.js");
+  const { STICKERS, stickerUrl, DEFAULT_STICKER_BASE_URL } = await import("../src/modules/chat/stickers.js");
   assert.ok(Object.keys(STICKERS).length >= 30);
   assert.ok(Object.values(STICKERS).every((s) => /^(meme\/\d+\.gif|0_preview\/meme\/\d+\.webp)$/.test(s.file)));
   assert.equal(stickerUrl(DEFAULT_STICKER_BASE_URL, "红温了"), "https://img.aigengtu.com/meme/3153.gif");
@@ -2048,13 +2052,14 @@ const { saveSettings, refreshSettings, describeSettings } = await import("../src
 const { saveChatProfile } = await import("../src/chats/profile.js");
 const { quotaPolicy, turnUsage } = await import("../src/chats/usage.js");
 const { utcDay } = await import("../src/chats/day.js");
-const { Toolset } = await import("../src/tools/registry.js");
+const { Toolset } = await import("../src/modules/registry.js");
+const { deepseekConfig } = await import("../src/modules/search/providers/deepseek/config.js");
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
     await saveSettings({ OPENAI_RESPONSES_MODEL: "x/console-model", DEEPSEEK_API_KEY: "ds-from-console-123" });
     assert.equal(config.llm.model, "x/console-model");
-    assert.equal(config.deepseek.apiKey, "ds-from-console-123");
+    assert.equal(deepseekConfig.apiKey, "ds-from-console-123");
     const view = (await describeSettings()).values.find((v) => v.key === "DEEPSEEK_API_KEY")!;
     assert.deepEqual([view.source, view.value], ["db", "ds-fro…-123"], "a masked preview");
     assert.deepEqual((await getStore().adminLog(1))[0]!.detail, { keys: ["OPENAI_RESPONSES_MODEL", "DEEPSEEK_API_KEY"] }, "the log has names, not values");
@@ -2067,7 +2072,7 @@ await test("settings: the console's values win over the environment; secrets onl
 
     await saveSettings({ OPENAI_RESPONSES_MODEL: null, DEEPSEEK_API_KEY: "" });
     assert.equal(config.llm.model, "openai/gpt-6-luna", "cleared: back to the environment");
-    assert.equal(config.deepseek.apiKey, "ds-key");
+    assert.equal(deepseekConfig.apiKey, "ds-key");
     assert.equal((await describeSettings()).values.find((v) => v.key === "QQ_APP_SECRET")!.source, "env", "not in the console: the environment's");
   } finally {
     await getStore().putSettings((await getStore().listSettings()).map((r) => ({ key: r.key, value: null })));
@@ -2219,9 +2224,9 @@ await test("usage and quotas: tool calls are counted from the log; a used-up too
   ]);
   assert.deepEqual(counts, { turns: 1, model_calls: 1, input_tokens: 1000, cached_tokens: 800, output_tokens: 10, cost_usd: 0.002, searches: 1 });
 
-  const toolset = new Toolset(quotaPolicy({ quota: { searches: 1 }, disabledTools: ["memory"] }, { searches: 1 }));
+  const toolset = new Toolset(quotaPolicy({ quota: { searches: 1 }, disabledModules: ["memory"] }, { searches: 1 }));
   assert.match(await toolset.run("web_search", '{"query":"x"}', noCtx), /^Error: this chat's daily quota for web_search \(1\) is used up/);
-  assert.ok(!toolset.tools.some((t) => t.feature === "memory"));
+  assert.ok(!toolset.modules.some((m) => m.id === "memory") && !toolset.has("remember"));
   assert.ok(toolset.tools.some((t) => t.name === "web_fetch"));
 });
 

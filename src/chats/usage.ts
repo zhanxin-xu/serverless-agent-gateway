@@ -14,13 +14,16 @@
 import { config } from "../config.js";
 import { isEvent, type SessionEvent, type Usage } from "../conversation/events.js";
 import { getStore, SchemaOutdatedError, type UsageCounts, type UsageStore } from "../store/index.js";
-import { toolFeature, type ToolPolicy } from "../tools/registry.js";
-import type { ToolFeature } from "../tools/types.js";
+import { moduleOfTool, type ToolPolicy } from "../modules/registry.js";
+import type { MeterKey } from "../modules/types.js";
 import { beijingTime, nextDayStart, utcDay } from "./day.js";
-import type { ChatProfile, QuotaKey } from "./profile.js";
+import type { ChatProfile } from "./profile.js";
 
-/** The counters a tool feature adds to (and whose quota it is under). */
-const METERED: Partial<Record<ToolFeature, QuotaKey>> = { image: "images", voice: "voices", search: "searches" };
+/** The counter a tool adds to (and whose quota it is under): its module's meter, if it counts toward it. */
+function counterOf(toolName: string): MeterKey | undefined {
+  const meter = moduleOfTool(toolName)?.meter;
+  return meter?.tools.includes(toolName) ? meter.key : undefined;
+}
 
 /** What a call cost: as reported, else estimated from the configured prices. */
 function callCost(usage: Usage): number {
@@ -50,8 +53,7 @@ export function turnUsage(events: SessionEvent[]): UsageCounts {
     else if (isEvent(e, "assistant/message")) add(e.data.usage);
     else if (isEvent(e, "compaction/summary")) add(e.data.usage);
     else if (isEvent(e, "tool/call") && !failed.has(e.data.callId)) {
-      const feature = toolFeature(e.data.name);
-      const counter = feature && METERED[feature];
+      const counter = counterOf(e.data.name);
       if (counter) counts[counter] = (counts[counter] ?? 0) + 1;
     }
   }
@@ -98,16 +100,15 @@ export function costQuotaUsed(profile: ChatProfile, today: UsageCounts): boolean
 }
 
 /**
- * The tool policy for a turn: the chat's disabled features, and metered tools
+ * The tool policy for a turn: the chat's disabled modules, and metered tools
  * refused once today's count (stored + run so far this turn) reaches the quota.
  */
 export function quotaPolicy(profile: ChatProfile, today: UsageCounts): ToolPolicy {
   const used: UsageCounts = { ...today };
-  const counterOf = (feature?: ToolFeature) => (feature ? METERED[feature] : undefined);
   return {
-    disabled: new Set(profile.disabledTools ?? []),
+    disabled: new Set(profile.disabledModules ?? []),
     refuse(tool) {
-      const counter = counterOf(tool.feature);
+      const counter = counterOf(tool.name);
       const limit = counter ? profile.quota?.[counter] : undefined;
       if (counter && limit !== undefined && (used[counter] ?? 0) >= limit) {
         return `this chat's daily quota for ${tool.name} (${limit}) is used up; it resets at ${beijingTime(nextDayStart())}. Tell them in your own words, don't retry.`;
@@ -115,7 +116,7 @@ export function quotaPolicy(profile: ChatProfile, today: UsageCounts): ToolPolic
       return undefined;
     },
     ran(tool) {
-      const counter = counterOf(tool.feature);
+      const counter = counterOf(tool.name);
       if (counter) used[counter] = (used[counter] ?? 0) + 1;
     },
   };

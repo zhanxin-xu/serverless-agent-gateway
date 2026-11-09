@@ -4,9 +4,12 @@ import { channels } from "../../channels/index.js";
 import { daysBefore, utcDay } from "../../chats/day.js";
 import { historyAfter, historyBefore } from "../../chats/history.js";
 import { ambientInterval, parseProfile, PROFILE_CHOICES, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
+import { quotaPolicy } from "../../chats/usage.js";
 import { config } from "../../config.js";
 import { arrivedMidStep, modelSees } from "../../conversation/derive.js";
 import type { SessionEvent } from "../../conversation/events.js";
+import { Toolset } from "../../modules/registry.js";
+import { assemble } from "../../prompt/assemble.js";
 import { getStore, type ChatSummary, type StoredEvent } from "../../store/index.js";
 import { replyWindow, resetChat, say, unlockChat, whisper } from "../chat-actions.js";
 import { field, HttpError, type AdminRequest, type Route } from "../http.js";
@@ -121,6 +124,32 @@ export const chatRoutes: Route[] = [
     },
   },
   { method: "GET", path: "chat/reply-window", handler: (req) => replyWindow(chatParam(req)) },
+  {
+    method: "GET",
+    // What the model is told and given in this chat now: the system prompt section by section, and the tools.
+    path: "chat/prompt",
+    async handler(req) {
+      const chat = chatParam(req);
+      const store = getStore();
+      const today = utcDay();
+      const summary = await store.chat(chat, today);
+      if (!summary) throw new HttpError(404, "没有这个聊天");
+      const v = view(summary);
+      const toolset = new Toolset(quotaPolicy(v.profile, summary.usage ?? {}));
+      const assembly = assemble({
+        chatType: summary.chatType ?? "group",
+        channelHint: channels.get(v.channel)?.promptHint,
+        chatExtra: v.profile.prompt,
+        toolset,
+      });
+      return {
+        sections: assembly.sections,
+        tools: assembly.tools,
+        modules: toolset.modules.map((m) => m.id),
+        chars: assembly.prompt.length,
+      };
+    },
+  },
   {
     method: "PUT",
     path: "chat/profile",

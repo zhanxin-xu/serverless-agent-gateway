@@ -7,7 +7,7 @@ import { callBudgetMs } from "../agent/budget.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
 import { chatPeople } from "../conversation/people.js";
 import type { Session } from "../conversation/session.js";
-import { describeOutgoing, type Outgoing, type ToolContext } from "../tools/types.js";
+import { describeOutgoing, type Outgoing, type ToolContext } from "../modules/tool.js";
 import { deliverOutgoing } from "./deliver.js";
 import type { Outbox } from "./outbox.js";
 import type { ChatMeta } from "./types.js";

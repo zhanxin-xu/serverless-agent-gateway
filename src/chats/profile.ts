@@ -1,7 +1,7 @@
 /**
  * A chat's own settings, set in the admin console (gateway.chat_profiles):
  * a name for people, how the bot replies there, how often it may chime in,
- * which tools it may use, extra instructions, and daily quotas.
+ * which modules are off, extra instructions, and daily quotas.
  *
  * Read on every message, so each instance keeps profiles for CACHE_MS; a
  * change reaches every instance within that time.
@@ -9,7 +9,8 @@
 import { config } from "../config.js";
 import { settingDef, type SettingOption } from "../settings/catalog.js";
 import { getStore, SchemaOutdatedError, type ProfileStore } from "../store/index.js";
-import type { ToolFeature } from "../tools/types.js";
+import { OPTIONAL_MODULES } from "../modules/registry.js";
+import type { MeterKey } from "../modules/types.js";
 
 /**
  *   normal:  an @ or a DM is always answered; ordinary group messages are sampled (it may chime in).
@@ -19,8 +20,8 @@ import type { ToolFeature } from "../tools/types.js";
  */
 export type ReplyMode = "normal" | "mention" | "record" | "block";
 
-/** Daily limits; see usage.ts for how each is counted. */
-export type QuotaKey = "cost_usd" | "images" | "voices" | "searches";
+/** Daily limits: the model's cost, and each metered module's counter. See usage.ts for how each is counted. */
+export type QuotaKey = "cost_usd" | MeterKey;
 
 /**
  * What a chat's settings can be, with their names for people (the console
@@ -28,22 +29,15 @@ export type QuotaKey = "cost_usd" | "images" | "voices" | "searches";
  */
 export const PROFILE_CHOICES: { modes: SettingOption[]; features: SettingOption[]; quotas: SettingOption[] } = {
   modes: settingDef("CHAT_DEFAULT_MODE")!.options!,
-  features: [
-    { value: "image", label: "画图" },
-    { value: "voice", label: "语音" },
-    { value: "search", label: "搜索" },
-    { value: "memory", label: "记忆" },
-    { value: "sandbox", label: "沙盒" },
-  ],
+  /** The modules a chat can turn off (src/modules). */
+  features: OPTIONAL_MODULES.map((m) => ({ value: m.id, label: m.label })),
   quotas: [
     { value: "cost_usd", label: "模型花费（美元）" },
-    { value: "images", label: "画图（张）" },
-    { value: "voices", label: "语音（条）" },
-    { value: "searches", label: "搜索（次）" },
+    ...OPTIONAL_MODULES.flatMap((m) => (m.meter ? [{ value: m.meter.key, label: m.meter.label }] : [])),
   ],
 };
 const REPLY_MODES = PROFILE_CHOICES.modes.map((o) => o.value) as ReplyMode[];
-const TOOL_FEATURES = PROFILE_CHOICES.features.map((o) => o.value) as ToolFeature[];
+const MODULE_IDS = PROFILE_CHOICES.features.map((o) => o.value);
 const QUOTA_KEYS = PROFILE_CHOICES.quotas.map((o) => o.value) as QuotaKey[];
 const isReplyMode = (value: unknown): value is ReplyMode => REPLY_MODES.includes(value as ReplyMode);
 
@@ -53,7 +47,8 @@ export interface ChatProfile {
   mode?: ReplyMode;
   /** Unset: AGENT_AMBIENT_INTERVAL_SECONDS. */
   ambientIntervalSeconds?: number;
-  disabledTools?: ToolFeature[];
+  /** Modules turned off here (ids from src/modules). */
+  disabledModules?: string[];
   /** Appended to the system prompt in this chat. */
   prompt?: string;
   quota?: Partial<Record<QuotaKey, number>>;
@@ -84,12 +79,14 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
     if (!Number.isInteger(n) || n < 0) errors.ambientIntervalSeconds = "要填不小于 0 的整数";
     else profile.ambientIntervalSeconds = n;
   }
-  if (raw.disabledTools !== undefined && raw.disabledTools !== null) {
-    const list = Array.isArray(raw.disabledTools) ? raw.disabledTools : [];
-    if (!Array.isArray(raw.disabledTools) || list.some((f) => !TOOL_FEATURES.includes(f as ToolFeature))) {
-      errors.disabledTools = `只能是 ${TOOL_FEATURES.join("、")}`;
+  // Stored profiles from before schema v4 call it disabledTools (docs/design/modules.md 9.3).
+  const disabled = raw.disabledModules ?? raw.disabledTools;
+  if (disabled !== undefined && disabled !== null) {
+    const list = Array.isArray(disabled) ? disabled : [];
+    if (!Array.isArray(disabled) || list.some((id) => !MODULE_IDS.includes(id as string))) {
+      errors.disabledModules = `只能是 ${MODULE_IDS.join("、")}`;
     } else if (list.length) {
-      profile.disabledTools = [...new Set(list as ToolFeature[])];
+      profile.disabledModules = [...new Set(list as string[])];
     }
   }
   if (raw.prompt !== undefined && raw.prompt !== null && raw.prompt !== "") {
@@ -116,7 +113,11 @@ export function parseProfile(stored: unknown): ChatProfile {
   if ("profile" in checked) return checked.profile;
   // Drop the bad fields one by one rather than the whole profile.
   const raw = { ...(stored as Record<string, unknown>) };
-  for (const key of Object.keys(checked.errors)) delete raw[key.split(".")[0]!];
+  for (const key of Object.keys(checked.errors)) {
+    const field = key.split(".")[0]!;
+    delete raw[field];
+    if (field === "disabledModules") delete raw.disabledTools;
+  }
   const retry = validateProfile(raw);
   return "profile" in retry ? retry.profile : {};
 }
@@ -155,8 +156,25 @@ export async function chatProfile(chat: string, store: ProfileStore = getStore()
   return profile;
 }
 
+/** The stored format: version 2 names the switches disabledModules (docs/design/modules.md 9.3). */
+export const PROFILE_FORMAT = 2;
+
+/**
+ * How a profile is stored. Until the old field is dropped (schema v5),
+ * disabledTools is written too, with the same value: code from before the
+ * change still reads it, so a rollback keeps every chat's switches.
+ */
+export function storedProfile(profile: ChatProfile): Record<string, unknown> | null {
+  if (!Object.keys(profile).length) return null;
+  return {
+    ...profile,
+    ...(profile.disabledModules ? { disabledTools: profile.disabledModules } : {}),
+    v: PROFILE_FORMAT,
+  };
+}
+
 /** Save a validated profile (an empty one deletes it). */
 export async function saveChatProfile(chat: string, profile: ChatProfile, store: ProfileStore = getStore()): Promise<void> {
-  await store.putProfile(chat, Object.keys(profile).length ? (profile as Record<string, unknown>) : null);
+  await store.putProfile(chat, storedProfile(profile));
   cache.set(chat, { profile, at: Date.now() });
 }

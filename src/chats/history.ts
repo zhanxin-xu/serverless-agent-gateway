@@ -14,7 +14,7 @@
  */
 import { isEvent, isWhisper, type SessionEvent } from "../conversation/events.js";
 import type { ChatStore, ConsoleStore } from "../store/index.js";
-import { historyLine } from "../tools/registry.js";
+import { historyLine } from "../modules/registry.js";
 
 export type HistoryRole = "user" | "bot" | "admin" | "hint";
 

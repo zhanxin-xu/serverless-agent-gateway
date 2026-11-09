@@ -7,7 +7,7 @@ import { partsToText } from "../channels/format.js";
 import type { ChannelAdapter, InboundMessage, TextPart } from "../channels/types.js";
 import { mentionParts, type ChatPerson } from "../conversation/people.js";
 import { pcmToWav } from "../media/voice.js";
-import { describeOutgoing, type Outgoing } from "../tools/types.js";
+import { describeOutgoing, type Outgoing } from "../modules/tool.js";
 import type { ChatMeta } from "./types.js";
 
 /**

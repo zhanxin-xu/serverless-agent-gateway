@@ -102,7 +102,7 @@ export interface ChatStore {
 // Separate interfaces, so each part of the gateway depends only on what it uses.
 
 /** The schema version this code expects; keep in step with the end of supabase/schema.sql. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * A call to a store function the database doesn't have yet (the schema is

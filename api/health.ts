@@ -1,4 +1,4 @@
-import { activeTools } from "../src/tools/registry.js";
+import { activeTools, MODULES, moduleStatus } from "../src/modules/registry.js";
 import { channels } from "../src/channels/index.js";
 import { config } from "../src/config.js";
 import { refreshSettings } from "../src/settings/service.js";
@@ -27,8 +27,13 @@ export default {
       ...(config.llm.legacyEnv.length ? { legacyEnv: config.llm.legacyEnv } : {}),
       tools: activeTools().map((t) => t.name),
       store: storeBackend(),
-      memory: Boolean(config.memory.url && config.memory.token),
-      sandbox: config.sandbox.enabled,
+      // Each module: on, or why not (src/modules).
+      modules: Object.fromEntries(
+        MODULES.map((m) => {
+          const status = moduleStatus(m);
+          return [m.id, status.ok ? true : status.reason];
+        }),
+      ),
       channels: Object.fromEntries([...channels.values()].map((c) => [c.name, c.isConfigured()])),
       admin: Boolean(config.admin.password),
     });

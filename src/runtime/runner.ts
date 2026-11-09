@@ -24,7 +24,6 @@ import { config } from "../config.js";
 import { LAST_STEP_MIN_MS, NEW_STEP_MIN_MS, timeLeftMs } from "../agent/budget.js";
 import { runTurn, type TurnResult } from "../agent/loop.js";
 import { OutOfCreditError } from "../agent/model.js";
-import { SCENE_RULES, SYSTEM_PROMPT } from "../agent/system-prompt.js";
 import { ambientInterval, chatProfile, type ChatProfile } from "../chats/profile.js";
 import { beijingTime, nextDayStart } from "../chats/day.js";
 import { costQuotaUsed, quotaPolicy, recordUsage, turnUsage, usageToday } from "../chats/usage.js";
@@ -32,7 +31,8 @@ import type { SessionEvent } from "../conversation/events.js";
 import { recoverOpenTurn, unfinishedTurn } from "../conversation/recovery.js";
 import { Session } from "../conversation/session.js";
 import { getStore, LockLostError, type ChatStore } from "../store/index.js";
-import { Toolset } from "../tools/registry.js";
+import { Toolset } from "../modules/registry.js";
+import { assemble } from "../prompt/assemble.js";
 import { makeToolContext } from "./context.js";
 import { startWorker } from "./handoff.js";
 import { RunLock } from "./lock.js";
@@ -57,13 +57,6 @@ export function outOfCreditText(resetsAt?: number): string {
 /** What an @ or a DM gets once the chat's daily cost quota is used up. */
 const quotaUsedText = (scene: "群聊" | "私聊") =>
   `${scene === "群聊" ? "这个群" : "这里"}今天的额度用完了，${beijingTime(nextDayStart())} 恢复。`;
-
-/** The persona, how turns work in this kind of chat, the channel's formatting hint, and the chat's own instructions. */
-function systemPrompt(adapter: ChannelAdapter, chatType: ChatMeta["chatType"], profile: ChatProfile): string {
-  return [SYSTEM_PROMPT, SCENE_RULES[chatType], adapter.promptHint, profile.prompt ? `# 这个聊天的额外设定\n\n${profile.prompt}` : ""]
-    .filter(Boolean)
-    .join("\n\n");
-}
 
 export interface RunOptions {
   /** Sync channels: replies are collected here instead of sent. */
@@ -215,14 +208,17 @@ async function drain(
       ctx.chat.sender = main.data.sender;
       const turn = await session.nextTurn();
       turnState.turn = turn;
+      // What the model is told and what it's given, from the modules on in this chat (src/prompt).
+      const toolset = new Toolset(quotaPolicy(profile, today));
+      const assembly = assemble({ chatType: meta.chatType, channelHint: adapter.promptHint, chatExtra: profile.prompt, toolset });
       const started = Date.now();
       const firstSeq = session.state.nextSeq;
       try {
         const result = await runTurn({
           session,
           ctx,
-          systemPrompt: systemPrompt(adapter, meta.chatType, profile),
-          toolset: new Toolset(quotaPolicy(profile, today)),
+          systemPrompt: assembly.prompt,
+          toolset,
           turn,
           trigger,
           pending,

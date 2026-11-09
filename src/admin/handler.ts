@@ -9,13 +9,14 @@ import { publicOrigin } from "../webhook.js";
 import { checkSameOrigin, isLoggedIn } from "./auth.js";
 import { errorResponse, HttpError, jsonResponse, matchRoute, type AdminRequest, type Route } from "./http.js";
 import { chatRoutes } from "./routes/chats.js";
+import { moduleRoutes } from "./routes/modules.js";
 import { overviewRoutes } from "./routes/overview.js";
 import { sessionRoutes } from "./routes/session.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { setupRoutes } from "./routes/setup.js";
 import { serveUi } from "./ui.js";
 
-const routes: Route[] = [...sessionRoutes, ...setupRoutes, ...settingsRoutes, ...chatRoutes, ...overviewRoutes];
+const routes: Route[] = [...sessionRoutes, ...setupRoutes, ...settingsRoutes, ...moduleRoutes, ...chatRoutes, ...overviewRoutes];
 
 /** What a request is for: Vercel's rewrites pass the original path in __api / __ui; the dev server passes it as is. */
 function target(url: URL): { api: string[] } | { ui: string } | undefined {

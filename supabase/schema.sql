@@ -323,6 +323,13 @@ create table if not exists gateway.chat_profiles (
   profile jsonb not null,
   updated_at timestamptz not null default now()
 );
+-- Schema v4: a chat's switches are its modules (docs/design/modules.md 9.3), so profiles name them
+-- disabledModules, format "v": 2. disabledTools stays beside it with the same value until v5, so code
+-- from before v4 still reads it and a rollback keeps every chat's switches. Runs any number of times.
+update gateway.chat_profiles
+  set profile = profile || jsonb_build_object('disabledModules', profile -> 'disabledTools', 'v', 2),
+      updated_at = now()
+  where profile ? 'disabledTools' and not profile ? 'disabledModules';
 
 create table if not exists gateway.usage_daily (
   chat text not null,
@@ -616,7 +623,7 @@ end;
 $$;
 
 -- Keep in step with SCHEMA_VERSION in src/store/types.ts.
-insert into gateway.meta (key, value) values ('schema_version', '3')
+insert into gateway.meta (key, value) values ('schema_version', '4')
   on conflict (key) do update set value = excluded.value;
 
 -- Let the Data API see new functions right away.

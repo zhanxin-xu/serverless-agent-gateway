@@ -275,6 +275,26 @@ if (url) {
     const left = await client.query("select (select count(*) from gateway.events) e, (select count(*) from gateway.replies) r");
     assert.deepEqual(left.rows[0], { e: "0", r: "0" }, "with everything they own");
     console.log("✓ [postgres] gateway_expire");
+
+    // Schema v4 (docs/design/modules.md 9.3): profiles from before it get disabledModules, keep disabledTools,
+    // and running schema.sql again changes nothing more.
+    await client.query("delete from gateway.chat_profiles");
+    await client.query(`insert into gateway.chat_profiles (chat, profile) values
+      ('qq:v3', '{"title":"老群","disabledTools":["memory","image"]}'),
+      ('qq:v3-none', '{"title":"没关"}'),
+      ('qq:v4', '{"disabledModules":["voice"],"disabledTools":["voice"],"v":2}')`);
+    const schema = (await import("node:fs")).readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8");
+    const profiles = async () =>
+      Object.fromEntries((await client.query("select chat, profile from gateway.chat_profiles order by chat")).rows.map((r) => [r.chat, r.profile]));
+    await client.query(schema);
+    const once = await profiles();
+    assert.deepEqual(once["qq:v3"], { title: "老群", disabledTools: ["memory", "image"], disabledModules: ["memory", "image"], v: 2 });
+    assert.deepEqual(once["qq:v3-none"], { title: "没关" }, "nothing to rename, left alone");
+    assert.deepEqual(once["qq:v4"], { disabledModules: ["voice"], disabledTools: ["voice"], v: 2 });
+    await client.query(schema);
+    assert.deepEqual(await profiles(), once, "running it again changes nothing");
+    assert.equal((await client.query("select value from gateway.meta where key = 'schema_version'")).rows[0].value, String(SCHEMA_VERSION));
+    console.log("✓ [postgres] schema v4 migrates chat profiles, idempotently");
   } finally {
     globalThis.fetch = realFetch;
     await client.end();

@@ -7,15 +7,37 @@
  *   3. the default in src/settings/catalog.ts.
  * Bootstrap values the gateway needs before it can reach the database come
  * from the environment only (`env`).
+ *
+ * This holds the core: the model, chats, channels, the store. Each module's
+ * provider reads its own settings (src/modules/<module>/providers/<id>/config.ts)
+ * with the same readers, exported below.
  */
-import { DEFAULT_SELF_IMAGE, DEFAULT_VOICE_REFERENCE, settingDefault } from "./settings/catalog.js";
+import { settingDefault } from "./settings/catalog.js";
 import { overrideOf } from "./settings/overrides.js";
-
-export { DEFAULT_SELF_IMAGE, DEFAULT_VOICE_REFERENCE };
 
 /** A setting's own value, before defaults: the console's, else the environment's. */
 function raw(name: string): string | undefined {
   return overrideOf(name) ?? process.env[name];
+}
+
+/** A setting's value in effect: the console's, else the environment's, else the catalog default. */
+export function settingValue(name: string, fallback = settingDefault(name)): string {
+  return str(name, fallback);
+}
+
+/** A positive integer setting; the catalog default when unset or not a positive integer. */
+export function settingInt(name: string): number {
+  return int(name);
+}
+
+/** A setting holding a JSON object ({} when unset); throws on malformed JSON. */
+export function settingJson(name: string): Record<string, unknown> {
+  return jsonObject(name);
+}
+
+/** An environment-only value (never set from the console). */
+export function envValue(name: string): string {
+  return env(name);
 }
 
 function str(name: string, fallback = settingDefault(name)): string {
@@ -47,9 +69,6 @@ function jsonObject(name: string): Record<string, unknown> {
   }
   return value as Record<string, unknown>;
 }
-
-/** What the built-in voice clip says (TTS_REFERENCE_TEXT's default while that clip is used). */
-const DEFAULT_VOICE_REFERENCE_TEXT = "嘿嘿，本鱼来啦！我是大肥鱼，住在深海里的小鲸鱼～有什么问题尽管问我，答对了要请我吃小鱼干哦！";
 
 /** Model settings: OPENAI_RESPONSES_<SUFFIX>, falling back to the old OPENROUTER_<SUFFIX> names. */
 const LLM_SUFFIXES = ["API_KEY", "BASE_URL", "MODEL", "EXTRA_BODY", "EXTRA_HEADERS", "TIMEOUT_MS"] as const;
@@ -134,116 +153,12 @@ export const config = {
     },
   },
 
-  /**
-   * Image generation (generate_image): POST {baseUrl}/images, OpenRouter's Image API.
-   * Disabled when the key is empty. Names follow the API's fields.
-   */
-  image: {
-    get apiKey() {
-      return str("IMAGE_API_KEY");
-    },
-    get baseUrl() {
-      return str("IMAGE_BASE_URL").replace(/\/+$/, "");
-    },
-    get model() {
-      return str("IMAGE_MODEL");
-    },
-    /** auto | low | medium | high | xhigh | max. Set here, not by the model: it drives the price. */
-    get quality() {
-      return str("IMAGE_QUALITY");
-    },
-    /**
-     * 512 | 768 | 1K | 1.5K | 2K | 4K, for models that take it (see supported_parameters in
-     * GET /api/v1/images/models). Unset by default: the default gpt-image models don't, and
-     * draw at about 1024px whatever is sent. Results are scaled down to fit 1920×1080.
-     */
-    get resolution() {
-      return str("IMAGE_RESOLUTION");
-    },
-    /** Extra request body fields, e.g. {"provider":{"options":{"openai":{"moderation":"low"}}}}. */
-    get extraBody() {
-      return jsonObject("IMAGE_EXTRA_BODY");
-    },
-    get timeoutMs() {
-      return int("IMAGE_TIMEOUT_MS");
-    },
-    /**
-     * A picture of the persona (a file in the deployment, or an https URL),
-     * sent as a reference whenever generate_image draws her (include_self), so
-     * she looks the same every time. "none" turns it off.
-     */
-    get selfImage() {
-      const value = str("IMAGE_SELF_REFERENCE");
-      return value.toLowerCase() === "none" ? "" : value;
-    },
-  },
-
-  /** Speech for send_voice: POST {TTS_BASE_URL}/audio/speech. Hidden when the key is empty. */
-  tts: {
-    get apiKey() {
-      return str("TTS_API_KEY");
-    },
-    get baseUrl() {
-      return str("TTS_BASE_URL").replace(/\/+$/, "");
-    },
-    /** The speech model (set here, not chosen by the agent). */
-    get model() {
-      return str("TTS_MODEL");
-    },
-    /** The API's `voice` (a provider voice ID). Empty: the reference audio sets the voice. */
-    get voice() {
-      return str("TTS_VOICE");
-    },
-    /** The voice to clone: a file in the deployment, or an https URL; "none" turns cloning off. */
-    get referenceAudio() {
-      const value = str("TTS_REFERENCE_AUDIO");
-      return value.toLowerCase() === "none" ? "" : value;
-    },
-    /** What the reference audio says (helps the clone). Defaults to the built-in clip's words when that clip is used. */
-    get referenceText() {
-      return str("TTS_REFERENCE_TEXT", this.referenceAudio === DEFAULT_VOICE_REFERENCE ? DEFAULT_VOICE_REFERENCE_TEXT : "");
-    },
-    /**
-     * Optional second clip of the same voice singing (file or https URL), offered
-     * to the model as voice "dafeiyu_sing". Empty: not offered.
-     */
-    get singReferenceAudio() {
-      const value = str("TTS_SING_REFERENCE_AUDIO");
-      return value.toLowerCase() === "none" ? "" : value;
-    },
-    /** What the singing clip sings. */
-    get singReferenceText() {
-      return str("TTS_SING_REFERENCE_TEXT");
-    },
-    /** The API's `instructions`: a standing direction for every line, e.g. "软萌可爱的小女孩". The model can add its own. */
-    get instructions() {
-      return str("TTS_INSTRUCTIONS");
-    },
-    /** Extra request body fields, e.g. {"speed":1.1} or {"provider":{"options":{...}}}. */
-    get extraBody() {
-      return jsonObject("TTS_EXTRA_BODY");
-    },
-    get timeoutMs() {
-      return int("TTS_TIMEOUT_MS");
-    },
-  },
-
-  /** DeepSeek web search / fetch tools. Disabled when the key is empty. */
-  deepseek: {
-    get apiKey() {
-      return str("DEEPSEEK_API_KEY");
-    },
-    get baseUrl() {
-      return str("DEEPSEEK_BASE_URL").replace(/\/+$/, "");
-    },
-  },
-
   /** Where sticker images are fetched from; defaults to the 梗鲸 archive CDN (see stickers.ts). */
   get stickerBaseUrl() {
     return str("STICKER_BASE_URL");
   },
 
-  // The system prompt lives in src/agent/system-prompt.ts.
+  // The system prompt is put together in src/prompt.
   agent: {
     /** Time zone of the time stamp prepended to each user message. */
     get timezone() {
@@ -321,45 +236,10 @@ export const config = {
   },
 
   /**
-   * Long-term memory (remember / recall / forget), shared by every chat.
-   * An Upstash Vector index created with a hosted embedding model
-   * (text-embedding-3-small), so the gateway sends raw text. Disabled when empty.
-   */
-  memory: {
-    get url() {
-      return str("UPSTASH_VECTOR_REST_URL").replace(/\/+$/, "");
-    },
-    get token() {
-      return str("UPSTASH_VECTOR_REST_TOKEN");
-    },
-  },
-
-  /**
    * Signs the hand-off request a run sends to /api/worker when it runs out of
    * time with messages still waiting. Derived from the other secrets when unset.
    */
   get workerSecret() {
     return str("WORKER_SECRET") || config.llm.apiKey + str("QQ_APP_SECRET") + str("TELEGRAM_BOT_TOKEN");
-  },
-
-  /**
-   * Vercel Sandbox workspace (bash / read_file / write_file). Each chat gets
-   * its own Drive mounted at /workspace. On Vercel the SDK authenticates with
-   * the project's OIDC token; locally it needs VERCEL_OIDC_TOKEN (`vercel env pull`).
-   */
-  sandbox: {
-    /** On by default where credentials exist; SANDBOX_ENABLED=0 turns it off. */
-    get enabled() {
-      if (/^(0|false|off)$/i.test(str("SANDBOX_ENABLED"))) return false;
-      return Boolean(env("VERCEL") || env("VERCEL_OIDC_TOKEN") || /^(1|true|on)$/i.test(str("SANDBOX_ENABLED")));
-    },
-    /** Region for sandboxes and their drives (they must match). Default: Vercel's default, iad1. */
-    get region() {
-      return str("SANDBOX_REGION");
-    },
-    /** Per-command time limit. */
-    get commandTimeoutSeconds() {
-      return int("SANDBOX_COMMAND_TIMEOUT_SECONDS");
-    },
   },
 };

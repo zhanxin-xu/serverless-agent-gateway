@@ -8,8 +8,22 @@
  * Vercel sets (VERCEL_*), and AGENT_MAX_DURATION_SECONDS, which must match
  * vercel.json.
  *
- * No imports: config.ts, the settings service and the console all read this.
+ * Each module and provider keeps its own settings beside its code
+ * (src/modules/<module>/settings.ts, src/modules/<module>/providers/<id>/settings.ts);
+ * this file collects them after the core ones. Those files are pure data, like
+ * this one: config.ts, the settings service and the console all read the
+ * catalog, so it must not pull in code that reads config.
  */
+import * as image from "../modules/image/settings.js";
+import * as openrouterImages from "../modules/image/providers/openrouter-images/settings.js";
+import * as memory from "../modules/memory/settings.js";
+import * as upstashVector from "../modules/memory/providers/upstash-vector/settings.js";
+import * as sandbox from "../modules/sandbox/settings.js";
+import * as vercelSandbox from "../modules/sandbox/providers/vercel-sandbox/settings.js";
+import * as search from "../modules/search/settings.js";
+import * as deepseek from "../modules/search/providers/deepseek/settings.js";
+import * as voice from "../modules/voice/settings.js";
+import * as openaiSpeech from "../modules/voice/providers/openai-speech/settings.js";
 
 export type SettingKind = "text" | "textarea" | "secret" | "url" | "int" | "number" | "json" | "enum";
 
@@ -21,7 +35,7 @@ export interface SettingOption {
 export interface SettingDef {
   /** The environment variable this stands in for. */
   key: string;
-  group: SettingGroupId;
+  group: string;
   label: string;
   kind: SettingKind;
   /** Used when neither the database nor the environment has a value. */
@@ -35,32 +49,31 @@ export interface SettingDef {
   generate?: true;
   /** Filled in by the channel's connect (ChannelAdapter.connect), not typed by hand. */
   setByConnect?: true;
+  /** Chooses this capability's provider: an "enum" whose options are the providers (empty = automatic). */
+  capability?: string;
 }
 
-export type SettingGroupId = "llm" | "image" | "tts" | "search" | "memory" | "sandbox" | "qq" | "telegram" | "http" | "agent" | "console";
-
 export interface SettingGroup {
-  id: SettingGroupId;
+  id: string;
   label: string;
   help: string;
   /** The setting that turns the feature on when filled in. */
   enabledBy?: string;
   /** The channel (ChannelAdapter.name) these are the credentials of. */
   channel?: string;
+  /** The module this group configures: its own settings, or (with `provider`) one of its providers'. */
+  module?: string;
+  /** A provider's settings: which capability it serves, and its id there. */
+  provider?: { capability: string; id: string };
 }
 
 const OPENROUTER = "https://openrouter.ai/api/v1";
 
-export const DEFAULT_VOICE_REFERENCE = "assets/voice/dafeiyu.mp3";
-export const DEFAULT_SELF_IMAGE = "assets/persona/dafeiyu.webp";
+/** Modules and their providers, in the order the console lists them. */
+const MODULE_SETTINGS = [image, openrouterImages, voice, openaiSpeech, search, deepseek, memory, upstashVector, sandbox, vercelSandbox];
 
-export const SETTING_GROUPS: SettingGroup[] = [
+const CORE_GROUPS: SettingGroup[] = [
   { id: "llm", label: "模型", help: "任何兼容 OpenAI Responses API 的服务（POST {服务地址}/responses），默认 OpenRouter。", enabledBy: "OPENAI_RESPONSES_API_KEY" },
-  { id: "image", label: "画图", help: "generate_image 工具，用 OpenRouter 的 Image API。需要沙盒。", enabledBy: "IMAGE_API_KEY" },
-  { id: "tts", label: "语音", help: "send_voice 工具：POST {服务地址}/audio/speech，默认克隆大肥鱼的声音。", enabledBy: "TTS_API_KEY" },
-  { id: "search", label: "搜索", help: "DeepSeek 的 web_search / web_fetch，每千次约 ¥5。", enabledBy: "DEEPSEEK_API_KEY" },
-  { id: "memory", label: "长期记忆", help: "remember / recall / forget，存在 Upstash Vector（Dense，TEXT_EMBEDDING_3_SMALL，COSINE）。", enabledBy: "UPSTASH_VECTOR_REST_TOKEN" },
-  { id: "sandbox", label: "沙盒", help: "bash、读写文件、发文件，每个聊天一个 Vercel Sandbox 工作区。部署在 Vercel 上时自动认证。" },
   {
     id: "qq",
     label: "QQ",
@@ -74,7 +87,9 @@ export const SETTING_GROUPS: SettingGroup[] = [
   { id: "console", label: "管理", help: "管理端自己的设置。" },
 ];
 
-export const SETTINGS: SettingDef[] = [
+export const SETTING_GROUPS: SettingGroup[] = [CORE_GROUPS[0]!, ...MODULE_SETTINGS.flatMap((m) => m.GROUPS), ...CORE_GROUPS.slice(1)];
+
+const CORE_SETTINGS: SettingDef[] = [
   // ── Model ──
   { key: "OPENAI_RESPONSES_BASE_URL", group: "llm", label: "服务地址", kind: "url", default: OPENROUTER },
   { key: "OPENAI_RESPONSES_API_KEY", group: "llm", label: "API Key", kind: "secret" },
@@ -98,76 +113,6 @@ export const SETTINGS: SettingDef[] = [
   },
   { key: "MODEL_PRICE_CACHED", group: "llm", label: "缓存命中单价（美元 / 百万 token）", kind: "number", min: 0 },
   { key: "MODEL_PRICE_OUTPUT", group: "llm", label: "输出单价（美元 / 百万 token）", kind: "number", min: 0 },
-
-  // ── Images ──
-  { key: "IMAGE_API_KEY", group: "image", label: "API Key", kind: "secret" },
-  { key: "IMAGE_BASE_URL", group: "image", label: "服务地址", kind: "url", default: OPENROUTER },
-  { key: "IMAGE_MODEL", group: "image", label: "模型", kind: "text", default: "openai/gpt-image-2.6-sunburst" },
-  {
-    key: "IMAGE_QUALITY",
-    group: "image",
-    label: "质量",
-    kind: "enum",
-    default: "low",
-    options: ["auto", "low", "medium", "high", "xhigh", "max"].map((v) => ({ value: v, label: v })),
-    help: "决定价格，由这里定，不让模型选。",
-  },
-  {
-    key: "IMAGE_RESOLUTION",
-    group: "image",
-    label: "分辨率",
-    kind: "enum",
-    default: "",
-    options: [{ value: "", label: "不发送" }, ...["512", "768", "1K", "1.5K", "2K", "4K"].map((v) => ({ value: v, label: v }))],
-    help: "只对支持这个参数的模型有用；默认的 gpt-image 不支持，总是约 1024px。",
-  },
-  { key: "IMAGE_EXTRA_BODY", group: "image", label: "额外请求参数", kind: "json", help: '例如 {"provider":{"options":{"openai":{"moderation":"low"}}}}' },
-  { key: "IMAGE_TIMEOUT_MS", group: "image", label: "超时（毫秒）", kind: "int", default: "180000" },
-  {
-    key: "IMAGE_SELF_REFERENCE",
-    group: "image",
-    label: "形象参考图",
-    kind: "text",
-    default: DEFAULT_SELF_IMAGE,
-    help: "画她自己时一起发过去的参考图：部署里的文件或 https 链接；填 none 关闭。",
-  },
-
-  // ── Voice ──
-  { key: "TTS_API_KEY", group: "tts", label: "API Key", kind: "secret" },
-  { key: "TTS_BASE_URL", group: "tts", label: "服务地址", kind: "url", default: OPENROUTER },
-  { key: "TTS_MODEL", group: "tts", label: "模型", kind: "text", default: "fish-audio/drama-3" },
-  { key: "TTS_VOICE", group: "tts", label: "音色 ID", kind: "text", help: "服务商的音色 ID。留空时由参考音频决定声音。" },
-  { key: "TTS_REFERENCE_AUDIO", group: "tts", label: "参考音频", kind: "text", default: DEFAULT_VOICE_REFERENCE, help: "要克隆的声音：部署里的文件或 https 链接；填 none 关闭克隆。" },
-  { key: "TTS_REFERENCE_TEXT", group: "tts", label: "参考音频的文字", kind: "textarea", help: "参考音频里说的话。用内置音频时自动填好。" },
-  { key: "TTS_SING_REFERENCE_AUDIO", group: "tts", label: "唱歌参考音频", kind: "text", help: "同一个声音唱歌的片段，提供给模型作为 dafeiyu_sing。" },
-  { key: "TTS_SING_REFERENCE_TEXT", group: "tts", label: "唱歌参考的文字", kind: "textarea" },
-  { key: "TTS_INSTRUCTIONS", group: "tts", label: "固定语气指示", kind: "text", help: "每句话都带上的 instructions，例如“软萌可爱的小女孩”。" },
-  { key: "TTS_EXTRA_BODY", group: "tts", label: "额外请求参数", kind: "json", help: '例如 {"speed":1.1}' },
-  { key: "TTS_TIMEOUT_MS", group: "tts", label: "超时（毫秒）", kind: "int", default: "120000" },
-
-  // ── Search ──
-  { key: "DEEPSEEK_API_KEY", group: "search", label: "DeepSeek API Key", kind: "secret" },
-  { key: "DEEPSEEK_BASE_URL", group: "search", label: "服务地址", kind: "url", default: "https://api.deepseek.com" },
-
-  // ── Long-term memory ──
-  { key: "UPSTASH_VECTOR_REST_URL", group: "memory", label: "REST URL", kind: "url" },
-  { key: "UPSTASH_VECTOR_REST_TOKEN", group: "memory", label: "REST Token", kind: "secret" },
-
-  // ── Sandbox ──
-  {
-    key: "SANDBOX_ENABLED",
-    group: "sandbox",
-    label: "沙盒",
-    kind: "enum",
-    default: "",
-    options: [
-      { value: "", label: "自动（在 Vercel 上开启）" },
-      { value: "1", label: "开" },
-      { value: "0", label: "关" },
-    ],
-  },
-  { key: "SANDBOX_REGION", group: "sandbox", label: "区域", kind: "text", help: "默认 iad1。工作区盘建好以后不能改区域，要改请在第一次使用前改。" },
-  { key: "SANDBOX_COMMAND_TIMEOUT_SECONDS", group: "sandbox", label: "单条命令时限（秒）", kind: "int", default: "60" },
 
   // ── Channels ──
   { key: "QQ_APP_ID", group: "qq", label: "AppID", kind: "text" },
@@ -216,6 +161,19 @@ export const SETTINGS: SettingDef[] = [
   },
   { key: "WORKER_SECRET", group: "console", label: "Worker 签名密钥", kind: "secret", help: "一轮跑不完交给新函数时用来签名。留空时由其他密钥拼出来。", generate: true },
 ];
+
+/** A provider choice lists the capability's providers, after "automatic". */
+function withProviderOptions(def: SettingDef): SettingDef {
+  if (!def.capability) return def;
+  const providers = SETTING_GROUPS.filter((g) => g.provider?.capability === def.capability);
+  return {
+    ...def,
+    default: "",
+    options: [{ value: "", label: "自动（只有一个可用时用它）" }, ...providers.map((g) => ({ value: g.provider!.id, label: g.label }))],
+  };
+}
+
+export const SETTINGS: SettingDef[] = [...CORE_SETTINGS, ...MODULE_SETTINGS.flatMap((m) => m.SETTINGS)].map(withProviderOptions);
 
 const byKey = new Map(SETTINGS.map((d) => [d.key, d]));
 

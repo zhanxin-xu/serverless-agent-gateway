@@ -5,9 +5,10 @@
 import { createResponse, outputText } from "../../agent/model.js";
 import { channels } from "../../channels/index.js";
 import { config } from "../../config.js";
+import { describeModules } from "../modules.js";
+import { moduleById } from "../../modules/registry.js";
 import { saveSettings } from "../../settings/service.js";
 import { getStore, SCHEMA_VERSION, storeBackend } from "../../store/index.js";
-import { searchBalanceReport } from "../../tools/account.js";
 import { applySchema, connectionVar, readSchema } from "../database.js";
 import { HttpError, type Route } from "../http.js";
 
@@ -51,13 +52,7 @@ export const setupRoutes: Route[] = [
           canVerify: Boolean(c.verify),
           canConnect: Boolean(c.connect),
         })),
-        features: {
-          image: Boolean(config.image.apiKey),
-          tts: Boolean(config.tts.apiKey),
-          search: Boolean(config.deepseek.apiKey),
-          memory: Boolean(config.memory.url && config.memory.token),
-          sandbox: config.sandbox.enabled,
-        },
+        modules: describeModules(),
         firstMessage: database.ready && (await getStore().hasChats()),
       };
     },
@@ -92,13 +87,12 @@ export const setupRoutes: Route[] = [
   },
   {
     method: "POST",
-    path: "checks/search",
-    handler: () =>
-      attempt(async () => {
-        if (!config.deepseek.apiKey) throw new Error("还没填 DeepSeek API Key");
-        const report = await searchBalanceReport();
-        return report.balances.map((b) => `余额 ${b.total} ${b.currency}`).join("，") || "账户可用";
-      }),
+    path: "checks/module/:id",
+    handler: (_req, { id }) => {
+      const module = moduleById(id!);
+      if (!module?.check) throw new HttpError(404, `${id} 没有检查`);
+      return attempt(() => module.check!());
+    },
   },
   {
     method: "POST",

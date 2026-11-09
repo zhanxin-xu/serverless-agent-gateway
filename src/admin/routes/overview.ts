@@ -1,15 +1,11 @@
-/** The overview page: spend against the provider limits, today's usage, recent problems; and the admin log. */
+/** The overview page: what's left on each module's service, today's usage, recent problems; and the admin log. */
 import { channels } from "../../channels/index.js";
 import { utcDay } from "../../chats/day.js";
-import { config } from "../../config.js";
 import { getStore, type UsageCounts } from "../../store/index.js";
-import { keyReport, searchBalanceReport } from "../../tools/account.js";
+import { activeModules } from "../../modules/registry.js";
 import type { Route } from "../http.js";
 
 const DAY_MS = 86_400_000;
-
-/** A report that failed shows its error in place of the numbers. */
-const settle = <T>(p: Promise<T>) => p.catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }));
 
 function sum(byChat: Record<string, UsageCounts>): UsageCounts {
   const total: UsageCounts = {};
@@ -23,18 +19,22 @@ export const overviewRoutes: Route[] = [
     path: "overview",
     async handler() {
       const store = getStore();
-      const { llm, image } = config;
-      const sameKey = Boolean(image.apiKey) && image.apiKey === llm.apiKey;
-      const [modelKey, imageKey, search, today, problems] = await Promise.all([
-        llm.apiKey ? keyReport(llm.baseUrl, llm.apiKey, llm.extraHeaders) : undefined,
-        image.apiKey && !sameKey ? keyReport(image.baseUrl, image.apiKey) : undefined,
-        config.deepseek.apiKey ? settle(searchBalanceReport()) : undefined,
-        store.usageOfDay(utcDay()),
-        store.problems(Date.now() - DAY_MS, 20),
-      ]);
+      // Each module that's on and can tell what's left on its service (its own key, its own account).
+      const balances = await Promise.all(
+        activeModules().flatMap((m) => {
+          const pending = m.balance?.();
+          if (!pending) return [];
+          return [
+            pending.then(
+              (b) => ({ module: m.id, label: m.label, ...b.tile }),
+              (err: unknown) => ({ module: m.id, label: m.label, error: err instanceof Error ? err.message : String(err) }),
+            ),
+          ];
+        }),
+      );
+      const [today, problems] = await Promise.all([store.usageOfDay(utcDay()), store.problems(Date.now() - DAY_MS, 20)]);
       return {
-        keys: { model: modelKey ?? null, image: sameKey ? "same" : (imageKey ?? null) },
-        search: search ?? null,
+        balances,
         today: { total: sum(today), chats: Object.keys(today).length },
         problems,
         channels: [...channels.values()].map((c) => ({ name: c.name, configured: c.isConfigured() })),

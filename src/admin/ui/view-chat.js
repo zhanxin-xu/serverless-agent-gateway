@@ -535,7 +535,7 @@ function renderSettings(body, chat, info, app) {
         { class: "stack" },
         h("h3", null, "每日额度", h("span", { class: "muted small" }, " 北京时间 08:00 重置")),
         h("div", { class: "table-wrap" }, h("table", null, h("thead", null, h("tr", null, h("th", null, "项目"), h("th", { class: "num" }, "今日"), h("th", null, "上限"), h("th", null, ""))), h("tbody", null, quotas.map((q) => q.row)))),
-        h("p", { class: "help" }, "模型花费用完后：被 @ 时回一句“今天的额度用完了”，平时不插话。画图、语音、搜索用完时只是那个工具不能用，她会自己说明。"),
+        h("p", { class: "help" }, "模型花费用完后：被 @ 时回一句“今天的额度用完了”，平时不插话。其他额度用完时只是那个模块的工具不能用，她会自己说明。"),
         h("h3", null, "近 7 天模型花费"),
         h(
           "div",

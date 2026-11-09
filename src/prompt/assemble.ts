@@ -1,7 +1,8 @@
 /**
- * Putting the system prompt together (docs/design/modules.md 5): the persona,
- * the rules, the scene, the channel's note, one section per module that's on
- * this turn, and the chat's own instructions, sorted by order (order.ts).
+ * Putting the system prompt together (docs/modules.md): the persona, the
+ * rules, the scene, the channel's note, one section per module that's on this
+ * turn, the persona's examples for those modules, and the chat's own
+ * instructions, sorted by order (order.ts).
  *
  * The sections and the tool definitions come out of one call, from the same
  * Toolset: what the model is told it can do and what it's given are the same
@@ -10,7 +11,7 @@
  */
 import { MODULES, type Toolset } from "../modules/registry.js";
 import { ORDER } from "./order.js";
-import { PERSONA } from "./persona.js";
+import { EXAMPLES, PERSONA_PROMPT } from "../persona/index.js";
 import { RULES, SCENE_RULES } from "./rules.js";
 import type { PromptSection, PromptSectionContext } from "./types.js";
 import { interpolate } from "./variables.js";
@@ -45,7 +46,7 @@ export interface Assembly {
 function sections(input: AssemblyInput): PromptSection[] {
   const fixed = (name: string, source: string, order: number, text: string | undefined): PromptSection => ({ name, source, order, text: () => text ?? "" });
   return [
-    fixed("persona", "人设", ORDER.persona, PERSONA),
+    fixed("persona", "人设", ORDER.persona, PERSONA_PROMPT),
     fixed("rules", "业务规则", ORDER.rules, RULES),
     fixed("scene", input.chatType === "group" ? "场景：群聊" : "场景：私聊", ORDER.scene, SCENE_RULES[input.chatType]),
     fixed("channel", "渠道", ORDER.channel, input.channelHint),
@@ -62,6 +63,16 @@ function sections(input: AssemblyInput): PromptSection[] {
           ]
         : [],
     ),
+    {
+      name: "examples",
+      source: "人设：示例",
+      order: ORDER.examples,
+      // Only for the modules that are on: an example never shows a tool the model doesn't have.
+      text: () => {
+        const lines = input.toolset.modules.flatMap((m) => EXAMPLES[m.id] ?? []);
+        return lines.length ? `# 典型反应示例（参考语气与动作连招）\n\n${lines.join("\n")}` : "";
+      },
+    },
     fixed("chat:extra", "这个聊天的额外设定", ORDER.chatExtra, input.chatExtra ? `# 这个聊天的额外设定\n\n${input.chatExtra}` : ""),
   ];
 }

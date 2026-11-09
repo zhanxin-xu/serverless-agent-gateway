@@ -18,7 +18,8 @@ function steps(s) {
   return [
     { id: "password", title: "管理密码", done: true },
     { id: "database", title: "数据库", done: s.database.backend === "supabase" && s.database.ready },
-    { id: "model", title: "模型", done: s.model },
+    // A step for each module the bot can't work without (src/modules: setup "required"): the chat model.
+    ...s.modules.filter((m) => m.setup === "required").map((m) => ({ id: `module-${m.id}`, module: m, title: m.label, done: m.ok })),
     { id: "channels", title: "接入渠道", done: s.channels.some((c) => c.configured) },
     { id: "features", title: "可选模块", optional: true, done: s.modules.some((m) => !m.core && m.ok) || skippedFeatures() },
     { id: "first", title: "发条消息试试", done: s.firstMessage },
@@ -27,7 +28,7 @@ function steps(s) {
 
 /** How far setup is: steps done, and whether a required one is missing. */
 export function setupProgress(status) {
-  if (!status) return { done: 0, total: 6, required: true };
+  if (!status) return { done: 0, total: 0, required: true };
   const all = steps(status);
   return { done: all.filter((s) => s.done).length, total: all.length, required: all.some((s) => !s.done && !s.optional) };
 }
@@ -68,7 +69,7 @@ export async function renderSetup(main, [stepId], app) {
       panel,
     ),
   );
-  return STEP_VIEWS[current.id](panel, status, app, next);
+  return current.module ? requiredModule(current.module, panel, status, app, next) : STEP_VIEWS[current.id](panel, status, app, next);
 }
 
 const STEP_VIEWS = {
@@ -147,23 +148,6 @@ const STEP_VIEWS = {
     );
   },
 
-  async model(panel, status, app, next) {
-    if (!requireDb(panel, status)) return;
-    const index = await loadSettings();
-    const llm = index.groups.find((g) => g.id === "llm");
-    const form = settingsForm(index, ["OPENAI_RESPONSES_BASE_URL", "OPENAI_RESPONSES_API_KEY", "OPENAI_RESPONSES_MODEL"], {
-      onSaved: () => app.refreshStatus(),
-      actions: (f) => groupActions(index, llm, status, f, null),
-    });
-    fill(
-      panel,
-      h("h2", null, "模型"),
-      h("p", { class: "muted" }, "任何兼容 OpenAI Responses API 的服务都行，默认 OpenRouter。“测试”会先保存，再真的发一次请求。"),
-      form.el,
-      h("div", { class: "row" }, h("button", { type: "button", class: "btn", onClick: next, disabled: !status.model }, "下一步")),
-    );
-  },
-
   async channels(panel, status, app, next) {
     if (!requireDb(panel, status)) return;
     const index = await loadSettings();
@@ -204,7 +188,11 @@ const STEP_VIEWS = {
     fill(
       panel,
       h("h2", null, "可选模块"),
-      h("p", { class: "muted" }, "画图、语音、搜索、记忆、沙盒都是模块，都可以跳过，以后在配置页再开。这里只填开启需要的最少几项，其余参数在配置页。"),
+      h(
+        "p",
+        { class: "muted" },
+        `${status.modules.filter((m) => !m.core).map((m) => m.label).join("、")}都是可选模块，都可以跳过，以后在模块页再开。这里只填开启需要的最少几项，其余参数在模块页。`,
+      ),
       status.modules
         .filter((m) => !m.core)
         .map((m) => {
@@ -265,6 +253,33 @@ const STEP_VIEWS = {
     });
   },
 };
+
+/** A module the bot can't work without: its essential settings and its check, until it's ready. */
+async function requiredModule(m, panel, status, app, next) {
+  if (!requireDb(panel, status)) return;
+  const index = await loadSettings();
+  const group = index.groups.find((g) => g.id === m.settings);
+  const form = settingsForm(index, group.essentials ?? index.keysOf(group.id), {
+    onSaved: async () => {
+      await app.refreshStatus();
+      app.go(`#/setup/module-${m.id}`);
+    },
+    actions: (f) => groupActions(index, group, status, f, null),
+  });
+  fill(
+    panel,
+    h("h2", null, m.label, " ", m.ok ? pill("ok", "已就绪") : pill("warn", "未就绪")),
+    h("p", { class: "muted" }, group.help, m.canCheck ? " “检查”会先保存，再真的调用一次。" : ""),
+    !m.ok && m.reason ? h("p", { class: "help" }, m.reason) : null,
+    form.el,
+    h(
+      "div",
+      { class: "row" },
+      h("button", { type: "button", class: "btn", onClick: next, disabled: !m.ok }, "下一步"),
+      h("a", { class: "btn btn-small", href: `#/modules/${m.id}` }, "全部配置"),
+    ),
+  );
+}
 
 /** Settings need the database; the in-memory store (local development) works too, for this instance. */
 function requireDb(panel, status) {

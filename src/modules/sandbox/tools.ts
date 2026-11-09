@@ -4,9 +4,10 @@ import type { Attachment } from "../../channels/types.js";
 import { settingInt } from "../../config.js";
 import { messageLabel } from "../../conversation/events.js";
 import type { ImagePart } from "../../media/images.js";
-import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../chat/tools.js";
+import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../shared/reply.js";
 import type { Tool, ToolContext } from "../tool.js";
-import { WORKDIR, workspaceFor } from "./workspace.js";
+import { WORKDIR } from "./paths.js";
+import { workspaceFor } from "./workspace.js";
 
 const MAX_OUTPUT_CHARS = 8_000;
 const MAX_TEXT_CHARS = 12_000;

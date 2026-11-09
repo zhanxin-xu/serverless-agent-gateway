@@ -12,6 +12,9 @@ export const sandboxCapability: Capability<SandboxBackend> = {
   id: "sandbox",
   label: "沙盒服务",
   selectionSetting: "SANDBOX_PROVIDER",
-  providers: [vercelSandboxProvider],
+  // Read when used, not while the files load (see src/modules/index.ts).
+  get providers() {
+    return [vercelSandboxProvider];
+  },
   stateful: true,
 };

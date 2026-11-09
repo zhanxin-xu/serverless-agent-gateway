@@ -133,11 +133,6 @@ export const config = {
     },
   },
 
-  /** Where sticker images are fetched from; defaults to the 梗鲸 archive CDN (see stickers.ts). */
-  get stickerBaseUrl() {
-    return str("STICKER_BASE_URL");
-  },
-
   // The system prompt is put together in src/prompt.
   agent: {
     /** Time zone of the time stamp prepended to each user message. */

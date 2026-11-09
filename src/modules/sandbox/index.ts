@@ -1,6 +1,15 @@
-/** The workspace: run code, read and write files, take in attachments, send files out. */
-import { ORDER } from "../../prompt/order.js";
+/**
+ * The workspace: run code, read and write files, take in attachments, send files out.
+ *
+ * Other modules that require it (image) use the workspace through what this
+ * file exports, never through the module's own files.
+ */
+// For modules that require the sandbox: where the workspace is mounted, and the chat's workspace in this run.
+// First, so the leaf paths.js is loaded before anything that reads WORKDIR while loading.
+export { WORKDIR } from "./paths.js";
+export { workspaceFor, type Workspace } from "./workspace.js";
 import type { Module } from "../types.js";
+import { CONFIG } from "./settings.js";
 import { sandboxCapability } from "./capability.js";
 import { bash, readFile, saveAttachment, sendFile, writeFile } from "./tools.js";
 
@@ -11,12 +20,15 @@ const GUIDE = `# 沙盒工作区与附件（save_attachment / bash / read_file /
 - 对方是引用旧消息发的话：对当前这条消息调 \`save_attachment(message=N)\`，被引用消息里的原图或附件也会存进来（排在这条消息自身附件之后）。
 - 自己用代码画的图表，先用 read_file 看一眼没问题再用 send_file 发。拒绝攻击网站、挖矿、刷接口的脏活。`;
 
-export const sandboxModule: Module = {
-  id: "sandbox",
-  label: "沙盒",
-  summary: "bash 跑代码、读写文件、把聊天里的附件存进来、把文件发出去。每个聊天一个持久的工作区。",
-  capability: sandboxCapability,
-  settings: "sandbox",
-  tools: [bash, readFile, writeFile, sendFile, saveAttachment],
-  section: { order: ORDER.module.sandbox, text: () => GUIDE },
-};
+/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+export function sandboxModule(): Module {
+  return {
+    id: "sandbox",
+    label: "沙盒",
+    summary: "bash 跑代码、读写文件、把聊天里的附件存进来、把文件发出去。每个聊天一个持久的工作区。",
+    capability: sandboxCapability,
+    config: CONFIG,
+    tools: [bash, readFile, writeFile, sendFile, saveAttachment],
+    section: { order: 5400, text: () => GUIDE },
+  };
+}

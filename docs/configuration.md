@@ -109,7 +109,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `SANDBOX_REGION` | `iad1` | 沙盒和工作区盘所在的区域。盘建好以后区域不能再改，请在第一次使用前设置 |
 | `SANDBOX_COMMAND_TIMEOUT_SECONDS` | `60` | 单条 `bash` 命令的时间上限，临近函数时限时会自动缩短 |
 | `WORKER_SECRET` | 由其他密钥派生 | 请求 `/api/worker` 的签名密钥。不设置时用模型 Key 和渠道密钥派生；建议设成一个随机字符串 |
-| `STICKER_BASE_URL` | 梗鲸 CDN | 表情包图片的根地址，自托管时修改 |
+| `STICKER_BASE_URL` | 梗鲸 CDN | 表情包图片的根地址，自托管时修改。属于“聊天”模块，在它的模块页里改 |
 
 ## 画图
 
@@ -138,7 +138,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `TTS_VOICE` | 空 | 对应接口的 `voice`，填服务商的音色 ID。只在不克隆（模型选了音色 `none`，或没有参考音频）时发送 |
 | `TTS_REFERENCE_AUDIO` | `assets/voice/dafeiyu.mp3` | 要克隆的声音：部署里的文件路径（相对项目根目录），或 https 链接；填 `none` 不克隆。放进仓库的新文件要在 `vercel.json` 的 `includeFiles` 里能匹配到，体积尽量小（单声道、32 kbps 左右的 mp3 就够） |
 | `TTS_REFERENCE_TEXT` | 内置参考音频的文字稿 | 参考音频说的话，有助于克隆。换了参考音频要一起改，不填就不发 |
-| `TTS_SING_REFERENCE_AUDIO` | 空 | 可选：同一个声音**唱歌**的参考音频（文件或 https 链接）。设置后模型多一个音色 `dafeiyu_sing` 可选 |
+| `TTS_SING_REFERENCE_AUDIO` | 空 | 可选：同一个声音**唱歌**的参考音频（文件或 https 链接）。设置后模型多一个音色 `self_sing` 可选 |
 | `TTS_SING_REFERENCE_TEXT` | 空 | 唱歌参考音频里唱的词 |
 | `TTS_INSTRUCTIONS` | 空 | 对应接口的 `instructions`：每条语音都带的语气，例如 `软萌可爱的小女孩`。模型调用时给的 `instructions` 会接在后面 |
 | `TTS_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"speed":1.1}` |

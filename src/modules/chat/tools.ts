@@ -1,29 +1,8 @@
 /** Talking and hanging up: send_message, send_sticker, end_turn, chat_members, and the reply rules they share. */
-import { config } from "../../config.js";
-import { DEFAULT_STICKER_BASE_URL, isStickerName, STICKER_NAMES, STICKERS, stickerUrl } from "./stickers.js";
+import { config, settingValue } from "../../config.js";
+import { DEFAULT_STICKER_BASE_URL, isStickerName, persona, STICKER_NAMES, STICKERS, stickerUrl } from "../../persona/index.js";
+import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../shared/reply.js";
 import type { Tool } from "../tool.js";
-
-/** Shared `reply_to` parameter of the tools that talk (send_message, send_sticker, send_file). */
-export const REPLY_TO = {
-  type: "integer",
-  description:
-    "The message you want to quote: the N of its 第N条 label, used with quote: true. " +
-    "Without a quote, leave it out: where the message goes is handled for you.",
-};
-
-export const replyTo = (args: Record<string, unknown>): number | undefined =>
-  args.reply_to === undefined || args.reply_to === null || args.reply_to === "" ? undefined : Number(args.reply_to);
-
-/** Shared `quote` parameter of the tools that talk. */
-export const QUOTE = {
-  type: "boolean",
-  description:
-    "Show this as a quote of the message it replies to (the reply_to one), so everyone sees what you're answering. " +
-    "Use it when that isn't obvious: a busy group, an older message, or several people talking at once. Default false.",
-};
-
-/** The send options a talking tool's arguments ask for. */
-export const sendOptions = (args: Record<string, unknown>) => ({ quote: args.quote === true });
 
 export const sendMessage: Tool = {
   name: "send_message",
@@ -51,7 +30,7 @@ export const sendSticker: Tool = {
   name: "send_sticker",
   role: "talk",
   description:
-    "Send one 大肥鱼 sticker (an image) right now, as its own message (it counts as a reply like send_message). Pick by mood:\n" +
+    `Send one ${persona.name} sticker (an image) right now, as its own message (it counts as a reply like send_message). Pick by mood:\n` +
     STICKER_NAMES.map((n) => `- ${n}：${STICKERS[n].when}`).join("\n"),
   parameters: {
     type: "object",
@@ -61,7 +40,7 @@ export const sendSticker: Tool = {
   async run(args, ctx) {
     const name = String(args.name ?? "");
     if (!isStickerName(name)) throw new Error(`unknown sticker "${name}"`);
-    return `${await ctx.send({ kind: "image", url: stickerUrl(config.stickerBaseUrl || DEFAULT_STICKER_BASE_URL, name), label: stickerLabel(name) }, replyTo(args), sendOptions(args))}. If you're done, call end_turn (in the same step as your last message).`;
+    return `${await ctx.send({ kind: "image", url: stickerUrl(settingValue("STICKER_BASE_URL") || DEFAULT_STICKER_BASE_URL, name), label: stickerLabel(name) }, replyTo(args), sendOptions(args))}. If you're done, call end_turn (in the same step as your last message).`;
   },
 };
 

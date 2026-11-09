@@ -143,20 +143,19 @@ function checkButton(label, path, before) {
   return h("span", { class: "check" }, btn, slot);
 }
 
-/** The check a core settings group offers, by group id (src/settings/catalog.ts): [label, API path]. */
-const GROUP_CHECKS = { llm: ["测试", "checks/model"] };
-
 /**
- * A provider's group gets its module's check (src/modules: Module.check) when
- * that provider is the one in use, or the only one there is.
+ * A module's check (src/modules: Module.check), on the group whose settings it
+ * tests: a module without providers on its own group, else on the provider in
+ * use (or the only one there is).
  */
 function moduleCheck(group, status) {
+  const module = group.module ? status.modules?.find((m) => m.id === group.module) : undefined;
+  if (!module?.canCheck) return undefined;
+  const cap = module.capability;
+  if (!cap) return group.provider ? undefined : `checks/module/${module.id}`;
   if (!group.provider) return undefined;
-  const module = status.modules?.find((m) => m.id === group.module);
-  const cap = module?.capability;
-  if (!module?.canCheck || !cap) return undefined;
   const inUse = cap.selected === group.provider.id || cap.providers.length === 1;
-  return inUse ? ["检查", `checks/module/${module.id}`] : undefined;
+  return inUse ? `checks/module/${module.id}` : undefined;
 }
 
 /**
@@ -166,8 +165,8 @@ function moduleCheck(group, status) {
  */
 export function groupActions(index, group, status, form, slot) {
   const items = [];
-  const check = GROUP_CHECKS[group.id] ?? moduleCheck(group, status);
-  if (check) items.push(checkButton(check[0], check[1], () => form.save()));
+  const check = moduleCheck(group, status);
+  if (check) items.push(checkButton("检查", check, () => form.save()));
   const channel = group.channel ? status.channels.find((c) => c.name === group.channel) : undefined;
   if (channel?.canVerify) items.push(checkButton("检查", `channels/${channel.name}/verify`, () => form.save()));
   if (channel?.canConnect) items.push(checkButton("保存并设置 Webhook", `channels/${channel.name}/connect`, () => form.save()));

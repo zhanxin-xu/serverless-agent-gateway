@@ -25,7 +25,8 @@
     "dev": "tsx watch scripts/dev-server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx scripts/selftest.ts && tsx scripts/moduletest.ts",
-    "test:store": "tsx scripts/storetest.ts"
+    "test:store": "tsx scripts/storetest.ts",
+    "test:load": "tsx scripts/loadtest.ts"
   },
   "license": "MIT",
   "dependencies": {

@@ -16,8 +16,8 @@ const DEFAULT_SAMPLE_RATE = 44_100;
 function voices(): VoiceChoice[] {
   const { referenceAudio, singReferenceAudio } = speechConfig;
   return [
-    ...(referenceAudio ? [{ id: "dafeiyu", about: '"dafeiyu" (default): your own voice, cloned from a short clip of you talking.' }] : []),
-    ...(singReferenceAudio ? [{ id: "dafeiyu_sing", about: '"dafeiyu_sing": the same voice cloned from a clip of you singing; try it when singing.' }] : []),
+    ...(referenceAudio ? [{ id: "self", about: '"self" (default): your own voice, cloned from a short clip of you talking.' }] : []),
+    ...(singReferenceAudio ? [{ id: "self_sing", about: '"self_sing": the same voice cloned from a clip of you singing; try it when singing.' }] : []),
     {
       id: "none",
       about:
@@ -73,7 +73,7 @@ export const openaiSpeechClient: SpeechBackend = {
   voices,
   dialect() {
     const kind = kindOf(speechConfig.model);
-    return { tool: `The speech model is ${kind.about}\n${kind.syntax}`, prompt: kind.hint, inlineTags: kind.inlineTags };
+    return { tool: `The speech model is ${kind.about}\n${kind.syntax}`, prompt: kind.hint };
   },
   async speak({ text, style, mode, voice, speed, timeoutMs: budget }) {
     const { apiKey, baseUrl, model, voice: providerVoice, instructions: standing, extraBody, timeoutMs } = speechConfig;
@@ -85,9 +85,9 @@ export const openaiSpeechClient: SpeechBackend = {
       .filter(Boolean)
       .join("；");
     const refs =
-      voice === "dafeiyu"
+      voice === "self"
         ? await references(speechConfig.referenceAudio, speechConfig.referenceText, "TTS_REFERENCE_AUDIO")
-        : voice === "dafeiyu_sing"
+        : voice === "self_sing"
           ? await references(speechConfig.singReferenceAudio, speechConfig.singReferenceText, "TTS_SING_REFERENCE_AUDIO")
           : undefined;
     const body = {

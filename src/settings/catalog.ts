@@ -8,22 +8,13 @@
  * Vercel sets (VERCEL_*), and AGENT_MAX_DURATION_SECONDS, which must match
  * vercel.json.
  *
- * Each module and provider keeps its own settings beside its code
- * (src/modules/<module>/settings.ts, src/modules/<module>/providers/<id>/settings.ts);
- * this file collects them after the core ones. Those files are pure data, like
- * this one: config.ts, the settings service and the console all read the
- * catalog, so it must not pull in code that reads config.
+ * The core settings (channels, the agent, the console) are listed here; each
+ * module declares its own and its providers' (Module.config, Provider.config),
+ * collected from the module list. Collected on first use, not on import:
+ * config.ts reads this, and modules read config.ts.
  */
-import * as image from "../modules/image/settings.js";
-import * as openrouterImages from "../modules/image/providers/openrouter-images/settings.js";
-import * as memory from "../modules/memory/settings.js";
-import * as upstashVector from "../modules/memory/providers/upstash-vector/settings.js";
-import * as sandbox from "../modules/sandbox/settings.js";
-import * as vercelSandbox from "../modules/sandbox/providers/vercel-sandbox/settings.js";
-import * as search from "../modules/search/settings.js";
-import * as deepseek from "../modules/search/providers/deepseek/settings.js";
-import * as voice from "../modules/voice/settings.js";
-import * as openaiSpeech from "../modules/voice/providers/openai-speech/settings.js";
+import { loadedModules } from "../modules/index.js";
+import type { Module } from "../modules/types.js";
 
 export type SettingKind = "text" | "textarea" | "secret" | "url" | "int" | "number" | "json" | "enum";
 
@@ -49,7 +40,7 @@ export interface SettingDef {
   generate?: true;
   /** Filled in by the channel's connect (ChannelAdapter.connect), not typed by hand. */
   setByConnect?: true;
-  /** Chooses this capability's provider: an "enum" whose options are the providers (empty = automatic). */
+  /** Chooses this capability's provider: an "enum" whose options are the providers (unset: the one configured). */
   capability?: string;
 }
 
@@ -61,27 +52,15 @@ export interface SettingGroup {
   enabledBy?: string;
   /** The channel (ChannelAdapter.name) these are the credentials of. */
   channel?: string;
-  /** The module this group configures: its own settings, or (with `provider`) one of its providers'. */
+  /** Set by the catalog: the module this group configures, its own settings or (with `provider`) one of its providers'. */
   module?: string;
-  /** A provider's settings: which capability it serves, and its id there. */
+  /** Set by the catalog: a provider's settings, which capability it serves and its id there. */
   provider?: { capability: string; id: string };
   /** The few settings that turn it on, asked for in the setup guide (the rest are on the config page). */
   essentials?: string[];
 }
 
-const OPENROUTER = "https://openrouter.ai/api/v1";
-
-/** Modules and their providers, in the order the console lists them. */
-const MODULE_SETTINGS = [image, openrouterImages, voice, openaiSpeech, search, deepseek, memory, upstashVector, sandbox, vercelSandbox];
-
 const CORE_GROUPS: SettingGroup[] = [
-  {
-    id: "llm",
-    label: "模型",
-    help: "任何兼容 OpenAI Responses API 的服务（POST {服务地址}/responses），默认 OpenRouter。",
-    enabledBy: "OPENAI_RESPONSES_API_KEY",
-    module: "model",
-  },
   {
     id: "qq",
     label: "QQ",
@@ -95,33 +74,7 @@ const CORE_GROUPS: SettingGroup[] = [
   { id: "console", label: "管理", help: "管理端自己的设置。" },
 ];
 
-export const SETTING_GROUPS: SettingGroup[] = [CORE_GROUPS[0]!, ...MODULE_SETTINGS.flatMap((m) => m.GROUPS), ...CORE_GROUPS.slice(1)];
-
 const CORE_SETTINGS: SettingDef[] = [
-  // ── Model ──
-  { key: "OPENAI_RESPONSES_BASE_URL", group: "llm", label: "服务地址", kind: "url", default: OPENROUTER },
-  { key: "OPENAI_RESPONSES_API_KEY", group: "llm", label: "API Key", kind: "secret" },
-  { key: "OPENAI_RESPONSES_MODEL", group: "llm", label: "模型", kind: "text", default: "openai/gpt-6-luna" },
-  {
-    key: "OPENAI_RESPONSES_EXTRA_BODY",
-    group: "llm",
-    label: "额外请求参数",
-    kind: "json",
-    help: '合并进每次请求体，例如 {"provider":{"only":["openai"],"allow_fallbacks":false}}。不能覆盖 instructions、input、tools、tool_choice。',
-  },
-  { key: "OPENAI_RESPONSES_EXTRA_HEADERS", group: "llm", label: "额外请求头", kind: "json", help: '例如 {"X-Title":"my-bot"}' },
-  { key: "OPENAI_RESPONSES_TIMEOUT_MS", group: "llm", label: "单次调用超时（毫秒）", kind: "int", default: "280000" },
-  {
-    key: "MODEL_PRICE_INPUT",
-    group: "llm",
-    label: "输入单价（美元 / 百万 token）",
-    kind: "number",
-    min: 0,
-    help: "接口没返回花费时，用这三个单价估算每个群的花费（每群额度按它算）。OpenRouter 会返回花费，可以不填。",
-  },
-  { key: "MODEL_PRICE_CACHED", group: "llm", label: "缓存命中单价（美元 / 百万 token）", kind: "number", min: 0 },
-  { key: "MODEL_PRICE_OUTPUT", group: "llm", label: "输出单价（美元 / 百万 token）", kind: "number", min: 0 },
-
   // ── Channels ──
   { key: "QQ_APP_ID", group: "qq", label: "AppID", kind: "text" },
   { key: "QQ_APP_SECRET", group: "qq", label: "AppSecret", kind: "secret" },
@@ -150,7 +103,6 @@ const CORE_SETTINGS: SettingDef[] = [
     min: 0,
     help: "群里没 @ 的消息，每个群每这么多秒最多给模型看一次，由它决定插不插话。0 = 从不插话。每个群可以单独改。",
   },
-  { key: "STICKER_BASE_URL", group: "agent", label: "表情包地址", kind: "url", help: "留空用内置的梗鲸表情包 CDN。" },
 
   // ── Console ──
   {
@@ -170,24 +122,79 @@ const CORE_SETTINGS: SettingDef[] = [
   { key: "WORKER_SECRET", group: "console", label: "Worker 签名密钥", kind: "secret", help: "一轮跑不完交给新函数时用来签名。留空时由其他密钥拼出来。", generate: true },
 ];
 
-/**
- * A provider choice lists the capability's providers. Unset, the one that's
- * configured is used (src/modules/capability.ts), so a new deployment needs no choice.
- */
-function withProviderOptions(def: SettingDef): SettingDef {
-  if (!def.capability) return def;
-  const providers = SETTING_GROUPS.filter((g) => g.provider?.capability === def.capability);
-  return { ...def, default: "", options: providers.map((g) => ({ value: g.provider!.id, label: g.label })) };
+/** The setting that turns an optional module on or off everywhere ("on" by default); core modules have none. */
+export const switchSetting = (module: Module): string | undefined => (module.core ? undefined : `MODULE_${module.id.toUpperCase()}`);
+
+/** An optional module's switch, added to its own group. */
+const switchDef = (key: string, group: string): SettingDef => ({
+  key,
+  group,
+  label: "开关",
+  kind: "enum",
+  default: "on",
+  options: [
+    { value: "on", label: "开" },
+    { value: "off", label: "关" },
+  ],
+  help: "关掉后所有聊天都不提供这个模块；依赖它的模块也会跟着关。",
+});
+
+interface Catalog {
+  groups: SettingGroup[];
+  settings: SettingDef[];
+  byKey: Map<string, SettingDef>;
 }
 
-export const SETTINGS: SettingDef[] = [...CORE_SETTINGS, ...MODULE_SETTINGS.flatMap((m) => m.SETTINGS)].map(withProviderOptions);
+let built: Catalog | undefined;
 
-const byKey = new Map(SETTINGS.map((d) => [d.key, d]));
+/** The core settings and every module's, in the order the console lists them: modules first, then the core groups. */
+function catalog(): Catalog {
+  if (built) return built;
+  const groups: SettingGroup[] = [];
+  const settings: SettingDef[] = [];
+  for (const m of loadedModules()) {
+    if (m.config) {
+      groups.push({ ...m.config.group, module: m.id });
+      settings.push(...m.config.settings);
+    }
+    const toggle = switchSetting(m);
+    if (toggle) {
+      if (!m.config) throw new Error(`module ${m.id} is optional, so it needs a settings group for its switch`);
+      settings.push(switchDef(toggle, m.config.group.id));
+    }
+    for (const p of m.capability?.providers ?? []) {
+      groups.push({ ...p.config.group, module: m.id, provider: { capability: m.capability!.id, id: p.id } });
+      settings.push(...p.config.settings);
+    }
+  }
+  groups.push(...CORE_GROUPS);
+  settings.push(...CORE_SETTINGS);
+  // A provider choice lists the capability's providers; unset, the one configured is used (src/modules/capability.ts).
+  const withProviders = settings.map((def): SettingDef => {
+    if (!def.capability) return def;
+    const providers = groups.filter((g) => g.provider?.capability === def.capability);
+    return { ...def, default: "", options: providers.map((g) => ({ value: g.provider!.id, label: g.label })) };
+  });
+  const byKey = new Map<string, SettingDef>();
+  for (const def of withProviders) {
+    if (byKey.has(def.key)) throw new Error(`setting ${def.key} is declared twice`);
+    if (!groups.some((g) => g.id === def.group)) throw new Error(`setting ${def.key} is in group ${def.group}, which no module declares`);
+    byKey.set(def.key, def);
+  }
+  built = { groups, settings: withProviders, byKey };
+  return built;
+}
 
-export const settingDef = (key: string): SettingDef | undefined => byKey.get(key);
+/** Every settings group, in the console's order. */
+export const settingGroups = (): SettingGroup[] => catalog().groups;
+
+/** Every setting, in the console's order. */
+export const settingDefs = (): SettingDef[] => catalog().settings;
+
+export const settingDef = (key: string): SettingDef | undefined => catalog().byKey.get(key);
 
 /** The default of a listed setting ("" when it has none or isn't listed). */
-export const settingDefault = (key: string): string => byKey.get(key)?.default ?? "";
+export const settingDefault = (key: string): string => catalog().byKey.get(key)?.default ?? "";
 
 /**
  * Check a value typed into the console and return it normalized. An empty

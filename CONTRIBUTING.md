@@ -48,13 +48,14 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm test
 
 - **和周围的代码保持一致**：命名、注释密度、写法都参照同一文件里已有的代码。
 - **外部接口直接用 `fetch`**：模型、QQ、Telegram、Supabase、Upstash Vector 都是直接调用 HTTP 接口，不引入 SDK，方便透传参数，也让测试能统一 mock。Vercel Sandbox 是例外，它需要 SDK 处理认证。
-- **配置项定义在配置目录里**：核心配置在 `src/settings/catalog.ts`，模块和实现的配置在各自目录的 `settings.ts`（只放数据，只能 `import type`）。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
+- **配置项跟着它的主人**：核心配置（渠道、Agent、管理）在 `src/settings/catalog.ts`；模块和实现的配置在各自目录的 `settings.ts`，由模块定义带上，配置目录自动收集。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
+- **加载时不读别的文件的导出值**：模块、配置目录和 `config.ts` 互相引用，模块定义是函数、实现列表是 getter。改了模块结构后跑一下 `npm run test:load`。
 - **注释解释"为什么"**：平台限制、踩过的坑、看起来奇怪但必须这样写的地方，都值得写一句注释。
 - **不要提交密钥**：`.env*` 已经在 `.gitignore` 里。仓库是公开的，提交前请检查一遍 diff。
 
 ## 常见改动
 
-- **改人设**：编辑 `src/prompt/persona.ts`。人设里不要写工具名，工具怎么用写在它所在模块的说明里（测试会检查）。
+- **改人设**：编辑 `src/persona/`。人设里不要写工具名，工具怎么用写在它所在模块的说明里；模块里也不要写人设（测试都会检查）。
 - **新增工具、模块，或给一种能力加一家服务**：见[模块](docs/modules.md)。
 - **新增渠道**：见[渠道接入](docs/channels.md#新增渠道)。
 

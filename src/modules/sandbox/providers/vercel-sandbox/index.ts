@@ -8,13 +8,11 @@ import type { Provider } from "../../../types.js";
 import { notReady, READY } from "../../../types.js";
 import type { SandboxBackend } from "../../capability.js";
 import { vercelSandboxConfig } from "./config.js";
-import { GROUPS } from "./settings.js";
+import { CONFIG } from "./settings.js";
 
 export const vercelSandboxProvider: Provider<SandboxBackend> = {
   id: "vercel-sandbox",
-  label: GROUPS[0]!.label,
-  description: GROUPS[0]!.help,
-  settings: GROUPS[0]!.id,
+  config: CONFIG,
   available: () =>
     vercelSandboxConfig.enabled ? READY : notReady("只在 Vercel 上自动开启；本地要设 VERCEL_OIDC_TOKEN，或在配置里关掉了"),
   // The SDK is loaded on first use, so runs that never touch the workspace don't pay for it.

@@ -25,5 +25,8 @@ export const searchCapability: Capability<SearchBackend> = {
   id: "search",
   label: "搜索服务",
   selectionSetting: "SEARCH_PROVIDER",
-  providers: [deepseekProvider],
+  // Read when used, not while the files load (see src/modules/index.ts).
+  get providers() {
+    return [deepseekProvider];
+  },
 };

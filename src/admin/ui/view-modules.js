@@ -8,7 +8,7 @@ import { icon } from "./icons.js";
 
 /** On, off with the reason, or always on. */
 export function moduleState(m) {
-  if (m.core) return pill("info", "始终开启");
+  if (m.core) return m.ok ? pill("info", "始终开启") : pill("warn", "未就绪");
   if (m.switch && !m.switch.on) return pill("mute", "已关闭");
   return m.ok ? pill("ok", "已开启") : pill("warn", "未就绪");
 }

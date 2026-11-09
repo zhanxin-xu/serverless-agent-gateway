@@ -14,7 +14,7 @@
  */
 import { environmentValue } from "../config.js";
 import { getStore, SchemaOutdatedError, type SettingsStore, type StoredSetting } from "../store/index.js";
-import { SETTING_GROUPS, SETTINGS, settingDef, validateSetting } from "./catalog.js";
+import { settingDef, settingDefs, settingGroups, validateSetting, type SettingDef, type SettingGroup } from "./catalog.js";
 import { setOverrides } from "./overrides.js";
 
 const RELOAD_MS = 30_000;
@@ -76,12 +76,12 @@ function maskSecret(plain: string): string {
 }
 
 /** Every setting with where its value comes from. Reads the table now, so it is current. */
-export async function describeSettings(): Promise<{ groups: typeof SETTING_GROUPS; settings: typeof SETTINGS; values: SettingView[] }> {
+export async function describeSettings(): Promise<{ groups: SettingGroup[]; settings: SettingDef[]; values: SettingView[] }> {
   const rows = await load(getStore());
   if (!rows) throw new Error("读不到数据库里的设置，稍后再试");
   loadedAt = Date.now();
   const stored = new Map(rows.map((r) => [r.key, r]));
-  const values = SETTINGS.map((def): SettingView => {
+  const values = settingDefs().map((def): SettingView => {
     const row = stored.get(def.key);
     const fromEnv = environmentValue(def.key);
     const source: SettingSource = row ? "db" : fromEnv ? "env" : "default";
@@ -93,7 +93,7 @@ export async function describeSettings(): Promise<{ groups: typeof SETTING_GROUP
       ...(row ? { updatedAt: row.updatedAt } : {}),
     };
   });
-  return { groups: SETTING_GROUPS, settings: SETTINGS, values };
+  return { groups: settingGroups(), settings: settingDefs(), values };
 }
 
 export class SettingsError extends Error {

@@ -1,38 +1,63 @@
 /**
- * Every module, and which of them are on.
+ * Which modules are on, and the tools a turn offers.
  *
- * Add a module by writing it in its own folder (src/modules/<id>/index.ts: its
- * tools, the prompt section that explains them, its capability and providers)
- * and listing it here. The system prompt, the chats' switches, quotas,
- * balances and the console follow from the list.
+ * The modules come from the list in src/modules/index.ts, checked here when
+ * they load (unique ids, tools and prompt positions; known requirements;
+ * meters on their own tools), so a mistake in a module's definition stops
+ * the gateway from starting instead of showing up in a conversation.
  *
  * A module is on when its switch is on (optional modules: MODULE_<ID>), its
  * capability has a usable provider (capability.ts), its own `ready` says so,
  * every module it requires is on, and (for a chat) the chat hasn't turned it off.
  */
 import { settingValue } from "../config.js";
-import { basicsModule } from "./basics/index.js";
+import { ORDER } from "../prompt/order.js";
+import { switchSetting } from "../settings/catalog.js";
 import { readiness, select } from "./capability.js";
-import { chatModule } from "./chat/index.js";
-import { imageModule } from "./image/index.js";
-import { memoryModule } from "./memory/index.js";
-import { modelModule } from "./model/index.js";
-import { sandboxModule } from "./sandbox/index.js";
-import { searchModule } from "./search/index.js";
+import { loadedModules } from "./index.js";
 import type { Tool, ToolContext, ToolRole } from "./tool.js";
-import type { Module, ModuleId, Readiness } from "./types.js";
-import { voiceModule } from "./voice/index.js";
+import type { Module, Readiness } from "./types.js";
 
-/** In the order their tools and prompt sections appear. */
-export const MODULES: readonly Module[] = [chatModule, basicsModule, modelModule, memoryModule, searchModule, sandboxModule, imageModule, voiceModule];
+/** Throws on the first thing wrong with the modules' definitions. */
+export function checkModules(modules: readonly Module[]): void {
+  const ids = new Set<string>();
+  const tools = new Map<string, string>();
+  const orders = new Map<number, string>();
+  const meters = new Map<string, string>();
+  for (const m of modules) {
+    if (!/^[a-z][a-z0-9]*$/.test(m.id)) throw new Error(`module id "${m.id}": lowercase letters and digits only (it's in MODULE_<ID>)`);
+    if (ids.has(m.id)) throw new Error(`two modules are called ${m.id}`);
+    ids.add(m.id);
+    for (const t of m.tools) {
+      if (tools.has(t.name)) throw new Error(`tool ${t.name} is in both ${tools.get(t.name)} and ${m.id}`);
+      tools.set(t.name, m.id);
+    }
+    if (m.section) {
+      const { order } = m.section;
+      if (order < ORDER.modules.from || order > ORDER.modules.to) throw new Error(`module ${m.id}: section order ${order} is outside ${ORDER.modules.from}–${ORDER.modules.to}`);
+      if (orders.has(order)) throw new Error(`modules ${orders.get(order)} and ${m.id} both put their section at ${order}`);
+      orders.set(order, m.id);
+    }
+    if (m.meter) {
+      if (meters.has(m.meter.key)) throw new Error(`modules ${meters.get(m.meter.key)} and ${m.id} both count into ${m.meter.key}`);
+      meters.set(m.meter.key, m.id);
+      for (const name of m.meter.tools) if (!m.tools.some((t) => t.name === name)) throw new Error(`module ${m.id} meters ${name}, which isn't its tool`);
+    }
+    if (m.core && m.capability) throw new Error(`core module ${m.id} can't depend on a service that may be missing`);
+  }
+  for (const m of modules) for (const r of m.requires ?? []) if (!ids.has(r)) throw new Error(`module ${m.id} requires ${r}, which isn't loaded`);
+}
+
+/** The modules, in order (src/modules/index.ts), checked. */
+export const MODULES = loadedModules();
+checkModules(MODULES);
 
 /** The modules a chat can turn off. */
 export const OPTIONAL_MODULES = MODULES.filter((m) => !m.core);
 
 export const moduleById = (id: string): Module | undefined => MODULES.find((m) => m.id === id);
 
-/** The setting that turns an optional module on or off everywhere ("on" by default); core modules have none. */
-export const switchSetting = (module: Module): string | undefined => (module.core ? undefined : `MODULE_${module.id.toUpperCase()}`);
+export { switchSetting };
 
 /** Whether the module's switch is on (always, for core modules). */
 export function switchedOn(module: Module): boolean {
@@ -136,4 +161,3 @@ export class Toolset {
 /** Every active tool, no chat policy: for health checks, scripts and tests. */
 export const runTool = (name: string, rawArgs: string, ctx: ToolContext) => new Toolset().run(name, rawArgs, ctx);
 
-export type { ModuleId };

@@ -13,7 +13,7 @@ import { use } from "../capability.js";
 import type { ToolContext } from "../tool.js";
 import { sandboxCapability } from "./capability.js";
 
-export const WORKDIR = "/workspace";
+export { WORKDIR } from "./paths.js";
 
 export interface Workspace {
   /** Run a bash command in WORKDIR; output is stdout and stderr combined. */

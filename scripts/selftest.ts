@@ -589,7 +589,7 @@ await test("reply cap: 5 replies per message, the 6th is refused and the model s
 });
 
 await test("stickers: CDN hotlink by default, STICKER_BASE_URL override", async () => {
-  const { STICKERS, stickerUrl, DEFAULT_STICKER_BASE_URL } = await import("../src/modules/chat/stickers.js");
+  const { STICKERS, stickerUrl, DEFAULT_STICKER_BASE_URL } = await import("../src/persona/index.js");
   assert.ok(Object.keys(STICKERS).length >= 30);
   assert.ok(Object.values(STICKERS).every((s) => /^(meme\/\d+\.gif|0_preview\/meme\/\d+\.webp)$/.test(s.file)));
   assert.equal(stickerUrl(DEFAULT_STICKER_BASE_URL, "红温了"), "https://img.aigengtu.com/meme/3153.gif");
@@ -1735,7 +1735,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     const sent: any[] = [];
     const ctx = { ...noCtx, send: async (m: unknown) => (sent.push(m), "sent (reply 1/5)") };
     const out = await runTool("send_voice", JSON.stringify({ text: "[得意地] 本鱼来啦！", instructions: "困困的" }), ctx);
-    assert.match(out, /^sent \(reply 1\/5\) \(voice message: spoken, model=fish-audio\/drama-3, voice=dafeiyu, 0\.5s\)/);
+    assert.match(out, /^sent \(reply 1\/5\) \(voice message: spoken, model=fish-audio\/drama-3, voice=self, 0\.5s\)/);
     const req = calls.find((c) => c.url === "https://tts.example.com/api/v1/audio/speech")!;
     assert.equal(req.headers.get("authorization"), "Bearer tts-key");
     assert.equal(req.body.model, "fish-audio/drama-3");
@@ -1758,12 +1758,12 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     // The model is configuration, not a parameter; the schema offers the voices.
     const schema = activeTools().find((t) => t.name === "send_voice")!;
     assert.equal((schema.parameters as any).properties.model, undefined, "the agent can't pick the model");
-    assert.deepEqual((schema.parameters as any).properties.voice.enum, ["dafeiyu", "none"], "no singing clip configured");
+    assert.deepEqual((schema.parameters as any).properties.voice.enum, ["self", "none"], "no singing clip configured");
     assert.match(schema.description, /The speech model is Fish Audio Drama 3/);
 
     // Singing with Fish: [唱歌] before, ♪ after, a singing instruction and a default style.
     calls.length = 0;
-    assert.match(await runTool("send_voice", JSON.stringify({ text: "小鲸鱼～游呀游～", mode: "sing", speed: 1.2 }), ctx), /\(voice message: sung, model=fish-audio\/drama-3, voice=dafeiyu, speed=1\.2, 0\.5s\)/);
+    assert.match(await runTool("send_voice", JSON.stringify({ text: "小鲸鱼～游呀游～", mode: "sing", speed: 1.2 }), ctx), /\(voice message: sung, model=fish-audio\/drama-3, voice=self, speed=1\.2, 0\.5s\)/);
     let speech = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.equal(speech.input, "[唱歌] 小鲸鱼～游呀游～ ♪");
     assert.match(speech.instructions, /^软萌可爱；这是一段歌唱：.*；欢快的儿歌旋律$/);
@@ -1777,7 +1777,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     calls.length = 0;
     assert.match(
       await runTool("send_voice", JSON.stringify({ text: "睡吧～", mode: "sing", instructions: "温柔的摇篮曲", speed: 1.2 }), ctx),
-      /sung, model=bytedance-seed\/seed-audio-1-0, voice=dafeiyu, speed=1\.2, 1\.0s/,
+      /sung, model=bytedance-seed\/seed-audio-1-0, voice=self, speed=1\.2, 1\.0s/,
     );
     speech = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.equal(speech.model, "bytedance-seed/seed-audio-1-0");
@@ -1801,7 +1801,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     calls.length = 0;
     await runTool("send_voice", JSON.stringify({ text: "hi", model: "openai/gpt-audio" }), ctx);
     assert.equal(calls.find((c) => c.url.endsWith("/audio/speech"))!.body.model, "fish-audio/drama-3", "a model argument is ignored");
-    assert.match(await runTool("send_voice", JSON.stringify({ text: "hi", voice: "dafeiyu_sing" }), ctx), /^Error: voice is one of dafeiyu, none/);
+    assert.match(await runTool("send_voice", JSON.stringify({ text: "hi", voice: "self_sing" }), ctx), /^Error: voice is one of self, none/);
     assert.match(await runTool("send_voice", JSON.stringify({ text: "hi", mode: "rap" }), ctx), /^Error: mode is/);
     assert.match(await runTool("send_voice", JSON.stringify({ text: "hi", speed: 5 }), ctx), /^Error: speed is 0\.5 to 2/);
 
@@ -1809,7 +1809,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     process.env.TTS_SING_REFERENCE_AUDIO = "https://cdn.example.com/sing.mp3";
     process.env.TTS_SING_REFERENCE_TEXT = "啦啦啦";
     calls.length = 0;
-    await runTool("send_voice", JSON.stringify({ text: "啦～", mode: "sing", voice: "dafeiyu_sing" }), ctx);
+    await runTool("send_voice", JSON.stringify({ text: "啦～", mode: "sing", voice: "self_sing" }), ctx);
     speech = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.deepEqual(speech.input_references, [{ type: "input_audio", input_audio: { url: "https://cdn.example.com/sing.mp3" } }, { type: "text", text: "啦啦啦" }]);
     delete process.env.TTS_SING_REFERENCE_AUDIO;
@@ -2080,7 +2080,7 @@ await test("admin api: login, cookie session, same-origin JSON only; a new ADMIN
     const auth = { cookie: cookie.split(";")[0]! };
     assert.equal((await req("GET", "settings", undefined, auth)).status, 200);
     const status = (await (await req("GET", "status", undefined, auth)).json()) as any;
-    assert.equal(status.model, true);
+    assert.equal(status.modules.find((m: any) => m.id === "model").ok, true, "the model module is ready: its key is set");
     assert.equal(status.channels.find((c: any) => c.name === "qq").webhook, "https://bot.example.com/api/webhook/qq");
     assert.equal((await req("PUT", "settings", { changes: { AGENT_MAX_STEPS: "abc" } }, auth)).status, 400);
     assert.equal((await req("GET", "nope", undefined, auth)).status, 404);

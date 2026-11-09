@@ -20,13 +20,14 @@ const FULL = {
 Object.assign(process.env, FULL);
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
 
-const { MODULES, OPTIONAL_MODULES, Toolset, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
+const { MODULES, OPTIONAL_MODULES, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
 const { select } = await import("../src/modules/capability.js");
 const { assemble } = await import("../src/prompt/assemble.js");
 const { interpolate } = await import("../src/prompt/variables.js");
-const { PERSONA } = await import("../src/prompt/persona.js");
+const { PERSONA_PROMPT, EXAMPLES, persona } = await import("../src/persona/index.js");
 const { RULES, SCENE_RULES } = await import("../src/prompt/rules.js");
-const { SETTING_GROUPS, SETTINGS, settingDef } = await import("../src/settings/catalog.js");
+const { settingGroups, settingDefs, settingDef } = await import("../src/settings/catalog.js");
+const { ORDER } = await import("../src/prompt/order.js");
 const { parseProfile, PROFILE_CHOICES } = await import("../src/chats/profile.js");
 const { turnUsage, quotaPolicy } = await import("../src/chats/usage.js");
 const { channels } = await import("../src/channels/index.js");
@@ -65,7 +66,7 @@ await test("every module is on when everything is configured", () => {
 });
 
 await test("the persona, the rules and the scenes name no tools", () => {
-  for (const [where, text] of [["persona", PERSONA], ["rules", RULES], ["private", SCENE_RULES.private], ["group", SCENE_RULES.group]]) {
+  for (const [where, text] of [["persona", PERSONA_PROMPT], ["rules", RULES], ["private", SCENE_RULES.private], ["group", SCENE_RULES.group]]) {
     for (const name of allToolNames) assert.ok(!text!.includes(name), `${where} names ${name}`);
   }
 });
@@ -130,7 +131,7 @@ await test("an optional module's switch turns it off everywhere, and what requir
     const def = settingDef(`MODULE_${m.id.toUpperCase()}`)!;
     assert.ok(def, `${m.id} has a switch`);
     assert.equal(def.default, "on");
-    assert.equal(def.group, m.settings);
+    assert.equal(def.group, m.config!.group.id);
   }
   await withEnv({ MODULE_SEARCH: "off" }, () => {
     const search = MODULES.find((m) => m.id === "search")!;
@@ -147,9 +148,7 @@ await test("an optional module's switch turns it off everywhere, and what requir
 await test("choosing a provider: chosen, automatic, missing, unconfigured, none, several", async () => {
   const provider = (id: string, ok: boolean) => ({
     id,
-    label: id.toUpperCase(),
-    description: "",
-    settings: "x",
+    config: { group: { id: `t.${id}`, label: id.toUpperCase(), help: "" }, settings: [] },
     available: () => (ok ? ({ ok: true } as const) : ({ ok: false, reason: `${id} 缺 key` } as const)),
     create: () => id,
   });
@@ -176,11 +175,10 @@ await test("an undefined {{variable}} stops the prompt instead of reaching the m
 
 await test("the voice section follows the speech model's dialect", async () => {
   const voice = () => prompt("group").sections.find((s) => s.name === "module:voice")!.text;
-  assert.match(voice(), /现在是 Fish 模型/);
-  assert.match(voice(), /send_voice\(text="\[得意地\]/);
+  assert.match(voice(), /现在是 Fish 模型：可在 `text` 里用 `\[得意地\]`/);
   await withEnv({ TTS_MODEL: "bytedance-seed/seed-audio-1.0" }, () => {
     assert.match(voice(), /现在是 Seed 模型/);
-    assert.doesNotMatch(voice(), /\[得意地\]/, "no inline tags in Seed's example");
+    assert.doesNotMatch(voice(), /\[得意地\]/, "Seed gets no inline tags");
     assert.match(new Toolset().definitions().find((d) => d.name === "send_voice")!.description, /ByteDance Seed/);
   });
 });
@@ -238,14 +236,15 @@ await test("a chat's switches: disabledModules, module ids only", () => {
   );
 });
 
-await test("settings: every module and provider group exists; provider choices list the providers", () => {
-  const groups = new Set(SETTING_GROUPS.map((g) => g.id));
-  for (const def of SETTINGS) assert.ok(groups.has(def.group), `${def.key} is in group ${def.group}`);
+await test("settings: each module brings its own, the catalog collects them, switches and provider choices included", () => {
+  const groups = settingGroups();
+  const ids = new Set(groups.map((g) => g.id));
+  for (const def of settingDefs()) assert.ok(ids.has(def.group), `${def.key} is in group ${def.group}`);
   for (const m of MODULES) {
-    if (m.settings) assert.ok(groups.has(m.settings), `${m.id}'s group ${m.settings}`);
+    if (m.config) assert.equal(groups.find((g) => g.id === m.config!.group.id)!.module, m.id, `${m.id}'s group is tagged with it`);
     for (const p of m.capability?.providers ?? []) {
-      assert.ok(groups.has(p.settings), `${m.id}/${p.id}'s group ${p.settings}`);
-      assert.equal(SETTING_GROUPS.find((g) => g.id === p.settings)!.provider?.id, p.id);
+      const g = groups.find((x) => x.id === p.config.group.id)!;
+      assert.deepEqual([g.module, g.provider], [m.id, { capability: m.capability!.id, id: p.id }]);
     }
     if (m.capability) {
       const choice = settingDef(m.capability.selectionSetting)!;
@@ -256,26 +255,78 @@ await test("settings: every module and provider group exists; provider choices l
       );
     }
   }
-  assert.equal(new Set(SETTINGS.map((d) => d.key)).size, SETTINGS.length, "no key twice");
+  assert.equal(new Set(settingDefs().map((d) => d.key)).size, settingDefs().length, "no key twice");
+  assert.equal(settingDef("OPENAI_RESPONSES_API_KEY")!.group, "llm", "the model's settings come with the model module");
+  assert.equal(groups.find((g) => g.id === "llm")!.module, "model");
+  assert.equal(settingDef("STICKER_BASE_URL")!.group, "chat", "the sticker CDN comes with the chat module");
 });
 
-await test("settings files are pure data: no runtime imports (the catalog reads them, and config reads the catalog)", () => {
-  const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const f of readdirSync(dir)) {
-      const p = path.join(dir, f);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (f === "settings.ts") files.push(p);
+await test("a module's definition is checked when the modules load", () => {
+  const base = MODULES.find((m) => m.id === "search")!;
+  const bad = (change: object) => [...MODULES.filter((m) => m !== base), { ...base, ...change }];
+  assert.doesNotThrow(() => checkModules(MODULES));
+  assert.throws(() => checkModules([...MODULES, base]), /two modules are called search/);
+  assert.throws(() => checkModules(bad({ id: "Search!" })), /lowercase letters and digits/);
+  assert.throws(() => checkModules(bad({ section: { order: 5000, text: () => "" } })), /chat and search both put their section at 5000/);
+  assert.throws(() => checkModules(bad({ section: { order: 100, text: () => "" } })), /outside 5000–7999/);
+  assert.throws(() => checkModules(bad({ requires: ["nope"] })), /requires nope, which isn't loaded/);
+  assert.throws(() => checkModules(bad({ meter: { key: "images", label: "x", tools: ["web_search"] } })), /both count into images/);
+  assert.throws(() => checkModules(bad({ meter: { key: "x", label: "x", tools: ["bash"] } })), /meters bash, which isn't its tool/);
+  assert.throws(() => checkModules(bad({ tools: [...base.tools, MODULES[0]!.tools[0]!] })), /tool send_message is in both chat and search/);
+  for (const m of MODULES) if (m.section) assert.ok(m.section.order >= ORDER.modules.from && m.section.order <= ORDER.modules.to);
+});
+
+await test("the persona lives in src/persona: no module names her, or anything about her", () => {
+  const banned = [persona.name, "dafeiyu", "鲸鱼", "whale", "白饭", "小本本"];
+  for (const file of sourceFiles("src/modules")) {
+    const text = readFileSync(file, "utf8");
+    for (const word of banned) assert.ok(!text.includes(word), `${path.relative(process.cwd(), file)} mentions ${word}`);
+  }
+});
+
+await test("the persona's examples follow the modules: an example shows only while its module is on", () => {
+  for (const id of Object.keys(EXAMPLES)) assert.ok(MODULES.some((m) => m.id === id), `examples for ${id}, which isn't a module`);
+  const examples = (off: string[]) => prompt("group", off).sections.find((s) => s.name === "examples")?.text ?? "";
+  assert.match(examples([]), /send_voice/);
+  assert.match(examples([]), /remember\(/);
+  assert.doesNotMatch(examples(["voice"]), /send_voice/);
+  assert.doesNotMatch(examples(["memory"]), /remember\(/);
+  assert.match(examples(["voice", "memory"]), /send_sticker/, "the chat module's stay");
+});
+
+await test("modules reach each other only through each other's index.ts (like dsh's injected services)", () => {
+  const root = fileURLToPath(new URL("../src/modules", import.meta.url));
+  const modules = new Set(MODULES.map((m) => m.id));
+  for (const file of sourceFiles("src/modules")) {
+    const own = path.relative(root, file).split(path.sep)[0]!;
+    if (!modules.has(own)) continue;
+    for (const [, spec] of readFileSync(file, "utf8").matchAll(/from "(\.[^"]+)"/g)) {
+      const target = path.relative(root, path.resolve(path.dirname(file), spec!));
+      const [other, ...rest] = target.split(path.sep);
+      if (!modules.has(other!) || other === own) continue;
+      assert.equal(rest.join("/"), "index.js", `${path.relative(root, file)} imports ${target}: use ${other}/index.ts`);
+      assert.ok(MODULES.find((m) => m.id === own)!.requires?.includes(other!), `${own} imports ${other} without requiring it`);
     }
-  };
-  walk(fileURLToPath(new URL("../src/modules", import.meta.url)));
-  assert.ok(files.length >= 10);
-  for (const file of files) {
-    for (const line of readFileSync(file, "utf8").split("\n")) {
-      if (line.startsWith("import ")) assert.ok(line.startsWith("import type "), `${file}: ${line}`);
+    // The registry and the catalog sit above the modules: a module never reads them.
+    for (const [, spec] of readFileSync(file, "utf8").matchAll(/from "(\.[^"]+)"/g)) {
+      const target = path.resolve(path.dirname(file), spec!);
+      assert.ok(!/modules\/registry\.js$|settings\/catalog\.js$/.test(target) || /import type/.test(readFileSync(file, "utf8").split("\n").find((l) => l.includes(spec!))!), `${path.relative(root, file)} imports ${spec}`);
     }
   }
 });
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const f of readdirSync(d)) {
+      const p = path.join(d, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (p.endsWith(".ts")) out.push(p);
+    }
+  };
+  walk(fileURLToPath(new URL(`../${dir}`, import.meta.url)));
+  return out;
+}
 
 if (failed) {
   console.error(`${failed} failed`);

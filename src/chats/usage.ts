@@ -15,12 +15,11 @@ import { config } from "../config.js";
 import { isEvent, type SessionEvent, type Usage } from "../conversation/events.js";
 import { getStore, SchemaOutdatedError, type UsageCounts, type UsageStore } from "../store/index.js";
 import { moduleOfTool, type ToolPolicy } from "../modules/registry.js";
-import type { MeterKey } from "../modules/types.js";
 import { beijingTime, nextDayStart, utcDay } from "./day.js";
 import type { ChatProfile } from "./profile.js";
 
 /** The counter a tool adds to (and whose quota it is under): its module's meter, if it counts toward it. */
-function counterOf(toolName: string): MeterKey | undefined {
+function counterOf(toolName: string): string | undefined {
   const meter = moduleOfTool(toolName)?.meter;
   return meter?.tools.includes(toolName) ? meter.key : undefined;
 }

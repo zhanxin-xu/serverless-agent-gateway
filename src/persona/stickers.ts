@@ -9,9 +9,11 @@
  * edge so they display at the same size in chat: the Q-style GIFs are 512×512
  * originals (meme/NNN.gif); the memes use the archive's 512px preview
  * (0_preview/meme/NNN.webp) instead of the 700–1250px originals.
- * Set STICKER_BASE_URL to serve your own copies instead (same paths).
+ * Set STICKER_BASE_URL (the chat module's setting) to serve your own copies
+ * instead (same paths).
  *
- * The key is what the model passes to send_sticker; `when` tells it when to use it.
+ * Her stickers, so they live with the persona; the chat module's send_sticker
+ * offers them. The key is what the model passes; `when` tells it when to use it.
  */
 export const STICKERS = {
   // ── Q 版动态表情（同一套画风） ──

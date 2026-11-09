@@ -7,7 +7,8 @@
  */
 import crypto from "node:crypto";
 import path from "node:path";
-import { WORKDIR, type Workspace } from "../../workspace.js";
+import { WORKDIR } from "../../paths.js";
+import type { Workspace } from "../../workspace.js";
 import { vercelSandboxConfig } from "./config.js";
 
 /**

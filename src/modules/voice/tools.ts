@@ -5,7 +5,7 @@
  * speaking or singing, and the speed.
  */
 import { use } from "../capability.js";
-import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../chat/tools.js";
+import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../shared/reply.js";
 import type { Tool } from "../tool.js";
 import { speechCapability } from "./capability.js";
 
@@ -31,10 +31,9 @@ function description(): string {
       .join("\n") +
     "\n\nSinging: `mode: \"sing\"`, lyrics in `text`, the style in `instructions` (\"温柔的摇篮曲\", \"摇滚，很有劲\"). " +
     "The tool adds each model's singing cues for you. It's a cappella with a melody the model makes up: a few lines, not a whole song. " +
-    "Short lines, held notes marked with ～ (小鲸鱼～游呀游～). A public-domain tune can anchor the melody (\"用《小星星》的旋律\"). " +
+    "Short lines, held notes marked with ～ (小星星～亮晶晶～). A public-domain tune can anchor the melody (\"用《小星星》的旋律\"). " +
     "Sing words you make up or that they wrote; for a well-known song, write your own playful words instead of its lyrics.\n\n" +
-    "When it doesn't land (they say it sounds off, or like reading), try another voice or wording instead of resending the same thing; " +
-    "if a combination works well for someone, remember it."
+    "When it doesn't land (they say it sounds off, or like reading), try another voice or wording instead of resending the same thing."
   );
 }
 

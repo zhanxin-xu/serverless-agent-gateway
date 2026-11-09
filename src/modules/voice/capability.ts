@@ -4,7 +4,7 @@ import { openaiSpeechProvider } from "./providers/openai-speech/index.js";
 
 /** A voice the model can pick. */
 export interface VoiceChoice {
-  /** What goes in send_voice's `voice`: "dafeiyu", "none"… */
+  /** What goes in send_voice's `voice`: "self" (her own), "self_sing", "none"… */
   id: string;
   /** What it is, for the tool description. */
   about: string;
@@ -38,7 +38,7 @@ export interface SpeechBackend {
    * because Fish wants inline tags and Seed must not see any. `tool` goes in
    * send_voice's description, `prompt` (one line) in the voice module's section.
    */
-  dialect(): { tool: string; prompt: string; inlineTags: boolean };
+  dialect(): { tool: string; prompt: string };
   speak(request: SpeechRequest): Promise<SpeechResult>;
 }
 
@@ -46,5 +46,8 @@ export const speechCapability: Capability<SpeechBackend> = {
   id: "speech",
   label: "语音服务",
   selectionSetting: "VOICE_PROVIDER",
-  providers: [openaiSpeechProvider],
+  // Read when used, not while the files load (see src/modules/index.ts).
+  get providers() {
+    return [openaiSpeechProvider];
+  },
 };

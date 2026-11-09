@@ -10,7 +10,6 @@ import { config } from "../config.js";
 import { settingDef, type SettingOption } from "../settings/catalog.js";
 import { getStore, SchemaOutdatedError, type ProfileStore } from "../store/index.js";
 import { OPTIONAL_MODULES } from "../modules/registry.js";
-import type { MeterKey } from "../modules/types.js";
 
 /**
  *   normal:  an @ or a DM is always answered; ordinary group messages are sampled (it may chime in).
@@ -21,7 +20,7 @@ import type { MeterKey } from "../modules/types.js";
 export type ReplyMode = "normal" | "mention" | "record" | "block";
 
 /** Daily limits: the model's cost, and each metered module's counter. See usage.ts for how each is counted. */
-export type QuotaKey = "cost_usd" | MeterKey;
+export type QuotaKey = string;
 
 /**
  * What a chat's settings can be, with their names for people (the console

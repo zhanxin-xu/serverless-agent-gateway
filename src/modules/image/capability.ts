@@ -30,5 +30,8 @@ export const imageCapability: Capability<ImageBackend> = {
   id: "image",
   label: "画图服务",
   selectionSetting: "IMAGE_PROVIDER",
-  providers: [openrouterImagesProvider],
+  // Read when used, not while the files load (see src/modules/index.ts).
+  get providers() {
+    return [openrouterImagesProvider];
+  },
 };

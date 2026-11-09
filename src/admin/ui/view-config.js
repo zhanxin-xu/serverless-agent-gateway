@@ -24,7 +24,15 @@ export async function renderConfig(main, [groupParam], app) {
       "header",
       { class: "page-head" },
       h("h1", null, "配置"),
-      h("p", { class: "muted" }, "渠道、Agent 参数和管理端自己的设置。模型、画图、语音、搜索、记忆、沙盒在", h("a", { href: "#/modules" }, "模块"), "页里配置。保存后 30 秒内所有实例生效，不用重新部署；密钥只能替换，不能查看。"),
+      h(
+        "p",
+        { class: "muted" },
+        "渠道、Agent 参数和管理端自己的设置。",
+        status.modules.filter((m) => m.settings).map((m) => m.label).join("、"),
+        "在",
+        h("a", { href: "#/modules" }, "模块"),
+        "页里配置。保存后 30 秒内所有实例生效，不用重新部署；密钥只能替换，不能查看。",
+      ),
     ),
     h(
       "div",

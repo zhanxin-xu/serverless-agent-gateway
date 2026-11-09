@@ -78,7 +78,7 @@
 | `text` | 要说或唱的内容，最多 500 字，按所选模型的写法（Fish 可以夹带下面的语气指令） |
 | `instructions` | 可选，整条语音的语气，例如 `像在讲睡前故事`；唱歌时是风格（`温柔的摇篮曲`）；音色选 `none` 时用来描述角色的声音。会接在 `TTS_INSTRUCTIONS` 后面一起发给接口（`none` 时不带 `TTS_INSTRUCTIONS`） |
 | `mode` | `speak`（默认）或 `sing`：把 `text` 当歌词唱 |
-| `voice` | `dafeiyu`（默认，克隆大肥鱼）、`dafeiyu_sing`（配置了唱歌参考音频才有）、`none`（不克隆，演别的角色） |
+| `voice` | `self`（默认，克隆人设自己的声音）、`self_sing`（配置了唱歌参考音频才有）、`none`（不克隆，演别的角色） |
 | `speed` | 可选，0.5–2，Fish 认，Seed 忽略（不会发给它） |
 | `reply_to` | 回复哪条消息，同 `send_message` |
 | `quote` | 显示成引用 `reply_to` 那条消息，同 `send_message` |
@@ -139,7 +139,7 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 表情包
 
-`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在 [`src/modules/chat/stickers.ts`](../src/modules/chat/stickers.ts)：
+`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在人设里 [`src/persona/stickers.ts`](../src/persona/stickers.ts)：
 
 - **情绪类**：28 张 Q 版动态 GIF，比如笑死、红温了、已老实、你礼貌吗、退退退、吃瓜、贴贴、晚安。
 - **梗图类**：10 张经典梗图，比如得加钱、摆烂、蹭饭、用户别走、无可奉告。

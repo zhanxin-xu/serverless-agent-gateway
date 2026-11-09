@@ -1,7 +1,7 @@
 /** Drawing, editing pictures, selfies. Needs the workspace: references come from it and results go to it. */
-import { ORDER } from "../../prompt/order.js";
 import type { PromptSectionContext } from "../../prompt/types.js";
 import type { Module } from "../types.js";
+import { CONFIG } from "./settings.js";
 import { imageCapability } from "./capability.js";
 import { imageConfig } from "./config.js";
 import { generateImage, imageBalance, imageKeyLimit } from "./tools.js";
@@ -18,15 +18,18 @@ function guide(ctx: PromptSectionContext): string {
   return `# 画图、发自拍与修图（generate_image）\n\n${lines.filter(Boolean).join("\n")}`;
 }
 
-export const imageModule: Module = {
-  id: "image",
-  label: "画图",
-  summary: "generate_image 画图、修图、发自拍，结果存进工作区再用 send_file 发出去。需要沙盒。",
-  requires: ["sandbox"],
-  capability: imageCapability,
-  settings: "image",
-  tools: [generateImage, imageKeyLimit],
-  section: { order: ORDER.module.image, text: guide },
-  meter: { key: "images", label: "画图（张）", tools: [generateImage.name] },
-  balance: imageBalance,
-};
+/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+export function imageModule(): Module {
+  return {
+    id: "image",
+    label: "画图",
+    summary: "generate_image 画图、修图、发自拍，结果存进工作区再用 send_file 发出去。需要沙盒。",
+    requires: ["sandbox"],
+    capability: imageCapability,
+    config: CONFIG,
+    tools: [generateImage, imageKeyLimit],
+    section: { order: 5500, text: guide },
+    meter: { key: "images", label: "画图（张）", tools: [generateImage.name] },
+    balance: imageBalance,
+  };
+}

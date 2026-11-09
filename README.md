@@ -81,12 +81,12 @@
 
 | 想改什么 | 改哪里 |
 |---|---|
-| 人设和说话风格 | [`src/prompt/persona.ts`](src/prompt/persona.ts) |
+| 人设：她是谁、长相、声音、表情包、示例 | [`src/persona/`](src/persona/) |
 | 每一轮怎么决策 | [`src/prompt/rules.ts`](src/prompt/rules.ts) |
 | 某个工具怎么用 | 它所在模块的说明，比如 [`src/modules/memory/index.ts`](src/modules/memory/index.ts) |
 | 新增工具、模块，或换一家服务 | [`src/modules/`](src/modules/)，见[模块](docs/modules.md) |
 | 渠道 | [`src/channels/`](src/channels/)，见[新增渠道](docs/channels.md#新增渠道) |
-| 表情包 | [`src/modules/chat/stickers.ts`](src/modules/chat/stickers.ts) |
+| 表情包 | [`src/persona/stickers.ts`](src/persona/stickers.ts) |
 
 ## 本地开发
 
@@ -149,18 +149,22 @@ src/
     budget.ts            时间预算：什么时候交接、每次调用能用多久
     model.ts             Responses API 请求
     compaction.ts        上下文压缩
+  persona/               人设：她的全部事实，模块从这里读
+    prompt.ts            她是谁（系统提示第一段，不提任何工具）
+    examples.ts          她用各模块工具的示例
+    stickers.ts          她的表情包
   prompt/                系统提示：有名字、有序号的段落
-    persona.ts           人设（不提任何工具）
     rules.ts             业务规则：每一轮怎么决策、你看到的信息、私聊 / 群聊
     order.ts             每段的位置
     assemble.ts          把人设、规则、渠道、开启的模块的段落和工具定义一起拼好
-  modules/               模块：一组工具 + 说明它们的段落 + 背后的服务
-    types.ts / registry.ts   模块、能力、实现的接口；模块清单和开关判断
+  modules/               模块：一组工具 + 说明它们的段落 + 配置 + 背后的服务
+    index.ts             模块清单：加载哪些模块（新增模块只改这里）
+    types.ts / registry.ts   模块、能力、实现的接口；定义检查和开关判断
     capability.ts        从一种能力的多个实现里选一个
     tool.ts              工具接口
-    chat/                核心：send_message、send_sticker、end_turn、chat_members、表情包清单
+    chat/                核心：send_message、send_sticker、end_turn、chat_members
     basics/              核心：时间、计算器
-    model/               核心：聊天模型 key 的余额
+    model/               核心：聊天模型的配置、检查、key 的余额
     search/              搜索：web_search、web_fetch、余额；实现 providers/deepseek
     memory/              长期记忆；实现 providers/upstash-vector
     sandbox/             沙盒工作区；实现 providers/vercel-sandbox

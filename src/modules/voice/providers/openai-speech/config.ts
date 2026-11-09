@@ -1,8 +1,5 @@
 import { settingInt, settingJson, settingValue } from "../../../../config.js";
-import { DEFAULT_VOICE_REFERENCE } from "./settings.js";
-
-/** What the built-in voice clip says (TTS_REFERENCE_TEXT's default while that clip is used). */
-const DEFAULT_VOICE_REFERENCE_TEXT = "嘿嘿，本鱼来啦！我是大肥鱼，住在深海里的小鲸鱼～有什么问题尽管问我，答对了要请我吃小鱼干哦！";
+import { persona } from "../../../../persona/index.js";
 
 /** "none" turns a clip setting off. */
 const clip = (name: string) => {
@@ -30,11 +27,11 @@ export const speechConfig = {
   get referenceAudio() {
     return clip("TTS_REFERENCE_AUDIO");
   },
-  /** What the reference audio says (helps the clone). Defaults to the built-in clip's words when that clip is used. */
+  /** What the reference audio says (helps the clone). Defaults to the persona's clip's words while that clip is used. */
   get referenceText() {
-    return settingValue("TTS_REFERENCE_TEXT", this.referenceAudio === DEFAULT_VOICE_REFERENCE ? DEFAULT_VOICE_REFERENCE_TEXT : "");
+    return settingValue("TTS_REFERENCE_TEXT", this.referenceAudio === persona.voice.clip ? persona.voice.transcript : "");
   },
-  /** Optional second clip of the same voice singing, offered to the model as voice "dafeiyu_sing". */
+  /** Optional second clip of the same voice singing, offered to the model as voice "self_sing". */
   get singReferenceAudio() {
     return clip("TTS_SING_REFERENCE_AUDIO");
   },

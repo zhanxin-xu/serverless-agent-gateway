@@ -32,6 +32,9 @@ export const memoryCapability: Capability<VectorMemory> = {
   id: "vector-memory",
   label: "记忆存储",
   selectionSetting: "MEMORY_PROVIDER",
-  providers: [upstashVectorProvider],
+  // Read when used, not while the files load (see src/modules/index.ts).
+  get providers() {
+    return [upstashVectorProvider];
+  },
   stateful: true,
 };

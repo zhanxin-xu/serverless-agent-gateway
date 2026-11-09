@@ -12,6 +12,8 @@ export interface ModuleView {
   label: string;
   summary: string;
   core: boolean;
+  /** "required": a step of its own in the setup guide. */
+  setup: string | null;
   requires: string[];
   /** Its switch (optional modules): the setting, and whether it's on. A module switched on may still be off: see `ok`. */
   switch: { setting: string; on: boolean } | null;
@@ -46,11 +48,12 @@ export function describeModule(m: Module): ModuleView {
     label: m.label,
     summary: m.summary,
     core: Boolean(m.core),
+    setup: m.setup ?? null,
     requires: m.requires ?? [],
     switch: setting ? { setting, on: switchedOn(m) } : null,
     ok: status.ok,
     ...(status.ok ? {} : { reason: status.reason }),
-    settings: m.settings ?? null,
+    settings: m.config?.group.id ?? null,
     capability: capability
       ? {
           id: capability.id,
@@ -63,9 +66,9 @@ export function describeModule(m: Module): ModuleView {
             const available = p.available();
             return {
               id: p.id,
-              label: p.label,
-              description: p.description,
-              settings: p.settings,
+              label: p.config.group.label,
+              description: p.config.group.help,
+              settings: p.config.group.id,
               available: available.ok,
               ...(available.ok ? {} : { reason: available.reason }),
             };

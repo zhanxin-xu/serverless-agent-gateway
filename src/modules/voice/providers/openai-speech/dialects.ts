@@ -13,8 +13,6 @@ export interface ModelKind {
   sing: { input(text: string): string; instructions: string; defaultStyle: string };
   /** Whether it honors `speed`. */
   speed: boolean;
-  /** Whether it takes [directions] and <tags> inside `text`. */
-  inlineTags: boolean;
 }
 
 export const FISH: ModelKind = {
@@ -38,7 +36,6 @@ export const FISH: ModelKind = {
     defaultStyle: "欢快的儿歌旋律",
   },
   speed: true,
-  inlineTags: true,
 };
 
 export const SEED: ModelKind = {
@@ -54,7 +51,6 @@ export const SEED: ModelKind = {
     defaultStyle: "欢快可爱的儿歌",
   },
   speed: false,
-  inlineTags: false,
 };
 
 /** Any other model: no inline syntax assumed. */
@@ -64,7 +60,6 @@ export const GENERIC: ModelKind = {
   syntax: "Write `text` as plain words; put direction in `instructions`.",
   sing: { input: (text) => text, instructions: "唱出来，有旋律和节奏，不要念白", defaultStyle: "欢快的旋律" },
   speed: true,
-  inlineTags: false,
 };
 
 export function kindOf(model: string): ModelKind {

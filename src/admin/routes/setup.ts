@@ -2,7 +2,6 @@
  * The setup guide's checks and actions: what's configured, creating the
  * database, and testing each service with the settings in effect.
  */
-import { createResponse, outputText } from "../../agent/model.js";
 import { channels } from "../../channels/index.js";
 import { config } from "../../config.js";
 import { describeModules } from "../modules.js";
@@ -43,7 +42,6 @@ export const setupRoutes: Route[] = [
       return {
         origin: req.origin,
         database,
-        model: Boolean(config.llm.apiKey),
         channels: [...channels.values()].map((c) => ({
           name: c.name,
           label: c.label,
@@ -71,19 +69,6 @@ export const setupRoutes: Route[] = [
       await getStore().log("schema", null, { version: SCHEMA_VERSION });
       return databaseStatus();
     },
-  },
-  {
-    method: "POST",
-    path: "checks/model",
-    handler: () =>
-      attempt(async () => {
-        if (!config.llm.apiKey) throw new Error("还没填 API Key");
-        const response = await createResponse(
-          { model: config.llm.model, ...config.llm.extraBody, instructions: "用不超过十个字打个招呼。", input: "你好" },
-          { timeoutMs: 60_000 },
-        );
-        return `${config.llm.model} 回复：${outputText(response.output ?? []).trim() || "（空）"}`;
-      }),
   },
   {
     method: "POST",

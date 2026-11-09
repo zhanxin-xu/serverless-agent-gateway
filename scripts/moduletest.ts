@@ -27,7 +27,7 @@ const { interpolate } = await import("../src/prompt/variables.js");
 const { PERSONA } = await import("../src/prompt/persona.js");
 const { RULES, SCENE_RULES } = await import("../src/prompt/rules.js");
 const { SETTING_GROUPS, SETTINGS, settingDef } = await import("../src/settings/catalog.js");
-const { parseProfile, storedProfile, PROFILE_CHOICES } = await import("../src/chats/profile.js");
+const { parseProfile, PROFILE_CHOICES } = await import("../src/chats/profile.js");
 const { turnUsage, quotaPolicy } = await import("../src/chats/usage.js");
 const { channels } = await import("../src/channels/index.js");
 
@@ -205,15 +205,10 @@ await test("meters count only their own tools, under counters usage_daily alread
   assert.equal(policy.refuse!(tool("get_image_key_limit"), undefined), undefined);
 });
 
-await test("a chat's switches: disabledModules, read from profiles stored before it as disabledTools", () => {
-  assert.deepEqual(parseProfile({ disabledTools: ["memory"] }), { disabledModules: ["memory"] }, "only the old name");
-  assert.deepEqual(parseProfile({ disabledModules: ["voice"] }), { disabledModules: ["voice"] }, "only the new name");
-  assert.deepEqual(parseProfile({ disabledModules: ["voice"], disabledTools: ["voice"], v: 2 }), { disabledModules: ["voice"] }, "both");
-  assert.deepEqual(parseProfile({ title: "x" }), { title: "x" }, "neither");
-  assert.deepEqual(parseProfile({ disabledTools: ["nope"], title: "x" }), { title: "x" }, "an unknown module drops the switches only");
-  assert.deepEqual(storedProfile({ disabledModules: ["memory"] }), { disabledModules: ["memory"], disabledTools: ["memory"], v: 2 }, "both written until v5");
-  assert.deepEqual(storedProfile({ title: "x" }), { title: "x", v: 2 });
-  assert.equal(storedProfile({}), null);
+await test("a chat's switches: disabledModules, module ids only", () => {
+  assert.deepEqual(parseProfile({ disabledModules: ["voice"] }), { disabledModules: ["voice"] });
+  assert.deepEqual(parseProfile({ title: "x" }), { title: "x" });
+  assert.deepEqual(parseProfile({ disabledModules: ["nope"], title: "x" }), { title: "x" }, "an unknown module drops the switches only");
   assert.deepEqual(
     PROFILE_CHOICES.features.map((f) => f.value),
     OPTIONAL_MODULES.map((m) => m.id),

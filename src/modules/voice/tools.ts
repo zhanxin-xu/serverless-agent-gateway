@@ -6,7 +6,7 @@
  */
 import { use } from "../capability.js";
 import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../chat/tools.js";
-import { VOICE_LABEL, type Tool } from "../tool.js";
+import type { Tool } from "../tool.js";
 import { speechCapability } from "./capability.js";
 
 /** Long text makes a long, slow message; chat voice should be short. */
@@ -41,7 +41,6 @@ function description(): string {
 export const sendVoice: Tool = {
   name: "send_voice",
   role: "talk",
-  historyLine: (args) => `${VOICE_LABEL}${String(args.text ?? "").trim()}`,
   get description() {
     return description();
   },

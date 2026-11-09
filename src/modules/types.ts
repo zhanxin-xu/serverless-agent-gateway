@@ -13,7 +13,7 @@
 import type { Tool } from "./tool.js";
 import type { PromptSectionContext } from "../prompt/types.js";
 
-/** Stable ids: stored in chat settings and quotas (never rename; see `aliases`). */
+/** Stable ids: stored in chat settings and quotas, so never renamed. */
 export type ModuleId = "chat" | "basics" | "model" | "memory" | "search" | "sandbox" | "image" | "voice";
 
 /** The daily counters a module can be metered by: the keys of gateway.usage_daily.counts. */
@@ -62,8 +62,6 @@ export interface Module {
   balance?(): Promise<Balance> | undefined;
   /** A real call to its service, for the console's "check" button: a line saying what worked, or a throw. */
   check?(): Promise<string>;
-  /** Tool names this module used to have (old events still name them). */
-  aliases?: string[];
 }
 
 export interface Capability<Impl> {

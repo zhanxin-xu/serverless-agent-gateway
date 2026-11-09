@@ -37,7 +37,6 @@ export const sendMessage: Tool = {
     properties: { text: { type: "string", description: "The message text (plain text)." }, reply_to: REPLY_TO, quote: QUOTE },
     required: ["text"],
   },
-  historyLine: (args) => String(args.text ?? "").trim() || undefined,
   async run(args, ctx) {
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("text is empty");
@@ -59,7 +58,6 @@ export const sendSticker: Tool = {
     properties: { name: { type: "string", enum: STICKER_NAMES, description: "Sticker name." }, reply_to: REPLY_TO, quote: QUOTE },
     required: ["name"],
   },
-  historyLine: (args) => stickerLabel(String(args.name ?? "")),
   async run(args, ctx) {
     const name = String(args.name ?? "");
     if (!isStickerName(name)) throw new Error(`unknown sticker "${name}"`);

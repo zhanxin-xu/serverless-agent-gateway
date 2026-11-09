@@ -7,14 +7,9 @@
  *   user/message   → "user" (an admin's whisper → "hint")
  *   bot/sent       → "bot": everything it delivered, by tool or not
  *   admin/message  → "admin"
- *
- * Logs from before bot/sent existed: up to a chat's first bot/sent, the bot's
- * lines come from its successful calls of tools that deliver, worded by each
- * tool (Tool.historyLine). Answers the runner sent itself aren't in those.
  */
 import { isEvent, isWhisper, type SessionEvent } from "../conversation/events.js";
 import type { ChatStore, ConsoleStore } from "../store/index.js";
-import { historyLine } from "../modules/registry.js";
 
 export type HistoryRole = "user" | "bot" | "admin" | "hint";
 
@@ -33,10 +28,6 @@ export interface HistoryEntry {
 /** History lines in log order. */
 export function historyFromEvents(events: SessionEvent[]): HistoryEntry[] {
   const lines: HistoryEntry[] = [];
-  const firstSent = events.find((e) => isEvent(e, "bot/sent"))?.seq ?? Infinity;
-  const results = new Map<string, SessionEvent<"tool/result">>();
-  for (const e of events) if (isEvent(e, "tool/result") && e.seq < firstSent) results.set(e.data.callId, e);
-
   for (const e of events) {
     if (isEvent(e, "user/message")) {
       const images = e.data.images?.length ? `[图片×${e.data.images.length}]` : "";
@@ -52,17 +43,9 @@ export function historyFromEvents(events: SessionEvent[]): HistoryEntry[] {
       lines.push({ id: `sent-${e.seq}`, time: e.time, seq: e.seq, role: "bot", text: e.data.text });
     } else if (isEvent(e, "admin/message")) {
       lines.push({ id: `admin-${e.seq}`, time: e.time, seq: e.seq, role: "admin", text: e.data.text });
-    } else if (isEvent(e, "assistant/message") && e.seq < firstSent) {
-      for (const item of e.data.output) {
-        if (item.type !== "function_call") continue;
-        const call = item as { call_id: string; name: string; arguments: string };
-        const result = results.get(call.call_id);
-        const text = result && !result.data.output.startsWith("Error:") ? historyLine(call.name, call.arguments) : undefined;
-        if (text) lines.push({ id: call.call_id, time: result!.time, seq: result!.seq, role: "bot", text });
-      }
     }
   }
-  return lines.sort((a, b) => a.seq - b.seq);
+  return lines;
 }
 
 export interface HistoryPage {

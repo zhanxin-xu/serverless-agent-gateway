@@ -70,25 +70,9 @@ function jsonObject(name: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-/** Model settings: OPENAI_RESPONSES_<SUFFIX>, falling back to the old OPENROUTER_<SUFFIX> names. */
-const LLM_SUFFIXES = ["API_KEY", "BASE_URL", "MODEL", "EXTRA_BODY", "EXTRA_HEADERS", "TIMEOUT_MS"] as const;
-type LlmSuffix = (typeof LLM_SUFFIXES)[number];
-
-/** The old name of a model setting (OPENROUTER_<SUFFIX>), still read when only it is set. */
-const legacyName = (name: string): string | undefined =>
-  name.startsWith("OPENAI_RESPONSES_") ? name.replace("OPENAI_RESPONSES_", "OPENROUTER_") : undefined;
-
-/** The variable to read for a model setting: the new name, unless only the old one is set. */
-function llmEnv(suffix: LlmSuffix): string {
-  const name = `OPENAI_RESPONSES_${suffix}`;
-  const legacy = legacyName(name)!;
-  return !raw(name)?.trim() && raw(legacy)?.trim() ? legacy : name;
-}
-
-/** What the environment says for a setting (its old name too), ignoring the console: "" when unset. */
+/** What the environment says for a setting, ignoring the console: "" when unset. */
 export function environmentValue(name: string): string {
-  const legacy = legacyName(name);
-  return env(name) || (legacy ? env(legacy) : "");
+  return env(name);
 }
 
 export const config = {
@@ -110,14 +94,14 @@ export const config = {
   /** Any server that speaks the OpenAI Responses API (POST {baseUrl}/responses). Defaults to OpenRouter. */
   llm: {
     get apiKey() {
-      return str(llmEnv("API_KEY"));
+      return str("OPENAI_RESPONSES_API_KEY");
     },
     /** Any Responses-API-compatible base URL; `/responses` is appended. */
     get baseUrl() {
-      return str(llmEnv("BASE_URL"), settingDefault("OPENAI_RESPONSES_BASE_URL")).replace(/\/+$/, "");
+      return str("OPENAI_RESPONSES_BASE_URL").replace(/\/+$/, "");
     },
     get model() {
-      return str(llmEnv("MODEL"), settingDefault("OPENAI_RESPONSES_MODEL"));
+      return str("OPENAI_RESPONSES_MODEL");
     },
     /**
      * Extra fields merged into every Responses API request body (snake_case,
@@ -126,18 +110,18 @@ export const config = {
      * Cannot override instructions / input / tools / tool_choice.
      */
     get extraBody() {
-      return jsonObject(llmEnv("EXTRA_BODY"));
+      return jsonObject("OPENAI_RESPONSES_EXTRA_BODY");
     },
     /** Extra request headers, e.g. {"HTTP-Referer":"https://example.com","X-Title":"my-bot"}. */
     get extraHeaders() {
-      return jsonObject(llmEnv("EXTRA_HEADERS")) as Record<string, string>;
+      return jsonObject("OPENAI_RESPONSES_EXTRA_HEADERS") as Record<string, string>;
     },
     /**
      * Upper bound for one model call. Inside a run a call also ends when the
      * function's time budget does (agent/budget.ts), whichever comes first.
      */
     get timeoutMs() {
-      return int(llmEnv("TIMEOUT_MS"), Number(settingDefault("OPENAI_RESPONSES_TIMEOUT_MS")));
+      return int("OPENAI_RESPONSES_TIMEOUT_MS");
     },
     /**
      * USD per million tokens, to estimate what a turn cost when the API doesn't
@@ -146,10 +130,6 @@ export const config = {
     get prices() {
       const price = (name: string) => Number(str(name)) || 0;
       return { input: price("MODEL_PRICE_INPUT"), cached: price("MODEL_PRICE_CACHED"), output: price("MODEL_PRICE_OUTPUT") };
-    },
-    /** Old OPENROUTER_* names still in use (shown by /api/health so they can be renamed). */
-    get legacyEnv(): string[] {
-      return LLM_SUFFIXES.map(llmEnv).filter((name) => name.startsWith("OPENROUTER_"));
     },
   },
 

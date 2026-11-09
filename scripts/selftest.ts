@@ -406,28 +406,6 @@ await test("config: extra body / base url parsing", () => {
   process.env.OPENAI_RESPONSES_EXTRA_BODY = saved;
 });
 
-await test("config: old OPENROUTER_* names still work; the new names win", () => {
-  const saved = { ...process.env };
-  try {
-    for (const k of Object.keys(process.env)) if (k.startsWith("OPENAI_RESPONSES_")) delete process.env[k];
-    process.env.OPENROUTER_API_KEY = "old-key";
-    process.env.OPENROUTER_MODEL = "old/model";
-    process.env.OPENROUTER_EXTRA_BODY = "{bad";
-    assert.equal(config.llm.apiKey, "old-key");
-    assert.equal(config.llm.model, "old/model");
-    assert.equal(config.llm.baseUrl, "https://openrouter.ai/api/v1", "unset everywhere: the default");
-    assert.throws(() => config.llm.extraBody, /OPENROUTER_EXTRA_BODY is not valid JSON/, "errors name the variable actually read");
-    assert.deepEqual(config.llm.legacyEnv, ["OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_EXTRA_BODY"]);
-    process.env.OPENAI_RESPONSES_API_KEY = "new-key";
-    assert.equal(config.llm.apiKey, "new-key");
-    assert.deepEqual(config.llm.legacyEnv, ["OPENROUTER_MODEL", "OPENROUTER_EXTRA_BODY"]);
-  } finally {
-    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
-    Object.assign(process.env, saved);
-  }
-  assert.deepEqual(config.llm.legacyEnv, []);
-});
-
 await test("DeepSeek-backed tools only enabled with DEEPSEEK_API_KEY", () => {
   assert.deepEqual(
     activeTools().map((t) => t.name),
@@ -2249,7 +2227,7 @@ await test("model order: what arrived while a step ran is read after that step; 
   assert.deepEqual(log.filter((e) => modelSees(e.type)).map((e) => e.seq), [2, 3, 4, 7, 8]);
 });
 
-await test("history from the log: what people and the bot said; older logs fall back to the sending tools' calls", async () => {
+await test("history from the log: what people, the bot and admins said; not the model's tool calls", async () => {
   const { historyFromEvents } = await import("../src/chats/history.js");
   const ev = (seq: number, type: string, data: unknown) => ({ seq, type, time: seq * 1000, data }) as any;
   const call = (id: string, name: string, args: unknown) => ({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });
@@ -2257,32 +2235,21 @@ await test("history from the log: what people and the bot said; older logs fall 
     ev(0, "user/message", { eventId: "m0", sender: "老王 #3B6834", text: "看图", images: ["k1", "k2"], mentioned: true, reply: {} }),
     ev(1, "turn/start", { turn: 1, trigger: "direct" }),
     ev(2, "developer/message", { turn: 1, text: "（系统提示）…" }),
-    ev(3, "assistant/message", { turn: 1, step: 1, output: [{ type: "reasoning" }, call("a", "send_sticker", { name: "吃瓜" }), call("b", "send_message", { text: "发不出去" }), call("c", "web_search", { query: "x" })] }),
-    ev(4, "tool/result", { turn: 1, step: 1, callId: "a", output: "sent as a reply to 第0条 (1/5)" }),
-    ev(5, "tool/result", { turn: 1, step: 1, callId: "b", output: "Error: reply window closed" }),
-    ev(6, "tool/result", { turn: 1, step: 1, callId: "c", output: "results" }),
-    ev(7, "user/message", { eventId: "admin-1", sender: "管理员 #ADMIN", text: "（管理员悄悄告诉你）开会", mentioned: true, reply: {}, replyVia: "m0" }),
-    ev(8, "assistant/message", { turn: 2, step: 1, output: [call("d", "send_voice", { text: "开会啦" })] }),
-    ev(9, "tool/result", { turn: 2, step: 1, callId: "d", output: "sent" }),
-    // From here on every delivery is logged, the runner's own answers included; tool calls no longer count.
-    ev(10, "user/message", { eventId: "m2", sender: "老王 #3B6834", text: "在吗", mentioned: true, reply: {} }),
-    ev(11, "bot/sent", { turn: 3, text: "答案是 20", replyTo: 10 }),
-    ev(12, "assistant/message", { turn: 4, step: 1, output: [call("e", "send_message", { text: "不该重复" })] }),
-    ev(13, "bot/sent", { turn: 4, text: "不该重复", replyTo: 10 }),
-    ev(14, "tool/result", { turn: 4, step: 1, callId: "e", output: "sent" }),
-    ev(15, "admin/message", { text: "管理员说的" }),
+    ev(3, "assistant/message", { turn: 1, step: 1, output: [{ type: "reasoning" }, call("a", "send_message", { text: "答案是 20" })] }),
+    ev(4, "bot/sent", { turn: 1, text: "答案是 20", replyTo: 0 }),
+    ev(5, "tool/result", { turn: 1, step: 1, callId: "a", output: "sent" }),
+    ev(6, "user/message", { eventId: "admin-1", sender: "管理员 #ADMIN", text: "（管理员悄悄告诉你）开会", mentioned: true, reply: {}, replyVia: "m0" }),
+    ev(7, "bot/sent", { turn: 2, text: "[语音] 开会啦", replyTo: 0 }),
+    ev(8, "admin/message", { text: "管理员说的" }),
   ]);
   assert.deepEqual(
     lines.map((l) => [l.role, l.text, l.time]),
     [
       ["user", "看图 [图片×2]", 0],
-      ["bot", "[表情包：吃瓜]", 4000],
-      ["hint", "（管理员悄悄告诉你）开会", 7000],
-      ["bot", "[语音] 开会啦", 9000],
-      ["user", "在吗", 10000],
-      ["bot", "答案是 20", 11000],
-      ["bot", "不该重复", 13000],
-      ["admin", "管理员说的", 15000],
+      ["bot", "答案是 20", 4000],
+      ["hint", "（管理员悄悄告诉你）开会", 6000],
+      ["bot", "[语音] 开会啦", 7000],
+      ["admin", "管理员说的", 8000],
     ],
   );
 });

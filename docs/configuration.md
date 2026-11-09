@@ -31,7 +31,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 
 它可以覆盖 `model`，但不能覆盖 `instructions`、`input`、`tools`、`tool_choice`，这几项由 agent loop 控制。JSON 写错时请求会直接报错，`/api/health` 的 `extraBody` 字段会显示解析结果。
 
-**旧变量名**：早期版本用的是 `OPENROUTER_API_KEY`、`OPENROUTER_BASE_URL` 等 `OPENROUTER_` 开头的名字，现在仍然能读。新旧名字同时存在时以新名字为准。还在用旧名字时，`/api/health` 会多出一个 `legacyEnv` 字段列出它们，按上表改名后重新部署即可。
+**旧变量名**：早期版本用的 `OPENROUTER_API_KEY` 等 `OPENROUTER_` 开头的名字已经不再读取，请改成上表的 `OPENAI_RESPONSES_` 开头的名字。
 
 ## Agent
 

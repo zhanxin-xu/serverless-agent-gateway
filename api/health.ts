@@ -23,8 +23,6 @@ export default {
       baseUrl: config.llm.baseUrl,
       apiKey: Boolean(config.llm.apiKey),
       extraBody: extraBodyStatus(),
-      // Old OPENROUTER_* variables still in use; rename them to OPENAI_RESPONSES_*.
-      ...(config.llm.legacyEnv.length ? { legacyEnv: config.llm.legacyEnv } : {}),
       tools: activeTools().map((t) => t.name),
       store: storeBackend(),
       // Each module: on, or why not (src/modules).

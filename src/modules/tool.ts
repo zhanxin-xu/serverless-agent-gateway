@@ -78,12 +78,6 @@ export interface Tool {
   parameters: Record<string, unknown>;
   role?: ToolRole;
   /**
-   * For tools that deliver to the chat: how a successful call reads in the
-   * admin console's history ("[表情包：红温了]"). Only for logs older than the
-   * bot/sent event, which records every delivery itself.
-   */
-  historyLine?(args: Record<string, unknown>): string | undefined;
-  /**
    * Hide this one tool while its module is on (e.g. a balance check the
    * selected provider can't answer). Whether the module itself is on is up to
    * the module (src/modules/registry.ts), not its tools.

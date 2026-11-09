@@ -6,14 +6,7 @@ import { action, copyable, fill, h, pill, toast } from "./dom.js";
 import { groupActions, loadSettings, settingsForm } from "./form.js";
 import { moduleState } from "./view-modules.js";
 
-/** Pages that moved: the speech settings were the "tts" group before modules. */
-const MOVED = { tts: "voice" };
-
 export async function renderConfig(main, [groupParam], app) {
-  if (MOVED[groupParam]) {
-    location.replace(`#/config/${MOVED[groupParam]}`);
-    return;
-  }
   const [index, status] = [await loadSettings(), await app.refreshStatus()];
   // Providers' groups are shown inside their module's page, not in the list.
   const pages = index.groups.filter((g) => !g.provider);

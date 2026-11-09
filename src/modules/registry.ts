@@ -55,9 +55,9 @@ const toolsOf = (modules: Module[]): Tool[] => modules.flatMap((m) => m.tools.fi
 /** Every tool on offer, no chat's switches: for health checks, scripts and tests. */
 export const activeTools = (): Tool[] => toolsOf(activeModules());
 
-/** The module a tool belongs to, by its name now or one it used to have (old events name tools as they were). */
+/** The module a tool belongs to. Tool names are stored in the event log, so they're never renamed. */
 export function moduleOfTool(name: string): Module | undefined {
-  return MODULES.find((m) => m.tools.some((t) => t.name === name) || m.aliases?.includes(name));
+  return MODULES.find((m) => m.tools.some((t) => t.name === name));
 }
 
 /**
@@ -119,17 +119,6 @@ export class Toolset {
     }
     if (!output.startsWith("Error:")) this.policy.ran?.(tool, module);
     return output;
-  }
-}
-
-/** How a successful call of tool `name` with these (JSON) arguments read in the chat; undefined for tools that don't deliver. */
-export function historyLine(name: string, rawArgs: string): string | undefined {
-  const tool = moduleOfTool(name)?.tools.find((t) => t.name === name);
-  if (!tool?.historyLine) return undefined;
-  try {
-    return tool.historyLine(rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {});
-  } catch {
-    return undefined;
   }
 }
 

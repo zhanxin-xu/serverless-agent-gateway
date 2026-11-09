@@ -315,21 +315,21 @@ create table if not exists gateway.settings (
   value text not null,
   updated_at timestamptz not null default now()
 );
--- Schema v2 had a `secret` flag (dropped in v3): which settings are secrets is up to the gateway's catalog.
-alter table gateway.settings drop column if exists secret;
 
 create table if not exists gateway.chat_profiles (
   chat text primary key,
   profile jsonb not null,
   updated_at timestamptz not null default now()
 );
--- Schema v4: a chat's switches are its modules (docs/design/modules.md 9.3), so profiles name them
--- disabledModules, format "v": 2. disabledTools stays beside it with the same value until v5, so code
--- from before v4 still reads it and a rollback keeps every chat's switches. Runs any number of times.
+-- Schema v5: a chat's switches are its modules (docs/design/modules.md 9.3). Profiles saved before
+-- name them disabledTools (v4 copied them to disabledModules and marked "v": 2): move them over and
+-- drop the old field and the marker. Runs any number of times.
 update gateway.chat_profiles
-  set profile = profile || jsonb_build_object('disabledModules', profile -> 'disabledTools', 'v', 2),
+  set profile = (profile - 'disabledTools' - 'v')
+        || case when profile ? 'disabledModules' then '{}'::jsonb
+                else jsonb_build_object('disabledModules', profile -> 'disabledTools') end,
       updated_at = now()
-  where profile ? 'disabledTools' and not profile ? 'disabledModules';
+  where profile ? 'disabledTools' or profile ? 'v';
 
 create table if not exists gateway.usage_daily (
   chat text not null,
@@ -338,11 +338,6 @@ create table if not exists gateway.usage_daily (
   primary key (chat, day)
 );
 create index if not exists usage_daily_day on gateway.usage_daily (day);
-
--- Schema v2 (deployed 2026-11-06) kept a separate chat history; from v3 the console renders it from the events.
-drop function if exists public.history_add(text, jsonb);
-drop function if exists public.history_list(text, bigint, int);
-drop table if exists gateway.history;
 
 create table if not exists gateway.admin_log (
   id bigint generated always as identity primary key,
@@ -375,10 +370,6 @@ create or replace function public.gateway_info() returns jsonb
 language sql stable security definer set search_path = '' as $$
   select jsonb_build_object('schemaVersion', (select value::int from gateway.meta where key = 'schema_version'));
 $$;
-
--- Schema v2 used these for a one-time import of env vars, removed in v3.
-drop function if exists public.meta_get(text);
-drop function if exists public.meta_put(text, text);
 
 -- Settings: [{key, value, updatedAt}].
 create or replace function public.settings_list() returns jsonb
@@ -623,7 +614,7 @@ end;
 $$;
 
 -- Keep in step with SCHEMA_VERSION in src/store/types.ts.
-insert into gateway.meta (key, value) values ('schema_version', '4')
+insert into gateway.meta (key, value) values ('schema_version', '5')
   on conflict (key) do update set value = excluded.value;
 
 -- Let the Data API see new functions right away.

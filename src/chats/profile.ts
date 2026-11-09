@@ -79,8 +79,7 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
     if (!Number.isInteger(n) || n < 0) errors.ambientIntervalSeconds = "要填不小于 0 的整数";
     else profile.ambientIntervalSeconds = n;
   }
-  // Stored profiles from before schema v4 call it disabledTools (docs/design/modules.md 9.3).
-  const disabled = raw.disabledModules ?? raw.disabledTools;
+  const disabled = raw.disabledModules;
   if (disabled !== undefined && disabled !== null) {
     const list = Array.isArray(disabled) ? disabled : [];
     if (!Array.isArray(disabled) || list.some((id) => !MODULE_IDS.includes(id as string))) {
@@ -113,11 +112,7 @@ export function parseProfile(stored: unknown): ChatProfile {
   if ("profile" in checked) return checked.profile;
   // Drop the bad fields one by one rather than the whole profile.
   const raw = { ...(stored as Record<string, unknown>) };
-  for (const key of Object.keys(checked.errors)) {
-    const field = key.split(".")[0]!;
-    delete raw[field];
-    if (field === "disabledModules") delete raw.disabledTools;
-  }
+  for (const key of Object.keys(checked.errors)) delete raw[key.split(".")[0]!];
   const retry = validateProfile(raw);
   return "profile" in retry ? retry.profile : {};
 }
@@ -156,25 +151,8 @@ export async function chatProfile(chat: string, store: ProfileStore = getStore()
   return profile;
 }
 
-/** The stored format: version 2 names the switches disabledModules (docs/design/modules.md 9.3). */
-export const PROFILE_FORMAT = 2;
-
-/**
- * How a profile is stored. Until the old field is dropped (schema v5),
- * disabledTools is written too, with the same value: code from before the
- * change still reads it, so a rollback keeps every chat's switches.
- */
-export function storedProfile(profile: ChatProfile): Record<string, unknown> | null {
-  if (!Object.keys(profile).length) return null;
-  return {
-    ...profile,
-    ...(profile.disabledModules ? { disabledTools: profile.disabledModules } : {}),
-    v: PROFILE_FORMAT,
-  };
-}
-
 /** Save a validated profile (an empty one deletes it). */
 export async function saveChatProfile(chat: string, profile: ChatProfile, store: ProfileStore = getStore()): Promise<void> {
-  await store.putProfile(chat, storedProfile(profile));
+  await store.putProfile(chat, Object.keys(profile).length ? (profile as Record<string, unknown>) : null);
   cache.set(chat, { profile, at: Date.now() });
 }

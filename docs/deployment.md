@@ -19,7 +19,7 @@
    |---|---|
    | `apiKey` | 是否配置了模型 API Key |
    | `extraBody` | `OPENAI_RESPONSES_EXTRA_BODY` 的解析结果 |
-   | `legacyEnv` | 只在还用着旧的 `OPENROUTER_*` 变量名时出现，列出需要改名的变量，见[配置参考](configuration.md#模型) |
+   | `modules` | 每个模块开没开；没开时写原因，见[模块](modules.md) |
    | `tools` | 当前启用的工具 |
    | `store` | `supabase` 或 `memory` |
    | `memory` / `sandbox` | 长期记忆和沙盒是否启用 |

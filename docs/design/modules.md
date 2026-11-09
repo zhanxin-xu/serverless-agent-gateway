@@ -1,6 +1,6 @@
 # 设计：模块、能力与提示词组装
 
-状态：P0–P6 已实施（2026-11-09），P7（收缩）待做，见文末“实施记录”
+状态：已全部实施（2026-11-09），见文末“实施记录”
 日期：2026-11-09
 使用说明：[`docs/modules.md`](../modules.md)
 参考：DeepSeek Harness（dsh）的 [`dsh-system-prompt`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/system-prompt/README.md)、[`dsh-web`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/web/web/README.md) 和 [capability seams](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.md)
@@ -331,7 +331,7 @@ src/prompt/
 | 额度 key（`images` `voices` `searches` `cost_usd`） | `gateway.usage_daily.counts`、`chat_profiles.quota` | 每日计数和上限 |
 | 配置项名（环境变量名） | `gateway.settings`、Vercel 环境变量、`admin_log` | 配置值 |
 
-万一以后非改不可：模块可以声明 `aliases`（旧工具名、旧模块 id）。注册表按别名也能找到它，旧数据不用改。
+万一以后非改不可，要同时迁移事件日志和聊天设置里的旧值。（原先设计的 `aliases` 别名机制没有用上，已删除。）
 
 ### 9.2 配置（`gateway.settings`）
 
@@ -466,7 +466,7 @@ P1–P6 可以一起上线，P7 至少隔一周。
 | P1–P4 | b36b1c1 | 互相咬合，合成一次提交；schema v4 在真实 Postgres 上测过（执行两次结果相同） |
 | P5 | e201412 | 管理端 |
 | P6 | 本次 | 文档 |
-| P7 | 未做 | 等 v4 在线上稳定运行至少一周 |
+| P7 | 见下 | 收缩提前做了：评审要求删掉全部兼容代码 |
 
 和上面设计不一样的地方：
 
@@ -479,4 +479,14 @@ P1–P6 可以一起上线，P7 至少隔一周。
 7. **管理端新增“模块”页**，并把聊天设置里的系统提示预览做成按段落标注来源。
 8. **9.6 的数据迁移**只定了流程，没有实现 `exportData` / `importData`：每种有状态能力目前只有一个实现，切换不会发生。配置页会提示换实现会看不到旧数据。
 9. **提示词对比**：`scripts/prompt-report.ts` 把旧提示里每一行和新提示对比，原样保留的之外，每一行改动都要在脚本里写明原因，否则失败。结果见 [`prompt-migration-report.md`](prompt-migration-report.md)：六种组合合计原样保留 244 行，改写或移走 264 行，全部审阅过。改动主要是三类：人设和规则里去掉工具名，工具用法搬进各自模块，示例跟着模块走。
+
+### 收缩（P7，提前完成）
+
+评审要求删掉全部迁移和兼容代码，所以没有等一周观察期，并做了这些调整：
+
+- **schema v5 一步完成迁移**：把 `disabledTools` 搬到 `disabledModules`（v4 已复制过的就直接删旧字段），同时删掉 `"v": 2` 标记。语句可以重复执行，不管数据库之前有没有升级到 v4 都适用。代码只读写 `disabledModules`。
+  - 代价：部署后到管理员点“升级到 v5”之前，还没迁移的聊天里关掉的模块会暂时恢复开启；升级后恢复。也不能再退回 v4 之前的代码而保留开关。
+- **删掉模型配置的旧变量名**（`OPENROUTER_*` 回退和 `/api/health` 的 `legacyEnv`）：线上已经不用。
+- **删掉聊天记录对旧日志的补全**（`bot/sent` 出现之前，用发消息工具的调用补出机器人说的话），以及只为它存在的 `Tool.historyLine`。早于 2026-11-06 的日志里，机器人说的话不再显示在管理端的聊天记录里；这些日志会随压缩和 7 天过期自然消失。
+- **删掉 schema.sql 里 v2→v3 的清理语句**、没用上的 `aliases`、管理端 `#/config/tts` 的旧地址跳转、一次性的提示词对比脚本和夹具。
 

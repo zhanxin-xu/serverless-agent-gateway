@@ -2,7 +2,7 @@
 
 机器人的每样本事是一个**模块**：一组工具，加上告诉模型怎么用它们的一段说明。模块开启时，它的工具和说明才会出现在发给模型的请求里；没配置好、依赖没满足、或者在某个聊天里被关掉的模块，工具和说明都不出现。
 
-设计和取舍见 [`docs/design/modules.md`](design/modules.md)；重构前后的提示词逐行对比见 [`docs/design/prompt-migration-report.md`](design/prompt-migration-report.md)。
+设计和取舍见 [`docs/design/modules.md`](design/modules.md)；重构前后的提示词逐行对比见 [`docs/design/prompt-migration-report.md`](design/prompt-migration-report.md)（重构时的一次性记录）。
 
 ## 三层：模块、能力、实现
 
@@ -128,7 +128,7 @@ export const weatherModule: Module = {
 
 这些已经写进数据库或事件日志，改名就要迁移历史数据：
 
-- **工具名**：用量统计和聊天记录按工具名找模块。万一非改不可，在模块的 `aliases` 里留旧名。
+- **工具名**：用量统计按事件流里的工具名找模块，模型也会在历史里看到自己调过的工具。
 - **模块 id**：存在每个聊天的设置里。
 - **额度 key**（`images`、`voices`、`searches`）：存在每日用量和每个聊天的额度里。
 - **配置项名**：同时也是环境变量名。
@@ -136,4 +136,3 @@ export const weatherModule: Module = {
 ## 测试
 
 - `npm test` 跑 `scripts/selftest.ts`（端到端）和 `scripts/moduletest.ts`（模块、选择规则、提示词组装、迁移）。
-- `npx tsx scripts/prompt-report.ts`：检查重构前的提示词里每一行，要么原样保留，要么写明了原因。

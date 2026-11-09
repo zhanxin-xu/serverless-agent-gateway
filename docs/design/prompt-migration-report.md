@@ -1,6 +1,6 @@
 # 提示词迁移对比报告
 
-由 `npx tsx scripts/prompt-report.ts --write` 生成，不要手改。对比重构前的提示词（`scripts/fixtures/prompt-v1`）和现在 `src/prompt` 为同一个聊天拼出的提示词（全部模块开启）。
+重构时的一次性记录：由当时的 `scripts/prompt-report.ts --write` 生成（这个脚本和 `scripts/fixtures/prompt-v1` 在提交 70af20a 之后已删除，要看可以去那个提交）。对比重构前的提示词（`scripts/fixtures/prompt-v1`）和现在 `src/prompt` 为同一个聊天拼出的提示词（全部模块开启）。
 
 规则：旧提示里的每一行，要么原样出现在新提示里，要么在下面写明原因（原因在 `scripts/prompt-report.ts` 的 `REVIEWED` 里人工审阅）。
 

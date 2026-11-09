@@ -119,6 +119,8 @@ export async function keyReport(baseUrl: string, apiKey: string, headers: Record
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
+  // Not OpenRouter: something answered /key, but not with a key report.
+  if (!data || typeof data !== "object") return { error: "this service has no key-limit endpoint (GET /key)" };
   const budget = data.effective_budget;
   const hasByok = [data.byok_usage, data.byok_usage_daily, data.byok_usage_weekly, data.byok_usage_monthly].some((n) => typeof n === "number");
   return {

@@ -1,0 +1,38 @@
+// Line icons for the console (24×24, drawn with the current text color). Built with the DOM, not markup.
+const NS = "http://www.w3.org/2000/svg";
+
+const PATHS = {
+  overview: ["M3 3h7v9H3z", "M14 3h7v5h-7z", "M14 12h7v9h-7z", "M3 16h7v5H3z"],
+  chats: ["M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
+  config: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"],
+  log: ["M8 6h13", "M8 12h13", "M8 18h13", "M3.5 6h.01", "M3.5 12h.01", "M3.5 18h.01"],
+  setup: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "m16 17 5-5-5-5", "M21 12H9"],
+  back: ["m15 18-6-6 6-6"],
+  copy: ["M9 9h11v11H9z", "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"],
+};
+
+/** An icon as an <svg> element; decorative (hidden from screen readers). */
+export function icon(name, size = 16) {
+  const svg = document.createElementNS(NS, "svg");
+  for (const [k, v] of Object.entries({
+    viewBox: "0 0 24 24",
+    width: size,
+    height: size,
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.8",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "aria-hidden": "true",
+    class: "icon",
+  })) {
+    svg.setAttribute(k, String(v));
+  }
+  for (const d of PATHS[name] ?? []) {
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}

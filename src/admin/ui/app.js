@@ -2,6 +2,7 @@
 //   #/setup  #/overview  #/chats  #/chat/<chat>/<tab>  #/config/<group>  #/log
 import { api } from "./api.js";
 import { action, fill, h, toast } from "./dom.js";
+import { icon } from "./icons.js";
 import { renderChat } from "./view-chat.js";
 import { renderChats } from "./view-chats.js";
 import { renderConfig } from "./view-config.js";
@@ -38,9 +39,9 @@ let nav;
 let main;
 let stopView;
 
-function navLink(hash, label, badge) {
+function navLink(hash, iconName, label, badge) {
   const active = location.hash.startsWith(hash) || (hash === "#/chats" && location.hash.startsWith("#/chat/"));
-  return h("a", { href: hash, class: active ? "on" : "" }, h("span", null, label), badge ? h("span", { class: "badge" }, badge) : null);
+  return h("a", { href: hash, class: active ? "on" : "" }, icon(iconName), h("span", null, label), badge ? h("span", { class: "badge" }, badge) : null);
 }
 
 function renderNav() {
@@ -48,14 +49,14 @@ function renderNav() {
   const progress = setupProgress(app.status);
   fill(
     nav,
-    h("div", { class: "brand" }, h("img", { src: "/admin/icon.svg", alt: "" }), "大肥鱼管理端"),
-    progress.done < progress.total ? navLink("#/setup", "新手引导", `${progress.done}/${progress.total}`) : null,
-    navLink("#/overview", "总览"),
-    navLink("#/chats", "聊天"),
-    navLink("#/config", "配置"),
-    navLink("#/log", "操作记录"),
-    progress.done >= progress.total ? navLink("#/setup", "引导与检查") : null,
-    h("div", { class: "nav-foot" }, action("退出登录", async () => {
+    h("div", { class: "brand" }, h("img", { src: "/admin/logo.webp", alt: "", width: 28, height: 28 }), "大肥鱼管理端"),
+    progress.done < progress.total ? navLink("#/setup", "setup", "新手引导", `${progress.done}/${progress.total}`) : null,
+    navLink("#/overview", "overview", "总览"),
+    navLink("#/chats", "chats", "聊天"),
+    navLink("#/config", "config", "配置"),
+    navLink("#/log", "log", "操作记录"),
+    progress.done >= progress.total ? navLink("#/setup", "setup", "引导与检查") : null,
+    h("div", { class: "nav-foot" }, action([icon("logout"), "退出登录"], async () => {
       await api.del("session");
       start();
     })),

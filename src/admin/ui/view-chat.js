@@ -1,6 +1,7 @@
 // One chat (#/chat/<chat>/<tab>): its history with the composer, its event log, and its settings.
 import { api, ApiError } from "./api.js";
 import { action, confirmAction, every, fill, fmtClock, fmtTime, fmtTokens, fmtUsd, h, pill, toast } from "./dom.js";
+import { icon } from "./icons.js";
 import { chatKind, chatName, modePill, speakersText } from "./labels.js";
 
 const BOT = "大肥鱼";
@@ -19,7 +20,7 @@ export async function renderChat(main, [chat, tabId], app) {
     h(
       "header",
       { class: "page-head" },
-      h("p", null, h("a", { href: "#/chats" }, "← 聊天")),
+      h("p", null, h("a", { href: "#/chats" }, icon("back", 14), "聊天")),
       h("h1", null, chatName(info), " ", modePill(info), info.locked ? [" ", pill("info", "运行中")] : null),
       info.chatType === "group" && speakersText(info) ? h("p", null, `最近说话的人：${speakersText(info)}`) : null,
       h("p", { class: "muted mono small" }, `${chatKind(info)} · ${chat}${info.turn ? ` · 第 ${info.turn} 轮` : ""}`),

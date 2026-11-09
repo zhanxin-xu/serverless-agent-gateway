@@ -75,11 +75,23 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 
 没配置 Supabase 时退化为内存存储：单实例能用，但多实例之间历史不共享，锁、去重和采样也会失效。Supabase 需要先执行 [`supabase/schema.sql`](../supabase/schema.sql)，见[部署文档](deployment.md#存储supabase)。聊天数据保留多久见[数据保留](deployment.md#存储supabase)。
 
+## 模块用哪家服务
+
+每个可选模块背后的服务可以有多个实现，同一时间只用一个（见[模块](modules.md)）。下面这些配置项选用哪个实现；**留空表示自动**：只有一个实现配好了就用它，有多个配好了就要在这里指定。目前每种服务只有一个实现，所以都可以不填。
+
+| 变量 | 可选值 | 说明 |
+|---|---|---|
+| `SEARCH_PROVIDER` | 空、`deepseek` | 搜索模块（`web_search`、`web_fetch`） |
+| `VOICE_PROVIDER` | 空、`openai-speech` | 语音模块（`send_voice`） |
+| `IMAGE_PROVIDER` | 空、`openrouter-images` | 画图模块（`generate_image`） |
+| `MEMORY_PROVIDER` | 空、`upstash-vector` | 长期记忆模块。记忆存在服务那边，换实现后旧记忆看不到 |
+| `SANDBOX_PROVIDER` | 空、`vercel-sandbox` | 沙盒模块。工作区文件存在服务那边，换实现后旧文件看不到 |
+
 ## 工具
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | 空 | 启用 `web_search`、`web_fetch`、`get_search_balance` |
+| `DEEPSEEK_API_KEY` | 空 | 搜索模块的 DeepSeek 实现：启用 `web_search`、`web_fetch`、`get_search_balance` |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek 接口地址 |
 | `SANDBOX_ENABLED` | 自动 | 部署在 Vercel 上或本地有 `VERCEL_OIDC_TOKEN` 时自动启用；设为 `0` 关闭，设为 `1` 强制启用 |
 | `SANDBOX_REGION` | `iad1` | 沙盒和工作区盘所在的区域。盘建好以后区域不能再改，请在第一次使用前设置 |
@@ -89,7 +101,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 
 ## 画图
 
-`generate_image` 调用 OpenRouter 的 Image API（`POST {IMAGE_BASE_URL}/images`）。配置了 `IMAGE_API_KEY` 并且沙盒可用时才启用（生成的图要存进工作区，再用 `send_file` 发出去）。变量名后半段和接口字段一致。
+画图模块的 OpenRouter 实现（`POST {IMAGE_BASE_URL}/images`）。配置了 `IMAGE_API_KEY` 并且沙盒模块开着时才启用（生成的图要存进工作区，再用 `send_file` 发出去）。变量名后半段和接口字段一致。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -104,7 +116,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 
 ## 语音
 
-`send_voice` 调用 OpenAI 兼容的语音接口（`POST {TTS_BASE_URL}/audio/speech`），默认是 OpenRouter 上的 Fish Audio Drama 3。配置了 `TTS_API_KEY` 才启用。变量名后半段和接口字段一致。
+语音模块的 OpenAI 兼容实现（`POST {TTS_BASE_URL}/audio/speech`），默认是 OpenRouter 上的 Fish Audio Drama 3。配置了 `TTS_API_KEY` 才启用。变量名后半段和接口字段一致。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|

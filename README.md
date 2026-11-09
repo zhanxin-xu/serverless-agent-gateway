@@ -73,17 +73,20 @@
 | [管理端](docs/admin.md) | 新手引导、配置存进数据库、聊天记录与事件流、代发、每群额度 |
 | [渠道接入](docs/channels.md) | QQ、Telegram、HTTP 的配置方法，QQ 被动回复和主动消息，如何新增渠道 |
 | [Agent 与对话](docs/agent.md) | 事件流格式、一个聊天一个 agent、挂断机制、步数与时间、上下文压缩、崩溃恢复 |
-| [工具](docs/tools.md) | 内置工具、长期记忆、沙盒工作区、表情包，如何新增工具 |
+| [模块](docs/modules.md) | 模块、能力与实现；系统提示怎么拼；如何新增模块和实现 |
+| [工具](docs/tools.md) | 各模块的工具、长期记忆、沙盒工作区、表情包 |
 | [配置参考](docs/configuration.md) | 全部环境变量及默认值 |
 
 ## 自定义
 
 | 想改什么 | 改哪里 |
 |---|---|
-| 人设和说话风格 | [`src/agent/system-prompt.ts`](src/agent/system-prompt.ts) |
-| 工具 | [`src/tools/`](src/tools/)，见[新增工具](docs/tools.md#新增工具) |
+| 人设和说话风格 | [`src/prompt/persona.ts`](src/prompt/persona.ts) |
+| 每一轮怎么决策 | [`src/prompt/rules.ts`](src/prompt/rules.ts) |
+| 某个工具怎么用 | 它所在模块的说明，比如 [`src/modules/memory/index.ts`](src/modules/memory/index.ts) |
+| 新增工具、模块，或换一家服务 | [`src/modules/`](src/modules/)，见[模块](docs/modules.md) |
 | 渠道 | [`src/channels/`](src/channels/)，见[新增渠道](docs/channels.md#新增渠道) |
-| 表情包 | [`src/tools/stickers.ts`](src/tools/stickers.ts) |
+| 表情包 | [`src/modules/chat/stickers.ts`](src/modules/chat/stickers.ts) |
 
 ## 本地开发
 
@@ -112,10 +115,10 @@ src/
   worker.ts              worker 请求的验签与接着运行
   config.ts              配置：管理端 → 环境变量 → 默认值
   settings/              存在数据库里的配置
-    catalog.ts           每项配置的默认值、类型与校验
+    catalog.ts           每项配置的默认值、类型与校验（各模块的配置项在模块目录里，这里汇总）
     service.ts           加载、保存、各项配置的来源
   chats/                 每个聊天
-    profile.ts           回复方式、插话频率、工具开关、额外设定、额度
+    profile.ts           回复方式、插话频率、模块开关、额外设定、额度
     usage.ts             用量统计与额度
     history.ts           从事件流渲染聊天记录
   admin/                 管理端
@@ -146,18 +149,23 @@ src/
     budget.ts            时间预算：什么时候交接、每次调用能用多久
     model.ts             Responses API 请求
     compaction.ts        上下文压缩
-    system-prompt.ts     人设
-  tools/                 工具
-    types.ts / registry.ts   工具接口、注册表
-    chat.ts              说话与挂断：send_message、send_sticker、end_turn
-    web.ts               联网搜索与抓取
-    memory.ts            长期记忆（Upstash Vector）
-    account.ts           余额与额度查询
-    utility.ts           时间、计算器
-    stickers.ts          表情包清单
-    image.ts             画图：generate_image
-    voice.ts             语音：send_voice
-    sandbox/             沙盒：workspace.ts 接口与生命周期，vercel.ts 实现，tools.ts 四个工具
+  prompt/                系统提示：有名字、有序号的段落
+    persona.ts           人设（不提任何工具）
+    rules.ts             业务规则：每一轮怎么决策、你看到的信息、私聊 / 群聊
+    order.ts             每段的位置
+    assemble.ts          把人设、规则、渠道、开启的模块的段落和工具定义一起拼好
+  modules/               模块：一组工具 + 说明它们的段落 + 背后的服务
+    types.ts / registry.ts   模块、能力、实现的接口；模块清单和开关判断
+    capability.ts        从一种能力的多个实现里选一个
+    tool.ts              工具接口
+    chat/                核心：send_message、send_sticker、end_turn、chat_members、表情包清单
+    basics/              核心：时间、计算器
+    model/               核心：聊天模型 key 的余额
+    search/              搜索：web_search、web_fetch、余额；实现 providers/deepseek
+    memory/              长期记忆；实现 providers/upstash-vector
+    sandbox/             沙盒工作区；实现 providers/vercel-sandbox
+    image/               画图、画图 key 的余额；实现 providers/openrouter-images
+    voice/               语音；实现 providers/openai-speech（Fish / Seed 写法）
   media/images.ts        图片下载、缩小、入库
   media/voice.ts         语音编码：PCM → SILK（QQ）/ WAV
   media/assets.ts        读取随部署打包的文件（参考声音、形象图）

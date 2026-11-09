@@ -1,52 +1,57 @@
 # 工具
 
-工具在 [`src/tools/`](../src/tools/) 里，每个模块一类工具，在 [`registry.ts`](../src/tools/registry.ts) 注册。依赖外部服务的工具只在对应的服务配置好后才启用，`/api/health` 的 `tools` 字段会列出当前启用的工具。
+工具按**模块**组织（[模块](modules.md)）：每个模块在 [`src/modules/<模块>/`](../src/modules/) 里，带着自己的工具、告诉模型怎么用它们的提示词段落，以及背后服务的实现。模块开启时，它的工具才会给模型；`/api/health` 的 `tools` 字段列出当前给了哪些工具，`modules` 字段写出每个模块开没开、没开的原因。
 
-| 工具 | 作用 | 启用条件 |
-|---|---|---|
-| `send_message` | 发一条消息 | 始终启用 |
-| `send_sticker` | 发一张表情包 | 始终启用 |
-| `end_turn` | 挂断，结束这一轮 | 始终启用 |
-| `chat_members` | 列出这个聊天最近出现过的人（昵称、#编号、最后出现时间），用来查编号、@ 人 | 始终启用 |
-| `get_current_time` | 查询当前时间（可指定时区） | 始终启用 |
-| `calculate` | 四则运算、取模、乘方 | 始终启用 |
-| `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 配置了 `DEEPSEEK_API_KEY` |
-| `get_search_balance` | 查询 DeepSeek 余额 | 配置了 `DEEPSEEK_API_KEY` |
-| `get_llm_key_limit` | 查询模型 Key 和画图 Key 的额度和用量（OpenRouter 专用） | 配置了 `OPENAI_RESPONSES_API_KEY` 或 `IMAGE_API_KEY` |
-| `generate_image` | 画图、按参考图改图 | 配置了 `IMAGE_API_KEY`，且沙盒可用 |
-| `send_voice` | 用大肥鱼的声音发一条语音 | 配置了 `TTS_API_KEY` |
-| `remember` / `recall` / `forget` | 长期记忆 | 配置了 Upstash Vector |
-| `bash` / `read_file` / `write_file` / `send_file` / `save_attachment` | 沙盒工作区 | 部署在 Vercel 上，或本地有 `VERCEL_OIDC_TOKEN` |
+| 模块 | 工具 | 作用 | 开启条件 |
+|---|---|---|---|
+| 聊天 | `send_message` | 发一条消息 | 始终 |
+| | `send_sticker` | 发一张表情包 | 始终 |
+| | `end_turn` | 挂断，结束这一轮 | 始终 |
+| | `chat_members` | 列出这个聊天最近出现过的人（昵称、#编号、最后出现时间），用来查编号、@ 人 | 始终 |
+| 小工具 | `get_current_time` | 查询当前时间（可指定时区） | 始终 |
+| | `calculate` | 四则运算、取模、乘方 | 始终 |
+| 模型 | `get_llm_key_limit` | 查询聊天模型 Key 的额度和用量（OpenRouter 专用） | 配置了 `OPENAI_RESPONSES_API_KEY` |
+| 搜索 | `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 搜索服务配置好了（DeepSeek：`DEEPSEEK_API_KEY`） |
+| | `get_search_balance` | 查询搜索账户的余额 | 搜索服务能查余额（DeepSeek 能） |
+| 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_API_KEY`），且沙盒开着 |
+| | `get_image_key_limit` | 查询画图 Key 的额度和用量；和模型共用一个 Key 时直接说明 | 同上 |
+| 语音 | `send_voice` | 用大肥鱼的声音发一条语音 | 语音服务配置好了（`TTS_API_KEY`） |
+| 长期记忆 | `remember` / `recall` / `forget` | 长期记忆 | 记忆存储配置好了（Upstash Vector） |
+| 沙盒 | `bash` / `read_file` / `write_file` / `send_file` / `save_attachment` | 沙盒工作区 | 部署在 Vercel 上，或本地有 `VERCEL_OIDC_TOKEN` |
+
+每个聊天还能在管理端的“设置与额度”里关掉某些模块，关掉后它的工具和说明都不会出现在这个聊天的请求里。
 
 `send_message`、`end_turn` 的行为见 [Agent 与对话](agent.md#说话与挂断)。
 
 ## 联网
 
-`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
+搜索模块的第一个实现是 DeepSeek（[`src/modules/search/providers/deepseek/`](../src/modules/search/providers/deepseek/)）：`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
 
 ## 余额与额度
 
-- `get_search_balance`：调用 DeepSeek 的 `GET /user/balance`，区分赠送余额和充值余额，并估算还能搜索多少次。
-- `get_llm_key_limit`：调用 `GET {OPENAI_RESPONSES_BASE_URL}/key`，返回限额、剩余额度、重置周期，以及今日、本周、本月和累计用量。这是 OpenRouter 特有的接口，换成其他服务商时这个工具会返回错误，可以在 `registry.ts` 里移除。
-  - 两个 Key 分开列：`model_key` 是聊天模型的 Key，`image_key` 是画图（`generate_image`）的 Key，会再查一次 `GET {IMAGE_BASE_URL}/key`。两个配的是同一个 Key 时，`image_key` 会注明"和 model_key 是同一个"，避免重复计算。其中一个查询失败时，只在它那一项里写错误，另一项照常返回。
-  - 用量分两笔：`usage` 是从 OpenRouter 余额里扣的钱，`byok_usage` 是走你自己服务商 Key（BYOK）的花费。预算或 Key 限额设成"包含 BYOK"时会把两笔加在一起，所以可能出现 `usage` 为 0、预算却已经花了一部分的情况，工具结果里的 `counts_byok` 字段会标出来。
-  - "今天"按 UTC 计算，北京时间每天早上 8 点重置；每周从周一开始。
+余额查询归各自的模块：
 
-这两个工具返回的是账户信息，机器人进群后任何人都能问到。介意的话，在 `registry.ts` 里把它们移除。
+- `get_search_balance`（搜索模块）：由搜索实现提供。DeepSeek 调用 `GET /user/balance`，区分赠送余额和充值余额，并估算还能搜索多少次。不能查余额的搜索实现不提供这个工具。
+- `get_llm_key_limit`（模型模块）：调用 `GET {OPENAI_RESPONSES_BASE_URL}/key`，返回聊天模型 Key（`model_key`）的限额、剩余额度、重置周期，以及今日、本周、本月和累计用量。这是 OpenRouter 特有的接口，换成其他服务商时这个工具会返回错误。
+- `get_image_key_limit`（画图模块）：同样的报告，查的是画图的 Key（`image_key`，`GET {IMAGE_BASE_URL}/key`）。和模型配的是同一个 Key 时，直接注明“和 model_key 是同一个”，避免重复计算。
+- 两个 Key 报告的用量都分两笔：`usage` 是从 OpenRouter 余额里扣的钱，`byok_usage` 是走你自己服务商 Key（BYOK）的花费。预算或 Key 限额设成"包含 BYOK"时会把两笔加在一起，所以可能出现 `usage` 为 0、预算却已经花了一部分的情况，工具结果里的 `counts_byok` 字段会标出来。
+- "今天"按 UTC 计算，北京时间每天早上 8 点重置；每周从周一开始。
+
+这些工具返回的是账户信息，机器人进群后任何人都能问到。介意的话，可以在对应聊天里关掉搜索、画图模块（模型模块是核心模块，不能关），或者把工具从模块的 `tools` 里移除。
 
 ## 长期记忆
 
-实现见 [`src/tools/memory.ts`](../src/tools/memory.ts)，开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
+记忆模块在 [`src/modules/memory/`](../src/modules/memory/)，第一个存储实现是 Upstash Vector（`providers/upstash-vector/`），开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
 
 - **所有聊天共用一个记忆库**。每条记忆是一句能独立看懂的话，比如"#3B6834 叫老王，是前端程序员"，由模型自己判断什么值得记。
 - `remember` 写入一条记忆；`recall` 按语义相似度返回最接近的几条；`forget` 按 ID 删除。
-- **记录来源**：每条记忆都附带来源聊天、私聊还是群聊、谁说的、什么时候记的。`recall` 的结果会标出是否来自当前聊天，系统提示词要求模型不要把私聊里记下的事在群里说出来。
+- **记录来源**：每条记忆都附带来源聊天、私聊还是群聊、谁说的、什么时候记的。`recall` 的结果会标出是否来自当前聊天，记忆模块的提示词段落要求模型不要把私聊里记下的事在群里说出来。
 - **不用自己接 embedding**：索引使用 Upstash 托管的 embedding 模型，服务直接发送原文（`/upsert-data`、`/query-data`）。
 - `/reset` 只清空聊天历史，不会清空记忆。
 
 ## 画图
 
-`generate_image` 调用 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。实现见 [`src/tools/image.ts`](../src/tools/image.ts)。
+`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`src/modules/image/`](../src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 `providers/openrouter-images/`。画图模块依赖沙盒模块。
 
 | 参数 | 说明 |
 |---|---|
@@ -61,12 +66,12 @@
 
 - **结果**：存到 `/workspace/images/{时间}-{序号}.png`。超过 1920×1080（横竖都算）的会先缩小再保存。同时把一张 1024px 的预览给模型看，确认没问题后再用 `send_file` 发到聊天。
 - **修别人发的照片**：先用 `save_attachment` 把原图存进 `/workspace/inbox/`，再把这个路径填进 `input_references`。
-- **自拍长得一样**：仓库里有一张大肥鱼的形象图 [`assets/persona/dafeiyu.webp`](../assets/persona/dafeiyu.webp)（768px，约 90 KB）。`include_self` 时它排在参考图第一张，提示词末尾再加一句英文，告诉图像模型"第一张参考图就是她本人，保持脸、浅蓝长发和呆毛、鲸鱼鳍耳朵、鲸鱼发夹、蓝眼睛，姿势、场景、衣服按要求画"。人设里也写了她的长相，并告诉模型画自己时要打开 `include_self`，别凭空描述长相。换形象就替换这张图，或者用 `IMAGE_SELF_REFERENCE` 指向别的文件或链接。
+- **自拍长得一样**：仓库里有一张大肥鱼的形象图 [`assets/persona/dafeiyu.webp`](../assets/persona/dafeiyu.webp)（768px，约 90 KB）。`include_self` 时它排在参考图第一张，提示词末尾再加一句英文，告诉图像模型"第一张参考图就是她本人，保持脸、浅蓝长发和呆毛、鲸鱼鳍耳朵、鲸鱼发夹、蓝眼睛，姿势、场景、衣服按要求画"。人设里写了她的长相；画图模块的段落告诉模型画自己时要打开 `include_self`，别凭空描述长相。换形象就替换这张图，或者用 `IMAGE_SELF_REFERENCE` 指向别的文件或链接。
 - **费用**：每次调用都按图收费，工具结果里会带上接口返回的 `cost`。和余额工具一样，群里任何人都能让机器人画图，介意的话不要配置 `IMAGE_API_KEY`。
 
 ## 语音
 
-`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。通过 OpenRouter 的语音接口（`POST /audio/speech`）调用，模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。实现见 [`src/tools/voice.ts`](../src/tools/voice.ts)。不依赖沙盒。
+`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`src/modules/voice/`](../src/modules/voice/)，实现在 `providers/openai-speech/`，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
 
 | 参数 | 说明 |
 |---|---|
@@ -78,7 +83,7 @@
 | `reply_to` | 回复哪条消息，同 `send_message` |
 | `quote` | 显示成引用 `reply_to` 那条消息，同 `send_message` |
 
-工具描述是按配置现拼的：只教当前配置的那个语音模型的写法（`text` 和 `instructions` 怎么写、唱歌怎么写），只列出可用的音色。效果不好时（群友说不像、像念的），描述让模型换音色或写法再试，而不是原样重发；好用的组合可以用 `remember` 记下来。工具结果会写明这次用了什么，例如 `voice message: sung, model=…, voice=dafeiyu, 9.4s`，日志里能看出用的哪个模型。
+工具描述和语音模块的提示词段落都是按配置现拼的：只教当前配置的那个语音模型的写法（实现提供的 dialect）（`text` 和 `instructions` 怎么写、唱歌怎么写），只列出可用的音色。效果不好时（群友说不像、像念的），描述让模型换音色或写法再试，而不是原样重发；好用的组合可以用 `remember` 记下来。工具结果会写明这次用了什么，例如 `voice message: sung, model=…, voice=dafeiyu, 9.4s`，日志里能看出用的哪个模型。
 
 两个模型的区别（在 `TTS_MODEL` 里选）：
 
@@ -102,7 +107,7 @@
 
 ## 沙盒工作区
 
-实现见 [`src/tools/sandbox/`](../src/tools/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`vercel.ts` 是 Vercel Sandbox 的实现，`tools.ts` 是五个工具。
+模块在 [`src/modules/sandbox/`](../src/modules/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`tools.ts` 是五个工具，第一个实现 Vercel Sandbox 在 `providers/vercel-sandbox/`。
 
 | 工具 | 作用 |
 |---|---|
@@ -121,7 +126,7 @@
 - **读图片**：图片缩到最长边 1024px 存进数据库，作为一条用户消息附在工具结果后面交给模型（`detail: "auto"`），之后的请求也会重放。
 - **收到的附件**：聊天里看到的图片只是 512px 的预览，原图和文件都要先用 `save_attachment` 存进工作区才能处理，比如修图后用 `send_file` 发回去。下载在沙盒里用 `curl` 直接写盘，不经过函数内存，所以不限大小；沙盒连不上平台的 CDN 时，改由函数下载后写进去。平台的附件链接会过期，目前只有 QQ 渠道会记录附件链接。
 
-> **注意**：群里任何人都能让机器人执行命令，沙盒默认可以访问外网。沙盒里不放任何密钥，系统提示词也要求拒绝攻击、挖矿之类的请求。如果需要更严格的控制，可以只对指定用户开放这组工具。
+> **注意**：群里任何人都能让机器人执行命令，沙盒默认可以访问外网。沙盒里不放任何密钥，沙盒模块的提示词段落也要求拒绝攻击、挖矿之类的请求。如果需要更严格的控制，可以只对指定用户开放这组工具。
 
 本地调试可以用 `scripts/sandbox-smoke.ts` 在真实的 Vercel Sandbox 上跑一遍：
 
@@ -134,7 +139,7 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 表情包
 
-`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在 [`src/tools/stickers.ts`](../src/tools/stickers.ts)：
+`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在 [`src/modules/chat/stickers.ts`](../src/modules/chat/stickers.ts)：
 
 - **情绪类**：28 张 Q 版动态 GIF，比如笑死、红温了、已老实、你礼貌吗、退退退、吃瓜、贴贴、晚安。
 - **梗图类**：10 张经典梗图，比如得加钱、摆烂、蹭饭、用户别走、无可奉告。
@@ -156,24 +161,25 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 新增工具
 
-在 `src/tools/` 下新建一个模块，导出一个 `Tool`，再加进 [`registry.ts`](../src/tools/registry.ts) 的 `tools` 数组：
+工具属于模块：在已有模块的 `tools.ts` 里加，或者新建一个模块，见[模块 · 新增一个模块](modules.md#新增一个模块)。工具本身的写法（`src/modules/tool.ts`）：
 
 ```ts
-import type { Tool } from "./types.js";
+import type { Tool } from "../tool.js";
 
 export const myTool: Tool = {
   name: "my_tool",
   description: "告诉模型这个工具做什么、什么时候用",
   parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
-  enabled: () => Boolean(config.someService.apiKey), // 可选：依赖的服务没配置时隐藏
   async run(args, ctx) {
     return "工具结果（字符串）";
   },
 };
 ```
 
+- 工具什么时候给模型由它的模块决定。只在模块开着时还要单独隐藏某个工具（比如当前实现查不了余额），用 `enabled`。
+- 怎么用这个工具、什么时候用，写在模块的提示词段落里，不要写进人设或业务规则。
 - `run` 抛出的错误会以 `Error: …` 的形式交给模型，不会中断这一轮。
-- `ctx` 里有当前聊天的信息（`ctx.chat`）和函数的截止时间（`ctx.deadline`）。耗时较长的工具请参考 `bash`，根据 `ctx.deadline` 给自己设上限。
+- `ctx` 里有当前聊天的信息（`ctx.chat`）和函数的截止时间（`ctx.deadline`）。耗时较长的工具请参考 `bash`，用 `ctx.callBudgetMs()` 给自己设上限。
 - 往聊天里发东西用 `ctx.send(...)`：文字 `{ kind: "text", text }`、按 URL 发图片 `{ kind: "image", url, label }`、文件 `{ kind: "file", file }`。具体怎么发由渠道决定，发不了图片的渠道会退化成文字。发消息的工具要声明 `role: "talk"`，循环才知道它失败时不该挂断（见 [Agent 文档](agent.md#说话与挂断)）。
 - 工具占用了要释放的资源（比如沙盒），用 `ctx.onRunEnd(fn)` 注册清理函数，运行结束时统一执行。
-- 别忘了在 `scripts/selftest.ts` 里补一个测试。
+- 别忘了在 `scripts/selftest.ts` 或 `scripts/moduletest.ts` 里补一个测试。

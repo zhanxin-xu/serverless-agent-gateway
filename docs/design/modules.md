@@ -1,7 +1,8 @@
 # 设计：模块、能力与提示词组装
 
-状态：草案，待评审
+状态：P0–P6 已实施（2026-11-09），P7（收缩）待做，见文末“实施记录”
 日期：2026-11-09
+使用说明：[`docs/modules.md`](../modules.md)
 参考：DeepSeek Harness（dsh）的 [`dsh-system-prompt`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/system-prompt/README.md)、[`dsh-web`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/web/web/README.md) 和 [capability seams](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.md)
 
 ## 1. 为什么要改
@@ -456,3 +457,26 @@ P1–P6 可以一起上线，P7 至少隔一周。
 1. `get_search_balance` 是 DeepSeek 特有的。本设计让它只在实现支持 `balance()` 时出现；另一种做法是把它和 `get_llm_key_limit` 合并成一个查余额工具。合并要改工具名，按 9.1 需要别名。倾向不合并。
 2. 第一版是否就在管理端提供人设编辑（存在 `gateway.settings` 的一个长文本配置项里）？本设计倾向先只做预览。
 3. P7 收缩前要观察多久：一周够不够？
+
+## 实施记录（2026-11-09）
+
+| 阶段 | 提交 | 说明 |
+|---|---|---|
+| P0 | e6997d6 | 夹具在 `scripts/fixtures/prompt-v1/` |
+| P1–P4 | b36b1c1 | 互相咬合，合成一次提交；schema v4 在真实 Postgres 上测过（执行两次结果相同） |
+| P5 | e201412 | 管理端 |
+| P6 | 本次 | 文档 |
+| P7 | 未做 | 等 v4 在线上稳定运行至少一周 |
+
+和上面设计不一样的地方：
+
+1. **余额归各自的模块**（评审时提出，替代第 13 节问题 1）。新增核心模块“模型”，`get_llm_key_limit` 只报模型 key；画图 key 拆成画图模块的新工具 `get_image_key_limit`（和模型共用 key 时直接说明）；`get_search_balance` 只在搜索实现能查余额时提供。模块统一声明 `balance()`，总览逐个模块列余额。
+2. **示例的位置**：5.3 说只用发消息和表情包的示例留在 `rules`，但这和“规则里不出现工具名”冲突。改为放进“聊天”模块的段落（核心模块，始终在场）。
+3. **dialect 放在语音能力的接口上**，而不是通用的 `Provider`：`SpeechBackend.dialect()` 返回工具描述用的一段、提示词段落用的一行，以及是否支持行内标签（决定示例怎么写）。其他能力的接口没有这一项，所以“只有语音能影响提示词”由类型保证。
+4. **`meter` 列出计量的工具**（`tools`）：画图、搜索模块里多了余额工具，按模块整体计量会把查余额也算成一次画图或搜索。
+5. **每个模块一个 `section`**，不是数组；目前没有模块需要多段。
+6. **实现的配置分组带 `essentials`**：引导页只问开启需要的几项。
+7. **管理端新增“模块”页**，并把聊天设置里的系统提示预览做成按段落标注来源。
+8. **9.6 的数据迁移**只定了流程，没有实现 `exportData` / `importData`：每种有状态能力目前只有一个实现，切换不会发生。配置页会提示换实现会看不到旧数据。
+9. **提示词对比**：`scripts/prompt-report.ts` 把旧提示里每一行和新提示对比，原样保留的之外，每一行改动都要在脚本里写明原因，否则失败。结果见 [`prompt-migration-report.md`](prompt-migration-report.md)：六种组合合计原样保留 244 行，改写或移走 264 行，全部审阅过。改动主要是三类：人设和规则里去掉工具名，工具用法搬进各自模块，示例跟着模块走。
+

@@ -519,7 +519,7 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   const [message, note] = first!.body.input;
   assert.match(message.content, /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
   assert.deepEqual(note, { role: "developer", content: note.content });
-  assert.match(note.content, /^（系统提示）第1轮开始。待处理的消息：第0条（#USER1，@你）。发消息默认回复第0条/);
+  assert.match(note.content, /^（系统提示）第1轮开始。待处理的消息：第0条（#USER1，@你）。默认回复第0条。$/);
 
   // Stateless replay of the log: reasoning (encrypted_content kept) + function_call, then the output.
   assert.deepEqual(second!.body.input.slice(2).map((i: any) => i.type), ["reasoning", "function_call", "function_call_output"]);
@@ -820,7 +820,7 @@ await test("concurrency: messages during a turn are seen at the next step; one m
   assert.equal(maxInFlight, 1, "never two model calls for one chat at once");
   const step2 = llmRequests()[1]!.body.input;
   assert.match(textOf(step2.findLast((i: any) => i.role === "user")), /\]\n顺便问个事$/);
-  assert.match(step2.at(-1).content, /^（系统提示）第1轮：你处理期间又来了 第\d+条（#CONC，@你）/);
+  assert.match(step2.at(-1).content, /^（系统提示）第1轮：处理期间新来了 第\d+条（#CONC，@你）。回复它们要用 reply_to 指定。$/);
   assert.equal(llmCalls, 2, "handled inside the same turn, no second run");
 });
 
@@ -866,7 +866,7 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   await drain();
   assert.equal(llmCalls, 2, "first ordinary message wakes an ambient turn");
   const ambient = llmRequests()[0]!.body.input;
-  assert.match(ambient.at(-1).content, /第1轮开始。待处理的消息：第0条（老王 #MA）。.*这些消息都没 @ 你/);
+  assert.match(ambient.at(-1).content, /^（系统提示）第1轮开始。待处理的消息：第0条（老王 #MA）。默认回复第0条。这些消息都没有 @ 你，不一定要回应；不发言就直接调用 end_turn。$/);
   assert.match(ambient[0].content, /｜群聊｜发送人 老王 #MA\]\n今天吃啥$/, "no @你 marker, nickname shown");
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 0, "ambient turn's plain text is not auto-sent");
 
@@ -880,7 +880,7 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   const lines = userLines(direct);
   assert.deepEqual(lines.map((l: string) => l.split("\n")[1]), ["今天吃啥", "火锅吧", "你觉得呢"]);
   assert.match(lines[2]!, /｜@你\]\n你觉得呢$/);
-  assert.match(direct.body.input.at(-1).content, /待处理的消息：第\d+条（老王 #MA）、第\d+条（#MB，@你）。发消息默认回复第\d+条/);
+  assert.match(direct.body.input.at(-1).content, /待处理的消息：第\d+条（老王 #MA）、第\d+条（#MB，@你）。默认回复第\d+条/);
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 1, "the @ is answered");
 });
 
@@ -1426,7 +1426,7 @@ await test("push refused (the group doesn't allow the bot to post on its own): g
     await handleWebhook(at("late-2", " 路过", minutesAgo(0)), "qq");
     await drain();
     const opening = llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content;
-    assert.match(opening, /之前有 2 条消息因为回复窗口关了没发出去：「红温了」「气死我了」。如果还用得上，这一轮回复时补上。/);
+    assert.match(opening, /之前有 2 条消息没能发出去：「红温了」「气死我了」。还用得上的话，这一轮补上。/);
 
     // Once a message gets through, the reminder stops. (One at a time: a message that lands
     // mid-turn would become the fake model's latest and change what it does.)

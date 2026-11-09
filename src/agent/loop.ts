@@ -63,7 +63,7 @@ function undeliveredNote(missed: string[]): string {
     .slice(-MAX_UNDELIVERED_SHOWN)
     .map((text) => `「${text.length > MAX_UNDELIVERED_CHARS ? `${text.slice(0, MAX_UNDELIVERED_CHARS)}…` : text}」`)
     .join("");
-  return `之前有 ${missed.length} 条消息因为回复窗口关了没发出去：${quoted}。如果还用得上，这一轮回复时补上。`;
+  return `之前有 ${missed.length} 条消息没能发出去：${quoted}。还用得上的话，这一轮补上。`;
 }
 
 function listMessages(messages: SessionEvent<"user/message">[]): string {
@@ -71,10 +71,12 @@ function listMessages(messages: SessionEvent<"user/message">[]): string {
   return messages.length > 10 ? `……${shown}（共 ${messages.length} 条）` : shown;
 }
 
-const ambientGuidance = (hangup: string) =>
-  `这些消息都没 @ 你，你正在群里暗中窥屏。默认只调用 ${hangup} 继续潜水。` +
-  "但如果有人接你的话、在背后议论你/叫你大肥鱼、有人爆了值得 remember 记小本本的黑料或 flag、" +
-  "或者聊到了美食/好玩的梗让你手痒想吐槽，就主动插一嘴（或者甩张表情包）再挂断！";
+/**
+ * The per-turn notes only say how this turn works (what to handle, where
+ * replies go, whether anyone called the bot); how to behave is the persona's,
+ * in the system prompt, so these stay the same whoever the bot is.
+ */
+const ambientNote = (hangup: string) => `这些消息都没有 @ 你，不一定要回应；不发言就直接调用 ${hangup}。`;
 
 export interface TurnOptions {
   session: Session;
@@ -123,15 +125,14 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
   const usage = { input: 0, cached: 0, reasoning: 0 };
   let handledUpTo = o.pending.at(-1)!.seq;
 
-  const replyNote =
-    `发消息默认回复${messageLabel(o.main.seq)}，要回复别的消息用 reply_to。` + undeliveredNote(undelivered(session.events, (tool) => talks.has(tool)));
+  const replyNote = `默认回复${messageLabel(o.main.seq)}。` + undeliveredNote(undelivered(session.events, (tool) => talks.has(tool)));
   const start = o.resume
     ? `（系统提示）第${turn}轮：接着第${o.resume.turn}轮继续。` +
       (o.resume.interruptions ? "上一段的最后一步被打断了，那一步没有结果；" : "上一段在这个函数里的时间用完了；") +
       `现在换了一个新的函数接着跑。待处理的消息：${listMessages(o.pending)}。` +
       `先看上面已经做了什么、发了什么，从停下的地方接着做，不要重复已经发过的消息。${replyNote}`
     : `（系统提示）第${turn}轮开始。待处理的消息：${listMessages(o.pending)}。${replyNote}` +
-      (o.trigger === "ambient" ? ambientGuidance([...hangups].join(" / ")) : "");
+      (o.trigger === "ambient" ? ambientNote([...hangups].join(" / ")) : "");
   // Events are written in a few batches per step (each batch is one store call).
   let opening: NewEvent[] = [
     { type: "turn/start", data: { turn, trigger: o.trigger } },
@@ -150,7 +151,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     if (step > 1) await session.refresh();
     const arrived = session.messagesAfter(handledUpTo);
     if (arrived.length) {
-      notes.push(`（系统提示）第${turn}轮：你处理期间又来了 ${listMessages(arrived)}。要回复它们用 reply_to。`);
+      notes.push(`（系统提示）第${turn}轮：处理期间新来了 ${listMessages(arrived)}。回复它们要用 reply_to 指定。`);
       handledUpTo = arrived.at(-1)!.seq;
     }
 

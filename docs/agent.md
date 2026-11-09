@@ -157,7 +157,7 @@
 | `images` | 图片（data URL），键名形如 `ev:img:{聊天}:{消息}:{n}` |
 | `inbound` | 已经收到过的平台事件 ID，用来识别平台重推，保留 1 小时 |
 
-`events`、`replies` 对 `sessions` 有外键并级联删除，删掉一个会话就删掉它的全部数据。代码通过 `public` 里的函数访问这些表（[`src/adapters/supabase/store.ts`](../src/adapters/supabase/store.ts)），每个操作一次请求：
+`events`、`replies` 对 `sessions` 有外键并级联删除，删掉一个会话就删掉它的全部数据。代码通过 `public` 里的函数访问这些表（[`src/adapters/supabase/store/store.ts`](../src/adapters/supabase/store/store.ts)），每个操作一次请求：
 
 | 函数 | 作用 |
 |---|---|

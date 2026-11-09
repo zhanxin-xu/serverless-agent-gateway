@@ -1,6 +1,6 @@
 // Settings of the OpenAI-compatible speech provider; the voice to clone defaults to the persona's.
-import { persona } from "../../composition.js";
-import type { ConfigDecl } from "../../modules/types.js";
+import { persona } from "../../../composition.js";
+import type { ConfigDecl } from "../../../modules/types.js";
 
 const group = "voice.openai-speech";
 

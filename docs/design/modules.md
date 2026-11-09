@@ -515,4 +515,6 @@ P1–P6 可以一起上线，P7 至少隔一周。
 - **管理端跟着部署走**：没设密码时的步骤、换密码的说明、连数据库的步骤来自组合的 `guide`；数据库状态来自 `Database.status()`（不再写死 Supabase）；CDN 缓存头来自 `Host.cdnCache`。
 - **测试**：`moduletest` 加了分层检查（核心只依赖核心，适配器只依赖核心和自己，人设只依赖类型，部署之间互不依赖，`api/` 只依赖 `deploy/vercel`，核心不用 `@vercel/functions`），人设名字的检查扩大到整个核心（包括提示词和管理端）。`loadtest` 覆盖 `src` 和 `deploy` 全部 143 个文件。
 
+- **适配器目录按厂商分、厂商内按接口分**（`deepseek/search/`、`openrouter/image/`、`supabase/store/`…）：一家厂商常常服务几个模块（OpenRouter 管画图和模型余额），按厂商放共用代码才有地方；按模块找实现靠每个实现声明的 `capability`，`compose()` 拒绝不属于任何已加载模块的实现。部署只能从厂商的 `index.ts` 引用（测试检查）。
+
 还没做的：本地部署收 QQ、Telegram 消息仍然要 webhook（需要公网地址或隧道）。要在没有公网地址的机器上用，需要渠道支持主动拉取（Telegram 的 `getUpdates`、QQ 的 WebSocket），那是给 `ChannelAdapter` 加一种收消息方式，和这次的解耦无关。

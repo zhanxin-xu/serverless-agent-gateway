@@ -4,8 +4,8 @@
  * request (`input_references`), so it stays the same voice without an
  * account-side voice. What the model may write depends on TTS_MODEL (dialects.ts).
  */
-import { bundledDataUrl } from "../../media/assets.js";
-import type { SpeechBackend, VoiceChoice } from "../../modules/voice/capability.js";
+import { bundledDataUrl } from "../../../media/assets.js";
+import type { SpeechBackend, VoiceChoice } from "../../../modules/voice/capability.js";
 import { speechConfig } from "./config.js";
 import { kindOf } from "./dialects.js";
 

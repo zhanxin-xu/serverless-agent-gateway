@@ -1,5 +1,5 @@
 // Settings of the DeepSeek search provider.
-import type { ConfigDecl } from "../../modules/types.js";
+import type { ConfigDecl } from "../../../modules/types.js";
 
 export const CONFIG: ConfigDecl = {
   group: {

@@ -13,7 +13,7 @@ import {
   type StoredSetting,
   type TurnProblem,
   type UsageCounts,
-} from "../../store/types.js";
+} from "../../../store/types.js";
 
 /** Supabase, with a secret key (sb_secret_…) in the `apikey` header. Every function returns JSON. */
 export class PostgresStore implements Store {

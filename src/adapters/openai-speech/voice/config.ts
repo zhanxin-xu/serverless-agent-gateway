@@ -1,5 +1,5 @@
-import { settingInt, settingJson, settingValue } from "../../config.js";
-import { persona } from "../../composition.js";
+import { settingInt, settingJson, settingValue } from "../../../config.js";
+import { persona } from "../../../composition.js";
 
 /** "none" turns a clip setting off. */
 const clip = (name: string) => {

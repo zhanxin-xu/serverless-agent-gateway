@@ -1,4 +1,4 @@
-import { settingValue } from "../../config.js";
+import { settingValue } from "../../../config.js";
 
 export const upstashConfig = {
   get url() {

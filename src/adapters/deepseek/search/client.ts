@@ -5,9 +5,9 @@
  *   GET  {DEEPSEEK_BASE_URL}/user/balance                           → the account's balance
  * Plain HTTP APIs, so they work for whatever model the agent uses.
  */
-import { getJson } from "../../modules/shared/http.js";
-import type { Balance } from "../../modules/types.js";
-import type { SearchBackend, SearchHit } from "../../modules/search/capability.js";
+import { getJson } from "../../../modules/shared/http.js";
+import type { Balance } from "../../../modules/types.js";
+import type { SearchBackend, SearchHit } from "../../../modules/search/capability.js";
 import { deepseekConfig } from "./config.js";
 
 /** A call gives up after this long, or sooner when the caller's budget is shorter. */

@@ -313,7 +313,7 @@ const qqHint = (await import("../src/adapters/qq/index.js")).qqAdapter.promptHin
 const { config } = await import("../src/config.js");
 const { setWorkspaceFactory } = await import("../src/modules/sandbox/workspace.js");
 const { attachmentFileName } = await import("../src/modules/sandbox/tools.js");
-const { driveName } = await import("../src/adapters/vercel-sandbox/client.js");
+const { driveName } = await import("../src/adapters/vercel-sandbox/sandbox/client.js");
 (await import("../src/channels/net.js")).connectRetry.delayMs = 5;
 
 /** Tool context for calling tools directly, outside a conversation. */
@@ -2048,7 +2048,7 @@ const { saveChatProfile } = await import("../src/chats/profile.js");
 const { quotaPolicy, turnUsage } = await import("../src/chats/usage.js");
 const { utcDay } = await import("../src/chats/day.js");
 const { Toolset } = await import("../src/modules/registry.js");
-const { deepseekConfig } = await import("../src/adapters/deepseek/config.js");
+const { deepseekConfig } = await import("../src/adapters/deepseek/search/config.js");
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {

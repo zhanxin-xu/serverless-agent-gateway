@@ -3,7 +3,7 @@
  * model, so raw text goes in (`/upsert-data`, `/query-data`) and no embedding
  * API of our own is needed.
  */
-import type { MemoryHit, MemoryMetadata, VectorMemory } from "../../modules/memory/capability.js";
+import type { MemoryHit, MemoryMetadata, VectorMemory } from "../../../modules/memory/capability.js";
 import { upstashConfig } from "./config.js";
 
 const TIMEOUT_MS = 15_000;

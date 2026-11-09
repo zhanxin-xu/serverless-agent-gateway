@@ -5,9 +5,9 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { Database } from "../../composition.js";
-import { getStore, SCHEMA_VERSION } from "../../store/index.js";
-import { supabaseConfig } from "./config.js";
+import type { Database } from "../../../composition.js";
+import { getStore, SCHEMA_VERSION } from "../../../store/index.js";
+import { supabaseConfig } from "../config.js";
 
 const URL_VARS = ["POSTGRES_URL_NON_POOLING", "DATABASE_URL", "POSTGRES_URL"];
 const SCHEMA_FILE = "supabase/schema.sql";

@@ -22,7 +22,7 @@ Object.assign(process.env, FULL);
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
 
 (await import("../deploy/vercel/composition.js")).composeVercel();
-const { channel } = await import("../src/composition.js");
+const { channel, providers } = await import("../src/composition.js");
 const { allModules, optionalModules, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
 const MODULES = allModules();
 const OPTIONAL_MODULES = optionalModules();
@@ -253,6 +253,12 @@ await test("settings: each module brings its own, the catalog collects them, swi
       assert.deepEqual([g.module, g.provider], [m.id, { capability: m.capability!.id, id: p.id }]);
     }
     if (m.capability) assert.ok(m.capability.providers.length, `the composition gives ${m.capability.id} a provider`);
+  }
+  // Every composed provider implements a loaded module's capability (compose() refuses one that doesn't),
+  // so looking by module finds every implementation, whichever vendor's folder it is in.
+  const capabilities = new Set(MODULES.flatMap((m) => (m.capability ? [m.capability.id] : [])));
+  for (const p of providers()) assert.ok(capabilities.has(p.capability), `provider ${p.id} implements ${p.capability}`);
+  for (const m of MODULES) {
     if (m.capability) {
       const choice = settingDef(m.capability.selectionSetting)!;
       assert.equal(choice.kind, "enum");
@@ -350,6 +356,8 @@ await test("layers: core ← adapters, personas ← deploy ← api", () => {
       if (from.startsWith("deploy/")) {
         const own = from.split("/").slice(0, 2).join("/");
         assert.ok(!target.startsWith("deploy/") || target.startsWith(`${own}/`), `${from} imports ${target}: deployments don't share code`);
+        // A vendor's adapters are inside its folder, by the interface they implement (search/, image/…); its index.ts is its face.
+        assert.ok(to !== "adapter" || /^src\/adapters\/[a-z0-9-]+\/index\.js$/.test(target), `${from} imports ${target}: use the vendor's index.ts`);
       }
       if (from.startsWith("api/")) assert.equal(target, "deploy/vercel/index.js", `${from} imports ${target}: api/ only hands over to deploy/vercel`);
     }
@@ -378,6 +386,18 @@ function sourceFiles(dir: string): string[] {
   walk(fileURLToPath(new URL(`../${dir}`, import.meta.url)));
   return out;
 }
+
+// Last: it replaces the composition the tests above use.
+await test("compose() refuses a provider no loaded module uses, or two with one id", async () => {
+  const { compose } = await import("../src/composition.js");
+  const { searchModule } = await import("../src/modules/index.js");
+  const { deepseekProvider } = await import("../src/adapters/deepseek/index.js");
+  const { upstashVectorProvider } = await import("../src/adapters/upstash-vector/index.js");
+  const { MemoryStore } = await import("../src/store/index.js");
+  const base = { host: { id: "t", label: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { label: "", password: [], changePassword: "", database: { intro: "", steps: [] } } };
+  assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, upstashVectorProvider] }), /upstash-vector implements vector-memory, which no loaded module uses/);
+  assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, deepseekProvider] }), /two search providers are called deepseek/);
+});
 
 if (failed) {
   console.error(`${failed} failed`);

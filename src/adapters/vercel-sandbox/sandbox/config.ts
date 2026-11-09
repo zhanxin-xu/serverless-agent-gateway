@@ -1,4 +1,4 @@
-import { envValue, settingValue } from "../../config.js";
+import { envValue, settingValue } from "../../../config.js";
 
 export const vercelSandboxConfig = {
   /** On by default where credentials exist (on Vercel, or with VERCEL_OIDC_TOKEN); SANDBOX_ENABLED=0 turns it off. */

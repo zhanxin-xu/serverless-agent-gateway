@@ -147,6 +147,23 @@ export function compose(c: Composition): void {
   current = { ...c, modules: [], store: undefined, makeStore: c.store };
   // Definitions may read the rest (the persona, for defaults), so they run once it's in place.
   current.modules = c.modules.map((define) => define());
+  checkProviders(current.modules, c.providers);
+}
+
+/**
+ * Each provider implements a loaded module's capability, with an id of its own
+ * there: an implementation nothing can use, or two with one id, is a mistake
+ * in the composition, reported at start rather than as a missing option.
+ */
+function checkProviders(modules: readonly Module[], providers: Provider<unknown>[]) {
+  const capabilities = new Set(modules.flatMap((m) => (m.capability ? [m.capability.id] : [])));
+  const seen = new Set<string>();
+  for (const p of providers) {
+    if (!capabilities.has(p.capability)) throw new Error(`provider ${p.id} implements ${p.capability}, which no loaded module uses`);
+    const key = `${p.capability}/${p.id}`;
+    if (seen.has(key)) throw new Error(`two ${p.capability} providers are called ${p.id}`);
+    seen.add(key);
+  }
 }
 
 function composed(): Composed {

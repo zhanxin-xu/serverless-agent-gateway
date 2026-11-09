@@ -1,5 +1,5 @@
 // Settings of the Vercel Sandbox provider.
-import type { ConfigDecl } from "../../modules/types.js";
+import type { ConfigDecl } from "../../../modules/types.js";
 
 const group = "sandbox.vercel-sandbox";
 

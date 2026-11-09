@@ -126,14 +126,14 @@ src/                     核心 + 适配器 + 人设（同一个仓库，按层�
     chat/ basics/ model/ search/ memory/ sandbox/ image/ voice/
   store/                 存储接口（types.ts）和内存实现（本地与测试）
   media/                 图片下载缩小、WAV、读取随部署打包的文件
-  adapters/              第三方适配：每个目录一家服务，只依赖核心
-    deepseek/            搜索能力的实现
-    upstash-vector/      长期记忆能力的实现
-    vercel-sandbox/      沙盒能力的实现
-    openrouter/          画图能力的实现；聊天模型 key 的余额（ModelAccount）
-    openai-speech/       语音能力的实现（Fish / Seed 写法）
+  adapters/              第三方适配：一家厂商一个目录，里面按实现的接口分，只依赖核心
+    deepseek/search/     搜索模块的实现
+    upstash-vector/memory/   长期记忆模块的实现
+    vercel-sandbox/sandbox/  沙盒模块的实现
+    openrouter/          image/ 画图模块的实现；model-account.ts 聊天模型 key 的余额；key.ts 两者共用
+    openai-speech/voice/ 语音模块的实现（Fish / Seed 写法）
+    supabase/store/      存储实现（PostgresStore）和建表（Database）；config.ts 连接
     qq/ telegram/ http/  渠道（各自带配置项；QQ 的 SILK 编码在 qq/silk.ts）
-    supabase/            存储实现（PostgresStore）和建表（Database）
   personas/
     dafeiyu/             人设：提示词、示例、表情包、形象图和声音的路径
 deploy/                  部署：每种一个组合 + 宿主 + 管理端文案

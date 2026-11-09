@@ -11,7 +11,7 @@
 | 层 | 目录 | 能依赖 |
 |---|---|---|
 | 核心 | `src/`（除了下面两个） | 只有核心。不出现任何具体的服务商、渠道、存储、宿主或人设 |
-| 适配器 | `src/adapters/<服务>/` | 核心，和自己目录 |
+| 适配器 | `src/adapters/<厂商>/<接口>/`：一家厂商一个目录，里面按实现的接口分（`search/`、`image/`、`store/`…） | 核心，和自己厂商的目录 |
 | 人设 | `src/personas/<名字>/` | 只有 `Persona` 类型：是数据 |
 | 部署 | `deploy/<部署>/` | 以上全部，不依赖别的部署；`api/` 只转给 `deploy/vercel` |
 
@@ -79,12 +79,17 @@ src/modules/<id>/
   settings.ts       配置：export const CONFIG: ConfigDecl = { group, settings }
   capability.ts     （依赖外部服务时）统一接口；实现列表从组合里取
 
-src/adapters/<服务>/   一个实现（适配器层）
-  index.ts          实现定义：{ id, capability, config, available(), create() }
-  settings.ts       实现的配置
-  config.ts         读配置
-  client.ts         调用服务
+src/adapters/<厂商>/          一家厂商（适配器层）
+  index.ts                    对外的全部：部署只从这里引用
+  <模块>/                     它对这个模块的实现，比如 deepseek/search/、openrouter/image/
+    index.ts        实现定义：{ id, capability, config, available(), create() }
+    settings.ts     实现的配置
+    config.ts       读配置
+    client.ts       调用服务
+  （同一家厂商几个实现共用的代码放在厂商目录下，比如 openrouter/key.ts）
 ```
+
+目录按厂商分，是因为同一家厂商的鉴权、地址、错误格式、余额接口是共用的（OpenRouter 同时管画图和模型余额）。按模块找实现靠的是每个实现声明的 `capability`：模块页列出它的全部实现，`compose()` 会拒绝不属于任何已加载模块的实现。
 
 由模块定义自动得到、不用另外登记的：
 
@@ -193,7 +198,7 @@ export function weatherModule(): Module {
 
 以搜索加一个 Exa 为例：
 
-1. 建 `src/adapters/exa/`（适配器只依赖核心）：
+1. 建 `src/adapters/exa/search/`（适配器只依赖核心），并在 `src/adapters/exa/index.ts` 里导出它：
    - `settings.ts`：`CONFIG`，一个配置分组（`essentials` 写引导页要问的几项）和它的配置项，比如 `EXA_API_KEY`。
    - `config.ts`：用 `settingValue` 等读取配置。
    - `client.ts`：实现 `SearchBackend`（`search`、`fetch`，能查余额的话加 `balance`）。

@@ -2,35 +2,7 @@
 
 机器人的每样本事是一个**模块**：一组工具，加上告诉模型怎么用它们的一段说明。模块开启时，它的工具和说明才会出现在发给模型的请求里；关掉的、没配置好的、依赖没满足的、或者在某个聊天里被关掉的模块，工具和说明都不出现。
 
-设计和取舍见 [`docs/design/modules.md`](design/modules.md)。
-
-## 分层与组合
-
-代码分三个 npm workspaces 包，由测试（`scripts/moduletest.ts` 的 packages）守住依赖方向，并检查每个文件用到的 npm 包都写在自己包的 `package.json` 里：
-
-| 包 | 目录 | 能依赖 |
-|---|---|---|
-| `@gateway/core` | `packages/core/` | 只有自己。不出现任何具体的服务商、渠道、存储、宿主或人设；对外只有 `src/index.ts` |
-| `@gateway/adapters` | `packages/adapters/src/<厂商>/<接口>/`：一家厂商一个目录，里面按实现的接口分（`search/`、`image/`、`store/`…） | `@gateway/core` 的公开入口；一家厂商的目录不引用另一家的。对外是每家厂商的 `index.ts`（`@gateway/adapters/<厂商>`） |
-| `@gateway/vercel` | `packages/vercel/` | 上面两个包的公开入口。人设在 `src/personas/<名字>/`，只是数据；`api/` 只转给 `src/index.ts` |
-
-部署通过 **组合**（`packages/core/src/composition.ts` 的 `compose()`，相当于 dsh 的 `cordis.yml`）把这些交给核心，核心只从组合里读：
-
-| 组合里的 | 是什么 | Vercel 部署包 |
-|---|---|---|
-| `baseDir` | 部署包自己的目录：配置里写的文件路径（形象图、参考音频）相对它 | `packages/vercel/` |
-| `host` | 宿主：后台任务、一次运行能跑多久、跑不完时怎么接力、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` 接着做 |
-| `persona` | 人设 | 大肥鱼 |
-| `modules` | 加载哪些模块、什么顺序 | 全部 8 个 |
-| `providers` | 各能力的实现 | DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 |
-| `modelAccount` | 怎么查聊天模型 key 的余额（没有就没有 `get_llm_key_limit`） | OpenRouter `/key` |
-| `channels` | 渠道 | QQ、Telegram、HTTP |
-| `store` / `database` | 存储，以及管理端怎么给它建表 | 配了 Supabase 用 Supabase，否则内存 |
-| `guide` | 管理端里随部署变的文案：怎么设管理密码、怎么连数据库 | Vercel 控制台的步骤 |
-
-管理端跟着部署走：配置页列出的是组合里的模块、实现和渠道的配置项，引导页的密码和数据库步骤来自 `guide`，数据库状态来自 `database`，标题和头像来自人设。
-
-组合里的东西都在 `compose()` 之后才读，所以文件加载的先后无所谓。新增一种部署（比如常驻的 Node 服务）：新建一个部署包 `packages/<名字>/`，写一个 `Host`、一个组合和入口，依赖 `@gateway/core` 和 `@gateway/adapters`。
+模块由部署的组合加载，三个包和组合见[架构](architecture.md)。设计和取舍见 [`docs/design/modules.md`](design/modules.md)。
 
 ## 三层：模块、能力、实现
 
@@ -93,14 +65,14 @@ packages/adapters/src/<厂商>/          一家厂商（适配器层）
 
 由模块定义自动得到、不用另外登记的：
 
-- **配置**：配置目录（`packages/core/src/settings/catalog.ts`）从组合里收集每个模块、实现、渠道和宿主的 `config`，自动标上属于哪个模块、哪个实现、哪个渠道。
+- **配置**：配置目录（`packages/core/src/settings/catalog.ts`）从组合里收集每个模块、实现和渠道的 `config`，自动标上属于哪个模块、哪个实现、哪个渠道。
 - **开关**：每个可选模块自动有一个 `MODULE_<ID>` 配置项（默认开），加在它自己的配置分组里。
 - **选实现**：`capability` 的选择配置项（比如 `SEARCH_PROVIDER`）的选项自动列出它的实现。
 - **聊天里的开关、每日额度**：从可选模块和它们的 `meter` 得到。
 - **管理端**：模块列表、模块页、引导页里的“可选模块”，以及标了 `setup: "required"` 的模块在引导页单独一步（现在是“模型”）。
 - **检查**：模块写了 `check`，管理端对应的配置分组上就有“检查”按钮。
 
-模块定义在加载时检查：id、工具名、提示词位置、计量的计数名都不能重复；`requires` 的模块必须存在；`meter` 只能计自己的工具；核心模块不能依赖可能不存在的外部服务。有错时网关启动就报错，而不是在对话里出问题。
+模块定义在加载时检查：id、工具名、提示词位置、计量的计数名都不能重复；`requires` 的模块必须存在；`meter` 只能计自己的工具；核心模块不能依赖可能不存在的外部服务。有错时第一次用到模块列表（第一个请求）就报错，而不是在对话里出问题。
 
 **加载顺序**：配置目录读组合里的模块，模块读 `config.ts`，`config.ts` 读配置目录，互相引用。所以任何文件在加载时都不能读别的文件的导出值，也不能读组合：模块是函数、能力的实现列表是 getter、用到人设的默认值在模块定义或 getter 里读。`npm run test:load` 会把每个文件都单独“第一个加载”一遍再组合，确认不会出错。
 
@@ -120,10 +92,10 @@ packages/adapters/src/<厂商>/          一家厂商（适配器层）
 按顺序判断（`packages/core/src/modules/registry.ts` 的 `moduleStatus`）：
 
 1. 它的开关开着：每个可选模块有一个全局开关 `MODULE_<ID>`（比如 `MODULE_SEARCH`），默认 `on`，在管理端的模块页切换。核心模块没有开关。
-2. 它的能力选得出一个实现（见下面的选择规则）。
-3. 它自己的 `ready()` 说可以（没有能力的模块用这个，比如“模型”要填了 API Key）。
-4. 它 `requires` 的模块都开着。
-5. 在某个聊天里：这个聊天没关掉它（聊天设置里的 `disabledModules`）。
+2. 在某个聊天里：这个聊天没关掉它（聊天设置里的 `disabledModules`）。
+3. 它的能力选得出一个实现（见下面的选择规则）。
+4. 它自己的 `ready()` 说可以（没有能力的模块用这个，比如“模型”要填了 API Key）。
+5. 它 `requires` 的模块都开着（在同一个聊天里）。
 
 管理端的模块页、引导页和 `/api/health` 的 `modules` 字段都会写出没开启的原因。
 

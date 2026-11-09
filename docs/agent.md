@@ -44,7 +44,7 @@
 | `user/message` | ✅ | 收到的消息：消息头、正文、发送人、是否 @、图片的存储键、平台回复信息 |
 | `user/mentioned` | — | 同一条消息又以 @ 事件推送了一次 |
 | `session/reset` | — | `/reset`，它之前的内容都不再可见 |
-| `turn/start` / `turn/end` | — | 一轮的开始和结束（结束原因：`completed`、`max-steps`、`out-of-time`、`error`、`interrupted`） |
+| `turn/start` / `turn/end` | — | 一轮的开始和结束（结束原因：`completed`、`max-steps`、`out-of-time`、`error`、`paused`、`interrupted`、`unreachable`） |
 | `step/start` / `step/end` | — | 一步的开始和结束（一次模型调用加它请求的工具） |
 | `developer/message` | ✅ | 系统提示：只在接着上一段继续、有消息没发出去、最后一步时才有 |
 | `assistant/message` | ✅ | 模型这一步的全部输出，原样保存，附带 `usage` |

@@ -62,7 +62,7 @@
 | `background` | `auto`、`transparent`、`opaque` |
 | `n` | 生成几张，1–10，默认 1 |
 
-`quality`（默认 `low`）只能在环境变量里设，模型不能改；输出格式固定为 `png`（无损，所以不用 `output_compression`）。`resolution` 默认不发：默认的 gpt-image 模型不支持它，换成支持的模型时再设 `IMAGE_RESOLUTION`。
+`quality`（默认 `low`）在管理端或环境变量里设，模型不能改；输出格式固定为 `png`（无损，所以不用 `output_compression`）。`resolution` 默认不发：默认的 gpt-image 模型不支持它，换成支持的模型时再设 `IMAGE_RESOLUTION`。
 
 - **结果**：存到 `/workspace/images/{时间}-{序号}.png`。超过 1920×1080（横竖都算）的会先缩小再保存。同时把一张 1024px 的预览给模型看，确认没问题后再用 `send_file` 发到聊天。
 - **修别人发的照片**：先用 `save_attachment` 把原图存进 `/workspace/inbox/`，再把这个路径填进 `input_references`。
@@ -83,7 +83,7 @@
 | `reply_to` | 回复哪条消息，同 `send_message` |
 | `quote` | 显示成引用 `reply_to` 那条消息，同 `send_message` |
 
-工具描述和语音模块的提示词段落都是按配置现拼的：只教当前配置的那个语音模型的写法（实现提供的 dialect）（`text` 和 `instructions` 怎么写、唱歌怎么写），只列出可用的音色。效果不好时（群友说不像、像念的），描述让模型换音色或写法再试，而不是原样重发；好用的组合可以用 `remember` 记下来。工具结果会写明这次用了什么，例如 `voice message: sung, model=…, voice=dafeiyu, 9.4s`，日志里能看出用的哪个模型。
+工具描述和语音模块的提示词段落都是按配置现拼的：只教当前配置的那个语音模型的写法（实现提供的 dialect）（`text` 和 `instructions` 怎么写、唱歌怎么写），只列出可用的音色。效果不好时（群友说不像、像念的），描述让模型换音色或写法再试，而不是原样重发；好用的组合可以用 `remember` 记下来。工具结果会写明这次用了什么，例如 `voice message: sung, model=…, voice=self, 9.4s`，日志里能看出用的哪个模型。
 
 两个模型的区别（在 `TTS_MODEL` 里选）：
 

@@ -40,15 +40,16 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm test
 
 1. Fork 仓库并新建分支。
 2. 修改代码，**同时在 `scripts/selftest.ts`（存储相关的在 `scripts/storetest.ts`）里补上或更新测试**。
-3. 确认 `npm run typecheck`、`npm test` 和 `npm run test:store` 都通过。CI 会在每个 Pull Request 上自动运行，并且带一个真实的 Postgres。
+3. 确认 `npm run typecheck`、`npm run build`、`npm test` 和 `npm run test:store` 都通过。CI 会在每个 Pull Request 上自动运行，并且带一个真实的 Postgres。
 4. 改了行为或配置的话，同步更新 `docs/`、`README.md` 和 `.env.example`。
 5. 提交 Pull Request，说明改了什么、为什么改。
 
 ## 代码约定
 
 - **和周围的代码保持一致**：命名、注释密度、写法都参照同一文件里已有的代码。
-- **外部接口直接用 `fetch`**：模型、QQ、Telegram、Supabase、Upstash Vector 都是直接调用 HTTP 接口，不引入 SDK，方便透传参数，也让测试能统一 mock。Vercel Sandbox 是例外，它需要 SDK 处理认证。
-- **配置项跟着它的主人**：核心配置（渠道、Agent、管理）在 `packages/core/src/settings/catalog.ts`；模块和实现的配置在各自目录的 `settings.ts`，由模块定义带上，配置目录自动收集。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
+- **守住包的边界**：core 不引用其他包；跨包只走公开入口（`@gateway/core`、`@gateway/adapters/<厂商>`）；用到的 npm 包写进所在包的 `package.json`。测试会检查，见[架构](docs/architecture.md)。
+- **外部接口直接用 `fetch`**：模型、QQ、Telegram、Supabase、Upstash Vector 都是直接调用 HTTP 接口，不引入 SDK，方便透传参数，也让测试能统一 mock。例外：Vercel Sandbox 用 SDK 处理认证，Supabase 建表用 `pg` 直连。
+- **配置项跟着它的主人**：核心配置（Agent、管理）在 `packages/core/src/settings/catalog.ts`；模块、实现、渠道的配置在各自目录的 `settings.ts`，配置目录从组合里自动收集。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
 - **加载时不读别的文件的导出值**：模块、配置目录和 `config.ts` 互相引用，模块定义是函数、实现列表是 getter。改了模块结构后跑一下 `npm run test:load`。
 - **注释解释"为什么"**：平台限制、踩过的坑、看起来奇怪但必须这样写的地方，都值得写一句注释。
 - **不要提交密钥**：`.env*` 已经在 `.gitignore` 里。仓库是公开的，提交前请检查一遍 diff。

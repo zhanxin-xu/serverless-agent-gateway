@@ -10,19 +10,23 @@ Vercel 部署的是部署包 `packages/vercel/`：它的 `api/` 目录下的文�
 
 ## 部署到 Vercel
 
-1. 在 Vercel 导入本仓库，在项目的 **Settings → Build and Deployment → Root Directory** 填 `packages/vercel`，并打开 **Include files outside the root directory in the Build Step**（2020 年之后建的项目默认是开着的）。安装和构建由 `packages/vercel/vercel.json` 决定：在仓库根目录 `npm ci`，再把 core 和 adapters 编译到 `dist/`。这条命令写在 `functions` 条目里（`api/**/*.ts` 的 `installCommand`），因为只有 `api/` 函数、没有框架的项目，Vercel 不认顶层的 `installCommand`。Framework Preset、Build Command、Output Directory、Install Command 都保持默认（空）。
+1. 在 Vercel 导入本仓库（或在仓库根目录运行 `npx vercel`，问代码在哪个目录时填 `packages/vercel`）。项目的 **Settings → Build and Deployment** 里：
+   - **Root Directory** 填 `packages/vercel`；
+   - **Include files outside the root directory in the Build Step** 打开（2020 年之后建的项目默认打开）；
+   - Framework Preset、Build Command、Output Directory、Install Command 保持默认。安装和构建写在 `packages/vercel/vercel.json` 里，见[架构](architecture.md#构建)。
 2. 在项目的 **Settings → Environment Variables** 里添加 `ADMIN_PASSWORD`，在 **Storage** 页面连接 Supabase（见下文），然后重新部署。
 3. 打开 `https://<域名>/admin` 登录，按[新手引导](admin.md#新手引导)一步步配置：建表、模型、渠道。已经用环境变量配置好的老部署不用迁移：数据库里没有的配置项照常读环境变量，以后想在管理端改哪项，就在那里填一次。其余配置都在管理端里填，不用再改环境变量，完整列表见[配置参考](configuration.md)。
 4. 也可以访问 `https://<域名>/api/health` 检查状态：
 
    | 字段 | 含义 |
    |---|---|
+   | `host` | 部署在哪（`vercel`） |
+   | `model` / `baseUrl` | 聊天模型和服务地址 |
    | `apiKey` | 是否配置了模型 API Key |
    | `extraBody` | `OPENAI_RESPONSES_EXTRA_BODY` 的解析结果 |
    | `modules` | 每个模块开没开；没开时写原因，见[模块](modules.md) |
    | `tools` | 当前启用的工具 |
    | `store` | 存储的名字（`Supabase`）；部署没有数据库设置时是 `memory` |
-   | `memory` / `sandbox` | 长期记忆和沙盒是否启用 |
    | `channels` | 各渠道是否已配置凭据 |
    | `admin` | 是否设置了 `ADMIN_PASSWORD`（管理端能否登录） |
 

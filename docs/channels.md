@@ -164,6 +164,9 @@ curl -X POST https://<域名>/api/webhook/http \
 | `send(message, text)` | 否 | 发送一条文字回复。不实现时，该渠道为同步模式 |
 | `sendImage(message, url)` | 否 | 按 URL 发图片（表情包）。不实现时用文字代替 |
 | `sendFile(message, file)` | 否 | 上传并发送文件。不实现时 `send_file` 会返回错误 |
+| `sendVoice(message, voice)` | 否 | 发平台能直接播放的语音。不实现时发 WAV 文件，不能发文件就发文字 |
+| `sendMentions(message, parts)` | 否 | 发一条真正 @ 人的群消息。不实现时把 @ 写成“@昵称” |
+| `canPush(replyContext)` | 否 | 回复窗口关闭后，还能不能主动推送到这个聊天。不实现时不推送 |
 | `typing(message)` | 否 | 显示"正在输入" |
 | `promptHint` | 否 | 追加到系统提示词后面的格式要求，例如"不要用 Markdown" |
 | `maxRepliesPerMessage` | 否 | 平台对一条消息最多允许几次回复（QQ 是 5）。不设置时用网关默认的 5 次，防止模型刷屏 |
@@ -171,6 +174,6 @@ curl -X POST https://<域名>/api/webhook/http \
 | `verify()` | 否 | 管理端的“检查”：验证凭据能用（比如取一次 token） |
 | `connect(origin)` | 否 | 管理端的“设置 Webhook”：向平台登记回调地址，返回要顺便保存的设置 |
 
-渠道的凭据写在配置目录 [`packages/core/src/settings/catalog.ts`](../packages/core/src/settings/catalog.ts) 里：加一个 `channel` 指向渠道名的设置组，管理端的引导页和配置页就会显示它。`connect` 会自动填的项标 `setByConnect`，可以由管理端随机生成的密钥标 `generate`。
+渠道的凭据写在适配器自己的 `config` 里（`packages/adapters/src/<渠道>/settings.ts`），配置目录会自动收集并标上渠道名，管理端的引导页和配置页就会显示它。`connect` 会自动填的项标 `setByConnect`，可以由管理端随机生成的密钥标 `generate`。
 
 `InboundMessage.replyContext` 用来保存回复时需要的平台信息（比如 QQ 的 `msg_id` 和 `msg_seq` 计数），在同一轮的多次发送之间共享。

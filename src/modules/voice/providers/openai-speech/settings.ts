@@ -11,6 +11,7 @@ export const GROUPS: SettingGroup[] = [
     enabledBy: "TTS_API_KEY",
     module: "voice",
     provider: { capability: "speech", id: "openai-speech" },
+    essentials: ["TTS_API_KEY"],
   },
 ];
 

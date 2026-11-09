@@ -9,6 +9,7 @@ export const GROUPS: SettingGroup[] = [
     enabledBy: "UPSTASH_VECTOR_REST_TOKEN",
     module: "memory",
     provider: { capability: "vector-memory", id: "upstash-vector" },
+    essentials: ["UPSTASH_VECTOR_REST_URL", "UPSTASH_VECTOR_REST_TOKEN"],
   },
 ];
 

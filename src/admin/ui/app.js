@@ -1,5 +1,5 @@
 // The console's shell: sign-in, navigation, and a hash router that mounts one view at a time.
-//   #/setup  #/overview  #/chats  #/chat/<chat>/<tab>  #/config/<group>  #/log
+//   #/setup  #/overview  #/chats  #/chat/<chat>/<tab>  #/modules  #/config/<group>  #/log
 import { api } from "./api.js";
 import { action, fill, h, toast } from "./dom.js";
 import { icon } from "./icons.js";
@@ -7,6 +7,7 @@ import { renderChat } from "./view-chat.js";
 import { renderChats } from "./view-chats.js";
 import { renderConfig } from "./view-config.js";
 import { renderLog } from "./view-log.js";
+import { renderModules } from "./view-modules.js";
 import { renderOverview } from "./view-overview.js";
 import { renderSetup, setupProgress } from "./view-setup.js";
 
@@ -31,6 +32,7 @@ const VIEWS = {
   overview: renderOverview,
   chats: renderChats,
   chat: renderChat,
+  modules: renderModules,
   config: renderConfig,
   log: renderLog,
 };
@@ -53,6 +55,7 @@ function renderNav() {
     progress.done < progress.total ? navLink("#/setup", "setup", "新手引导", `${progress.done}/${progress.total}`) : null,
     navLink("#/overview", "overview", "总览"),
     navLink("#/chats", "chats", "聊天"),
+    navLink("#/modules", "modules", "模块"),
     navLink("#/config", "config", "配置"),
     navLink("#/log", "log", "操作记录"),
     progress.done >= progress.total ? navLink("#/setup", "setup", "引导与检查") : null,

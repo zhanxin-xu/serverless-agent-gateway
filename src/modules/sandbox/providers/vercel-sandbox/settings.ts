@@ -8,6 +8,7 @@ export const GROUPS: SettingGroup[] = [
     help: "每个聊天一个 Vercel Drive 挂在 /workspace。部署在 Vercel 上时自动认证；本地要 VERCEL_OIDC_TOKEN。",
     module: "sandbox",
     provider: { capability: "sandbox", id: "vercel-sandbox" },
+    essentials: ["SANDBOX_ENABLED"],
   },
 ];
 

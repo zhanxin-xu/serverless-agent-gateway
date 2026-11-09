@@ -3,6 +3,7 @@
 import { api } from "./api.js";
 import { action, copy, copyable, every, fill, h, pill, toast } from "./dom.js";
 import { checkResult, groupActions, loadSettings, settingsForm } from "./form.js";
+import { moduleState } from "./view-modules.js";
 
 const SKIP_KEY = "admin.setup.skipFeatures";
 const skippedFeatures = () => {
@@ -19,7 +20,7 @@ function steps(s) {
     { id: "database", title: "数据库", done: s.database.backend === "supabase" && s.database.ready },
     { id: "model", title: "模型", done: s.model },
     { id: "channels", title: "接入渠道", done: s.channels.some((c) => c.configured) },
-    { id: "features", title: "画图、语音、搜索、记忆", optional: true, done: Object.values(s.features).some(Boolean) || skippedFeatures() },
+    { id: "features", title: "可选模块", optional: true, done: s.modules.some((m) => !m.core && m.ok) || skippedFeatures() },
     { id: "first", title: "发条消息试试", done: s.firstMessage },
   ];
 }
@@ -30,14 +31,6 @@ export function setupProgress(status) {
   const all = steps(status);
   return { done: all.filter((s) => s.done).length, total: all.length, required: all.some((s) => !s.done && !s.optional) };
 }
-
-const FEATURE_CARDS = [
-  { group: "image", keys: ["IMAGE_API_KEY"], status: "image", note: "画图还需要沙盒开着。" },
-  { group: "tts", keys: ["TTS_API_KEY"], status: "tts" },
-  { group: "search", keys: ["DEEPSEEK_API_KEY"], status: "search" },
-  { group: "memory", keys: ["UPSTASH_VECTOR_REST_URL", "UPSTASH_VECTOR_REST_TOKEN"], status: "memory" },
-  { group: "sandbox", keys: ["SANDBOX_ENABLED"], status: "sandbox" },
-];
 
 export async function renderSetup(main, [stepId], app) {
   const status = await app.refreshStatus();
@@ -207,21 +200,31 @@ const STEP_VIEWS = {
   async features(panel, status, app, next) {
     if (!requireDb(panel, status)) return;
     const index = await loadSettings();
+    const byId = new Map(status.modules.map((m) => [m.id, m]));
     fill(
       panel,
-      h("h2", null, "可选能力"),
-      h("p", { class: "muted" }, "都可以跳过，以后在配置页再开。这里只填最少的，其余参数在配置页。"),
-      FEATURE_CARDS.map((f) => {
-        const group = index.groups.find((g) => g.id === f.group);
-        const form = settingsForm(index, f.keys, { onSaved: () => app.refreshStatus(), actions: (form) => groupActions(index, group, status, form, null) });
-        return h(
-          "div",
-          { class: "card" },
-          h("h3", null, group.label, " ", status.features[f.status] ? pill("ok", "已开启") : pill("mute", "未开启")),
-          h("p", { class: "muted" }, group.help, f.note ? ` ${f.note}` : ""),
-          form.el,
-        );
-      }),
+      h("h2", null, "可选模块"),
+      h("p", { class: "muted" }, "画图、语音、搜索、记忆、沙盒都是模块，都可以跳过，以后在配置页再开。这里只填开启需要的最少几项，其余参数在配置页。"),
+      status.modules
+        .filter((m) => !m.core)
+        .map((m) => {
+          // The provider in use, or the first: its essential settings turn the module on.
+          const cap = m.capability;
+          const provider = cap.providers.find((p) => p.id === cap.selected) ?? cap.providers[0];
+          const group = index.groups.find((g) => g.id === provider.settings);
+          const keys = group.essentials ?? index.keysOf(group.id);
+          const slot = h("p", { class: "check-result" });
+          const form = settingsForm(index, keys, { onSaved: () => app.refreshStatus(), actions: (f) => groupActions(index, group, status, f, slot) });
+          return h(
+            "div",
+            { class: "card" },
+            h("h3", null, m.label, " ", moduleState(m)),
+            h("p", { class: "muted" }, m.summary, m.requires.length ? ` 需要先开启${m.requires.map((id) => byId.get(id)?.label ?? id).join("、")}。` : ""),
+            h("p", { class: "help" }, `${provider.label}：${provider.description}`, cap.providers.length > 1 ? `（还有 ${cap.providers.length - 1} 个实现可选，在配置页切换）` : ""),
+            form.el,
+            slot,
+          );
+        }),
       h(
         "div",
         { class: "row" },

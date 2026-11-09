@@ -334,6 +334,12 @@ h1 .pill { font-size: 12px; }
 .manual summary { cursor: pointer; color: var(--accent); font-weight: 500; }
 .manual { display: grid; gap: 10px; }
 .sql { max-height: 320px; overflow: auto; background: var(--surface-2); border: 1px solid var(--line); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; }
+/* The modules page: cards side by side; an opened card spans the row so its prompt text has room. */
+.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.module-grid .card:has(details[open]) { grid-column: 1 / -1; }
+/* Prompt text and tool definitions: wrapped, full height (the page scrolls, not a box inside it). */
+.sql.prompt-text { max-height: none; overflow: visible; white-space: pre-wrap; word-break: break-word; margin: 0; font-family: var(--font); font-size: 13px; line-height: 1.6; }
+.sql.prompt-text.code { font-family: var(--mono); font-size: 12px; }
 
 /* ── Tables and tiles ── */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }

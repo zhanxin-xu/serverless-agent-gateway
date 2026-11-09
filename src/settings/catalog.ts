@@ -65,6 +65,8 @@ export interface SettingGroup {
   module?: string;
   /** A provider's settings: which capability it serves, and its id there. */
   provider?: { capability: string; id: string };
+  /** The few settings that turn it on, asked for in the setup guide (the rest are on the config page). */
+  essentials?: string[];
 }
 
 const OPENROUTER = "https://openrouter.ai/api/v1";

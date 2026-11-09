@@ -471,7 +471,7 @@ function renderSettings(body, chat, info, app) {
     modes.map((o) => h("option", { value: o.value, selected: p.mode === o.value }, o.label)),
   );
   const interval = h("input", { id: "profile-interval", type: "text", inputmode: "numeric", value: p.ambientIntervalSeconds ?? "", placeholder: `默认 ${info.defaults.ambientIntervalSeconds}` });
-  const disabled = new Set(p.disabledTools ?? []);
+  const disabled = new Set(p.disabledModules ?? []);
   const tools = features.map(({ value: id, label }) => {
     const box = h("input", { id: `profile-tool-${id}`, type: "checkbox", checked: !disabled.has(id) });
     return { id, box, el: h("label", { class: "check", for: `profile-tool-${id}` }, box, label) };
@@ -489,7 +489,7 @@ function renderSettings(body, chat, info, app) {
       title: title.value,
       mode: mode.value || null,
       ambientIntervalSeconds: interval.value.trim() || null,
-      disabledTools: tools.filter((t) => !t.box.checked).map((t) => t.id),
+      disabledModules: tools.filter((t) => !t.box.checked).map((t) => t.id),
       prompt: prompt.value,
       quota: Object.fromEntries(quotas.map((q) => [q.key, q.input.value.trim() || null])),
     };
@@ -520,7 +520,14 @@ function renderSettings(body, chat, info, app) {
         field("title", "备注名", title, "QQ 不给群名，起个好认的名字。"),
         field("mode", "回复方式", mode, "正常：被 @ 必回，平时偶尔插话。只回 @：不插话。只记录：一律不回，消息留作上下文。屏蔽：连记录都不存。"),
         field("interval", "插话频率（秒）", interval, "群里没 @ 的消息，每这么多秒最多给她看一次。0 = 不插话。"),
-        h("div", { class: "field" }, h("span", { class: "label" }, "能用的工具"), h("div", { class: "row" }, tools.map((t) => t.el)), errorSlot("disabledTools")),
+        h(
+          "div",
+          { class: "field" },
+          h("span", { class: "label" }, "能用的模块"),
+          h("div", { class: "row" }, tools.map((t) => t.el)),
+          h("p", { class: "help" }, "关掉的模块，它的工具和说明都不会出现在这个聊天发给模型的请求里。没配置好的模块本来就不会出现，见“模块”页。"),
+          errorSlot("disabledModules"),
+        ),
         field("prompt", "这个聊天的额外设定", prompt, "加在系统提示后面，只对这个聊天生效。"),
       ),
       h(
@@ -540,5 +547,29 @@ function renderSettings(body, chat, info, app) {
       ),
     ),
     h("div", { class: "row" }, save),
+    promptPreview(chat),
   );
+}
+
+/** What the model is told and given in this chat now, section by section (GET chat/prompt), loaded when opened. */
+function promptPreview(chat) {
+  const body = h("div", { class: "stack" });
+  const el = h("details", { class: "manual" }, h("summary", null, "看这个聊天的系统提示和工具（模型实际收到的）"), body);
+  let loaded = false;
+  el.addEventListener("toggle", async () => {
+    if (!el.open || loaded) return;
+    loaded = true;
+    fill(body, h("p", { class: "muted" }, "加载中…"));
+    try {
+      const a = await api.get("chat/prompt", { chat });
+      fill(
+        body,
+        h("p", { class: "help" }, `共 ${a.chars} 字，${a.sections.length} 段；开启的模块：${a.modules.join("、")}；工具 ${a.tools.length} 个：${a.tools.map((t) => t.name).join("、")}。保存设置后最多 30 秒生效。`),
+        a.sections.map((s) => [h("h3", null, s.source, " ", h("span", { class: "muted small" }, `${s.name} · ${s.text.length} 字`)), h("pre", { class: "sql prompt-text" }, s.text)]),
+      );
+    } catch (err) {
+      fill(body, h("p", { class: "field-error" }, err.message));
+    }
+  });
+  return el;
 }

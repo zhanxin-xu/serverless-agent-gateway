@@ -9,6 +9,7 @@ export const GROUPS: SettingGroup[] = [
     enabledBy: "IMAGE_API_KEY",
     module: "image",
     provider: { capability: "image", id: "openrouter-images" },
+    essentials: ["IMAGE_API_KEY"],
   },
 ];
 

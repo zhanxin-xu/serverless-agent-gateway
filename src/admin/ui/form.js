@@ -143,8 +143,21 @@ function checkButton(label, path, before) {
   return h("span", { class: "check" }, btn, slot);
 }
 
-/** The check a settings group offers, by group id (src/settings/catalog.ts): [label, API path]. */
-const GROUP_CHECKS = { llm: ["测试", "checks/model"], search: ["查余额", "checks/search"] };
+/** The check a core settings group offers, by group id (src/settings/catalog.ts): [label, API path]. */
+const GROUP_CHECKS = { llm: ["测试", "checks/model"] };
+
+/**
+ * A provider's group gets its module's check (src/modules: Module.check) when
+ * that provider is the one in use, or the only one there is.
+ */
+function moduleCheck(group, status) {
+  if (!group.provider) return undefined;
+  const module = status.modules?.find((m) => m.id === group.module);
+  const cap = module?.capability;
+  if (!module?.canCheck || !cap) return undefined;
+  const inUse = cap.selected === group.provider.id || cap.providers.length === 1;
+  return inUse ? ["检查", `checks/module/${module.id}`] : undefined;
+}
 
 /**
  * What goes beside a group's save button: its check, its channel's verify and
@@ -153,7 +166,7 @@ const GROUP_CHECKS = { llm: ["测试", "checks/model"], search: ["查余额", "c
  */
 export function groupActions(index, group, status, form, slot) {
   const items = [];
-  const check = GROUP_CHECKS[group.id];
+  const check = GROUP_CHECKS[group.id] ?? moduleCheck(group, status);
   if (check) items.push(checkButton(check[0], check[1], () => form.save()));
   const channel = group.channel ? status.channels.find((c) => c.name === group.channel) : undefined;
   if (channel?.canVerify) items.push(checkButton("检查", `channels/${channel.name}/verify`, () => form.save()));

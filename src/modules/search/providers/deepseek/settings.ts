@@ -9,6 +9,7 @@ export const GROUPS: SettingGroup[] = [
     enabledBy: "DEEPSEEK_API_KEY",
     module: "search",
     provider: { capability: "search", id: "deepseek" },
+    essentials: ["DEEPSEEK_API_KEY"],
   },
 ];
 

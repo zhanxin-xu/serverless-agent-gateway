@@ -18,12 +18,14 @@
 |---|---|---|---|---|---|---|
 | 聊天 `chat` | 是 | — | — | — | `send_message` `send_sticker` `end_turn` `chat_members` | — |
 | 小工具 `basics` | 是 | — | — | — | `get_current_time` `calculate` | — |
-| 模型 `model` | 是 | — | — | — | `get_llm_key_limit` | — |
+| 模型 `model` | 是 | 聊天模型 | pi-ai（四种协议） | — | `get_llm_key_limit` | — |
 | 长期记忆 `memory` | | 记忆存储 | Upstash Vector | — | `remember` `recall` `forget` | — |
 | 搜索 `search` | | 搜索服务 | DeepSeek | — | `web_search` `web_fetch` `get_search_balance` | 搜索（次） |
 | 沙盒 `sandbox` | | 沙盒服务 | Vercel Sandbox | — | `bash` `read_file` `write_file` `send_file` `save_attachment` | — |
 | 画图 `image` | | 画图服务 | OpenRouter Image API | 沙盒 | `generate_image` `get_image_key_limit` | 画图（张） |
 | 语音 `voice` | | 语音服务 | OpenAI 兼容语音接口 | — | `send_voice` | 语音（条） |
+
+核心模块不能关；依赖能力的核心模块只有模型，它是新手引导的第一步（`setup: "required"`），没配好整个机器人都不工作。
 
 **余额归各自的模块**：模型 key 由“模型”模块的 `get_llm_key_limit` 查，画图 key 由“画图”模块的 `get_image_key_limit` 查（和模型共用一个 key 时它会直接说明），搜索余额由“搜索”模块的 `get_search_balance` 查（只有能查余额的搜索实现才提供）。管理端总览逐个模块列余额。
 

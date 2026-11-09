@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 // Every optional module configured (fake values), as in a full deployment.
 const FULL = {
-  OPENAI_RESPONSES_API_KEY: "k",
+  MODEL_API_KEY: "k",
   DEEPSEEK_API_KEY: "k",
   IMAGE_API_KEY: "k",
   TTS_API_KEY: "k",
@@ -269,8 +269,9 @@ await test("settings: each module brings its own, the catalog collects them, swi
     }
   }
   assert.equal(new Set(settingDefs().map((d) => d.key)).size, settingDefs().length, "no key twice");
-  assert.equal(settingDef("OPENAI_RESPONSES_API_KEY")!.group, "llm", "the model's settings come with the model module");
-  assert.equal(groups.find((g) => g.id === "llm")!.module, "model");
+  assert.equal(groups.find((g) => g.id === "llm")!.module, "model", "the model module's own settings (which provider, the call timeout)");
+  assert.equal(settingDef("MODEL_API_KEY")!.group, "pi-ai", "the endpoint, key and model come with the provider");
+  assert.deepEqual(groups.find((g) => g.id === "pi-ai")!.provider, { capability: "chat-model", id: "pi-ai" });
   assert.equal(settingDef("STICKER_BASE_URL")!.group, "chat", "the sticker CDN comes with the chat module");
   assert.equal(groups.find((g) => g.id === "qq")!.channel, "qq", "a channel's settings come with its adapter");
   assert.equal(settingDef("WORKER_SECRET"), undefined, "a hand-over needs no secret: the run's lock is the ticket");
@@ -288,6 +289,7 @@ await test("a module's definition is checked when the modules load", () => {
   assert.throws(() => checkModules(bad({ requires: ["nope"] })), /requires nope, which isn't loaded/);
   assert.throws(() => checkModules(bad({ meter: { key: "images", label: "x", tools: ["web_search"] } })), /both count into images/);
   assert.throws(() => checkModules(bad({ meter: { key: "x", label: "x", tools: ["bash"] } })), /meters bash, which isn't its tool/);
+  assert.throws(() => checkModules(bad({ core: true })), /core module search depends on a service: the setup guide must ask for it/);
   assert.throws(() => checkModules(bad({ tools: [...base.tools, MODULES[0]!.tools[0]!] })), /tool send_message is in both chat and search/);
   for (const m of MODULES) if (m.section) assert.ok(m.section.order >= ORDER.modules.from && m.section.order <= ORDER.modules.to);
 });

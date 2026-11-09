@@ -33,8 +33,8 @@
     "dev": "npm run dev -w @gateway/vercel",
     "build": "npm run build -w @gateway/core && npm run build -w @gateway/adapters",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --conditions=source scripts/selftest.ts && tsx --conditions=source scripts/moduletest.ts",
-    "test:store": "tsx --conditions=source scripts/storetest.ts",
+    "test": "tsx --conditions=source scripts/selftest.ts && tsx --conditions=source scripts/moduletest.ts && tsx --conditions=source scripts/llmtest.ts",
+    "test:store": "tsx --conditions=source scripts/storetest.ts && tsx --conditions=source scripts/migrationtest.ts",
     "test:load": "tsx --conditions=source scripts/loadtest.ts"
   },
   "devDependencies": {

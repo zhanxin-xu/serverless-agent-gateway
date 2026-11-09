@@ -1,5 +1,5 @@
 /** OpenRouter's Image API: POST {IMAGE_BASE_URL}/images; its key's limits from GET /key. */
-import { config, type Balance, type ImageBackend } from "@gateway/core";
+import type { Balance, ImageBackend } from "@gateway/core";
 import { keyBalance, keyReport, KEY_NOTE } from "../key.js";
 import { openrouterImagesConfig } from "./config.js";
 
@@ -11,10 +11,13 @@ interface ImagesResponse {
   usage?: { cost?: number };
 }
 
-/** The image key's limits; when it's the model's key too, saying so instead of counting it twice. */
-async function balance(): Promise<Balance> {
+/**
+ * The image key's limits. When it's the chat model's key too (`modelKey`, as
+ * the deployment wires it), say so instead of counting it twice.
+ */
+async function balance(modelKey: (() => string) | undefined): Promise<Balance> {
   const { apiKey, baseUrl } = openrouterImagesConfig;
-  if (apiKey === config.llm.apiKey) {
+  if (modelKey && apiKey === modelKey()) {
     return {
       report: { currency: "USD", image_key: "same key as model_key (get_llm_key_limit): one limit and one usage for both", note: KEY_NOTE },
       tile: { value: "与模型共用", detail: "额度见模型那一格" },
@@ -23,7 +26,7 @@ async function balance(): Promise<Balance> {
   return keyBalance("image_key", await keyReport(baseUrl, apiKey));
 }
 
-export const openrouterImagesClient: ImageBackend = {
+export const openrouterImagesClient = (modelKey?: () => string): ImageBackend => ({
   async generate(request) {
     const { apiKey, baseUrl, model, quality, resolution, extraBody, timeoutMs } = openrouterImagesConfig;
     const body = {
@@ -54,5 +57,5 @@ export const openrouterImagesClient: ImageBackend = {
       ...(typeof result.usage?.cost === "number" ? { cost: result.usage.cost } : {}),
     };
   },
-  balance,
-};
+  balance: () => balance(modelKey),
+});

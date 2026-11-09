@@ -1,5 +1,6 @@
 import {
   LockLostError,
+  SCHEMA_VERSION,
   SchemaOutdatedError,
   type AdminLogEntry,
   type ChatSummary,
@@ -15,14 +16,55 @@ import {
   type UsageCounts,
 } from "@gateway/core";
 
+/**
+ * The functions that read or write the event log. They wait until the tables
+ * are the version this code expects (SCHEMA_VERSION): an event written in one
+ * format and read in another would break the chat, so until the console
+ * upgrades the database they fail with SchemaOutdatedError instead.
+ */
+const LOG_FUNCTIONS = new Set(["chat_ingest", "chat_open", "chat_append", "chat_trim", "admin_events", "admin_append"]);
+
+/** What gateway_info reports: the schema version, and whether events wait for a data migration. */
+export interface GatewayInfo {
+  schemaVersion: number | null;
+  legacyEvents?: boolean;
+}
+
 /** Supabase, with a secret key (sb_secret_…) in the `apikey` header. Every function returns JSON. */
 export class PostgresStore implements Store {
+  /** The schema check, once it passed (per instance, so a cold start checks once). */
+  private current?: Promise<void>;
+
   constructor(
     private url: string,
     private key: string,
   ) {}
 
+  /** Throws SchemaOutdatedError until the tables are this code's version; checked again after a failure. */
+  ready(): Promise<void> {
+    this.current ??= this.info().then(
+      ({ schemaVersion }) => {
+        if (schemaVersion !== SCHEMA_VERSION) throw new SchemaOutdatedError(`schema version ${schemaVersion ?? "none"}, need ${SCHEMA_VERSION}`);
+      },
+    );
+    return this.current.catch((err: unknown) => {
+      this.current = undefined;
+      throw err;
+    });
+  }
+
+  /** The schema's version and pending migration; schemaVersion null when there are no tables. */
+  async info(): Promise<GatewayInfo> {
+    try {
+      return await this.rpc<GatewayInfo>("gateway_info", {});
+    } catch (err) {
+      if (err instanceof SchemaOutdatedError) return { schemaVersion: null };
+      throw err;
+    }
+  }
+
   private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+    if (LOG_FUNCTIONS.has(fn)) await this.ready();
     const res = await fetch(`${this.url.replace(/\/+$/, "")}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: { apikey: this.key, "content-type": "application/json" },
@@ -31,7 +73,7 @@ export class PostgresStore implements Store {
     const text = await res.text();
     if (!res.ok && text.includes("lock lost")) throw new LockLostError(String(args.p_chat));
     // PostgREST: no such function (PGRST202), or Postgres: undefined function / table (42883 / 42P01).
-    if (!res.ok && /PGRST202|"42883"|"42P01"/.test(text)) throw new SchemaOutdatedError(fn);
+    if (!res.ok && /PGRST202|"42883"|"42P01"/.test(text)) throw new SchemaOutdatedError(`no function ${fn}`);
     if (!res.ok) throw new Error(`Supabase ${fn} HTTP ${res.status}: ${text.slice(0, 300)}`);
     return (text ? JSON.parse(text) : null) as T;
   }
@@ -131,12 +173,7 @@ export class PostgresStore implements Store {
   }
 
   async schemaVersion() {
-    try {
-      return (await this.rpc<{ schemaVersion: number | null }>("gateway_info", {})).schemaVersion;
-    } catch (err) {
-      if (err instanceof SchemaOutdatedError) return null;
-      throw err;
-    }
+    return (await this.info()).schemaVersion;
   }
 
   chats(day: string) {

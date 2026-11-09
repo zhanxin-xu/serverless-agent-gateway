@@ -14,7 +14,6 @@ export type {
   DatabaseStatus,
   HandoffRequest,
   Host,
-  ModelAccount,
   Persona,
 } from "./composition.js";
 
@@ -39,6 +38,27 @@ export { imageCapability } from "./modules/image/capability.js";
 export type { ImageBackend } from "./modules/image/capability.js";
 export { speechCapability } from "./modules/voice/capability.js";
 export type { SpeechBackend, VoiceChoice } from "./modules/voice/capability.js";
+export { chatModelCapability, currentModelIdentity } from "./modules/model/capability.js";
+export type { ChatModel, ModelAccount } from "./modules/model/capability.js";
+
+// ── Model messages: what a chat model provider takes and returns ──
+export { ModelCallError, OutOfCreditError } from "./llm/errors.js";
+export type {
+  AssistantMessage,
+  ImageContent,
+  LlmRequest,
+  Message,
+  ModelIdentity,
+  StopReason,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+  ToolChoice,
+  ToolDefinition,
+  ToolResultMessage,
+  Usage,
+  UserMessage,
+} from "./llm/types.js";
 
 // ── Helpers adapters share ──
 export { getJson } from "./modules/shared/http.js";

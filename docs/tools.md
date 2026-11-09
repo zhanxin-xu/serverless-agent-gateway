@@ -10,7 +10,7 @@
 | | `chat_members` | 列出这个聊天最近出现过的人（昵称、#编号、最后出现时间），用来查编号、@ 人 | 始终 |
 | 小工具 | `get_current_time` | 查询当前时间（可指定时区） | 始终 |
 | | `calculate` | 四则运算、取模、乘方 | 始终 |
-| 模型 | `get_llm_key_limit` | 查询聊天模型 Key 的额度和用量（OpenRouter 专用） | 配置了 `OPENAI_RESPONSES_API_KEY` |
+| 模型 | `get_llm_key_limit` | 查询聊天模型 Key 的额度和用量 | 模型实现能查余额（Vercel 部署：OpenRouter） |
 | 搜索 | `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 搜索服务配置好了（DeepSeek：`DEEPSEEK_API_KEY`） |
 | | `get_search_balance` | 查询搜索账户的余额 | 搜索服务能查余额（DeepSeek 能） |
 | 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_API_KEY`），且沙盒开着 |
@@ -32,7 +32,7 @@
 余额查询归各自的模块：
 
 - `get_search_balance`（搜索模块）：由搜索实现提供。DeepSeek 调用 `GET /user/balance`，区分赠送余额和充值余额，并估算还能搜索多少次。不能查余额的搜索实现不提供这个工具。
-- `get_llm_key_limit`（模型模块）：调用 `GET {OPENAI_RESPONSES_BASE_URL}/key`，返回聊天模型 Key（`model_key`）的限额、剩余额度、重置周期，以及今日、本周、本月和累计用量。这是 OpenRouter 特有的接口，换成其他服务商时这个工具会返回错误。
+- `get_llm_key_limit`（模型模块）：由模型实现提供，部署在组合里决定 Key 的余额向谁查。Vercel 部署接的是 OpenRouter：调用 `GET {MODEL_BASE_URL}/key`，返回聊天模型 Key（`model_key`）的限额、剩余额度、重置周期，以及今日、本周、本月和累计用量；换成其他服务商时这个工具会返回错误。
 - `get_image_key_limit`（画图模块）：同样的报告，查的是画图的 Key（`image_key`，`GET {IMAGE_BASE_URL}/key`）。和模型配的是同一个 Key 时，直接注明“和 model_key 是同一个”，避免重复计算。
 - 两个 Key 报告的用量都分两笔：`usage` 是从 OpenRouter 余额里扣的钱，`byok_usage` 是走你自己服务商 Key（BYOK）的花费。预算或 Key 限额设成"包含 BYOK"时会把两笔加在一起，所以可能出现 `usage` 为 0、预算却已经花了一部分的情况，工具结果里的 `counts_byok` 字段会标出来。
 - "今天"按 UTC 计算，北京时间每天早上 8 点重置；每周从周一开始。

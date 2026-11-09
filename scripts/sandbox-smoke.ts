@@ -30,7 +30,7 @@ const newCtx = (): ToolContext => ({
 });
 const step = async (ctx: ToolContext, name: string, args: unknown) => {
   const t = Date.now();
-  const out = await new Toolset().run(name, JSON.stringify(args), ctx);
+  const out = await new Toolset().run(name, args as Record<string, unknown>, ctx);
   console.log(`\n▶ ${name} ${JSON.stringify(args).slice(0, 100)} (${Date.now() - t}ms)\n${out.slice(0, 600)}`);
   return out;
 };
@@ -47,7 +47,7 @@ await step(first, "bash", {
 await step(first, "read_file", { path: "red.png" });
 await step(first, "save_attachment", { message: 1 });
 await step(first, "bash", { command: "ls -la inbox && python3 -c \"import struct;d=open('inbox/1-logo.png','rb').read(24);print('png', struct.unpack('>II', d[16:24]))\"" });
-console.log(`images queued for the model: ${first.images.length} (${first.images[0]?.image_url.slice(0, 40)}…)`);
+console.log(`images queued for the model: ${first.images.length} (${first.images[0]?.mimeType})`);
 await step(first, "bash", { command: "sleep 70; echo never" });
 
 await step(first, "bash", { command: "pip install -q six && npm install -g --silent cowsay && which cowsay" });

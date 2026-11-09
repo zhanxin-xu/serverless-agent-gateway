@@ -187,10 +187,9 @@ const STEP_VIEWS = {
       status.modules
         .filter((m) => !m.core)
         .map((m) => {
-          // The provider in use, or the first: its essential settings turn the module on.
           const cap = m.capability;
           const provider = cap.providers.find((p) => p.id === cap.selected) ?? cap.providers[0];
-          const group = index.groups.find((g) => g.id === provider.settings);
+          const group = essentialsGroup(index, m);
           const keys = group.essentials ?? index.keysOf(group.id);
           const slot = h("p", { class: "check-result" });
           const form = settingsForm(index, keys, { onSaved: () => app.refreshStatus(), actions: (f) => groupActions(index, group, status, f, slot) });
@@ -245,11 +244,19 @@ const STEP_VIEWS = {
   },
 };
 
+/** The settings that turn a module on: its provider's (the one in use, or the first), else its own. */
+function essentialsGroup(index, m) {
+  const cap = m.capability;
+  if (!cap) return index.groups.find((g) => g.id === m.settings);
+  const provider = cap.providers.find((p) => p.id === cap.selected) ?? cap.providers[0];
+  return index.groups.find((g) => g.id === provider.settings);
+}
+
 /** A module the bot can't work without: its essential settings and its check, until it's ready. */
 async function requiredModule(m, panel, status, app, next) {
   if (!requireDb(panel, status)) return;
   const index = await loadSettings();
-  const group = index.groups.find((g) => g.id === m.settings);
+  const group = essentialsGroup(index, m);
   const form = settingsForm(index, group.essentials ?? index.keysOf(group.id), {
     onSaved: async () => {
       await app.refreshStatus();

@@ -3,7 +3,6 @@ import path from "node:path";
 import type { Attachment } from "../../channels/types.js";
 import { settingInt } from "../../config.js";
 import { messageLabel } from "../../conversation/events.js";
-import type { ImagePart } from "../../media/images.js";
 import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../shared/reply.js";
 import type { Tool, ToolContext } from "../tool.js";
 import { INBOX, WORKDIR } from "./paths.js";
@@ -105,8 +104,7 @@ export const readFile: Tool = {
     const imageType = IMAGE_TYPES[path.posix.extname(file).toLowerCase()];
     if (imageType) {
       if (bytes.byteLength > MAX_IMAGE_BYTES) throw new Error(`image too large (${bytes.byteLength} bytes)`);
-      const part: ImagePart = { type: "input_image", image_url: `data:${imageType};base64,${bytes.toString("base64")}`, detail: "auto" };
-      ctx.images.push(part);
+      ctx.images.push({ type: "image", data: bytes.toString("base64"), mimeType: imageType });
       return `image ${file} (${bytes.byteLength} bytes): it is shown to you right after this.`;
     }
     if (bytes.includes(0)) return `${file} is a binary file (${bytes.byteLength} bytes); inspect it with bash instead.`;

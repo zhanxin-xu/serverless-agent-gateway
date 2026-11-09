@@ -28,7 +28,7 @@
 2. 每一步：
    - 读取事件流的新事件。这期间来的新消息模型在这一步之后就能读到（见推导规则），挂靠的消息按同样的方式跟着更新，不另加提示。
    - 从事件流推导出输入，调用模型。
-   - 把模型的输出**原样**写进事件流（`assistant/message`），包括带 `encrypted_content` 的思维链。
+   - 把模型返回的整条消息**原样**写进事件流（`assistant/message`），包括思维链和服务商要求回传的数据。
    - 对每个工具调用：先写一条 `tool/call`（准备执行），执行后写 `tool/result`。
 3. 模型调用 `end_turn` 挂断，或者到了最后一步，这一轮就结束，追加 `turn/end`，游标推进到这一轮看到过的最新消息。
 4. 这个函数的时间不够了，这一轮会以 `paused` 或 `interrupted` 结束，**游标不动**，由新的函数接着这一轮继续，见[步数与时间](#步数与时间)。
@@ -47,22 +47,22 @@
 | `turn/start` / `turn/end` | — | 一轮的开始和结束（结束原因：`completed`、`max-steps`、`out-of-time`、`error`、`paused`、`interrupted`、`unreachable`） |
 | `step/start` / `step/end` | — | 一步的开始和结束（一次模型调用加它请求的工具） |
 | `developer/message` | ✅ | 系统提示：只在接着上一段继续、有消息没发出去、最后一步时才有 |
-| `assistant/message` | ✅ | 模型这一步的全部输出，原样保存，附带 `usage` |
+| `assistant/message` | ✅ | 模型这一步返回的整条消息，原样保存：文字、思维链及其回传数据、工具调用、用量，以及是哪个协议、服务地址、模型给的 |
 | `assistant/attempt` | — | 失败的模型调用 |
-| `tool/call` | — | 工具准备执行 |
+| `tool/call` | — | 工具准备执行（`callId` 是这次调用的 id） |
 | `tool/result` | ✅ | 工具结果 |
 | `tool/images` | ✅ | 工具返回的图片（`read_file` 打开的、`generate_image` 的预览） |
 | `compaction/summary` | ✅ | 压缩摘要，替代 `fromSeq` 之前的全部内容 |
 | `bot/sent` | — | 机器人实际发出的一条内容（文字、表情包、语音、文件、运行时的提示），管理端的聊天记录用它 |
 | `admin/message` | ✅（当作模型自己说的） | 管理员以机器人身份发的话 |
 
-**推导规则**：从最近一次 `/reset` 之后、最近一条摘要开始，按顺序转换：摘要和用户消息变成 `user` 消息，系统提示变成 `developer` 消息，管理员代发的话变成 `assistant` 消息，模型输出原样展开，工具结果变成 `function_call_output`，其余事件跳过。系统提示词放在 `instructions` 里，不入库，每次请求时由 `packages/core/src/prompt/assemble.ts` 按这个聊天开启的模块现拼。
+**推导规则**：从最近一次 `/reset` 之后、最近一条摘要开始，按顺序转换成模型消息（`packages/core/src/llm/types.ts`）：摘要、用户消息和系统提示变成 `user` 消息（系统提示以“（系统提示）”开头，任何协议都能放在对话中间），管理员代发的话变成 `assistant` 消息，模型的消息原样放回，工具结果变成 `toolResult`，其余事件跳过。系统提示词不入库，每次请求时由 `packages/core/src/prompt/assemble.ts` 按这个聊天开启的模块现拼。
 
 两处特殊处理，都只影响推导结果，不改事件流：
 - 一步执行期间到达的消息，推导时放在这一步的工具结果之后，保证每个工具调用后面紧跟着它的结果。
 - 没有结果的工具调用（运行中途被杀），推导时补一个"interrupted"结果，保证请求合法。
 
-**为什么能命中缓存**：事件流只追加，所以每一次请求都是上一次请求的完整延续，包括跨轮次。只有压缩和修改系统提示词会让前缀变化一次。同一个聊天、配置不变时，拼出来的系统提示词逐字相同；开关一个模块、换一家服务或改配置，会让这个聊天的前缀变化一次。
+**为什么能命中缓存**：事件流只追加，所以每一次请求都是上一次请求的完整延续，包括跨轮次。只有压缩和修改系统提示词会让前缀变化一次。同一个聊天、配置不变时，拼出来的系统提示词逐字相同；开关一个模块、换一家服务或改配置，会让这个聊天的前缀变化一次。每个聊天还有一个固定的缓存键（聊天 key 的哈希，不含平台 id），服务商靠它把同一个聊天的请求送到同一份缓存。
 
 **图片**：入库时下载，缩到模型实际看到的大小（聊天图片最长边 512px，`read_file` 的图片 1024px），转成 JPEG，单独存在 `gateway.images` 表里，事件里只记图片的键名。每次重放的都是同一份数据，所以以前的图片模型也能再看到。
 
@@ -70,17 +70,20 @@
 
 ## 请求
 
-[`model.ts`](../packages/core/src/agent/model.ts) 直接 `fetch` 调用 `POST {OPENAI_RESPONSES_BASE_URL}/responses`，不依赖 SDK，这样自定义参数可以原样透传。任何兼容 OpenAI Responses API 的服务都能用，默认是 OpenRouter。请求体为：
+模型模块通过聊天模型能力（`ChatModel`，[`packages/core/src/modules/model/capability.ts`](../packages/core/src/modules/model/capability.ts)）调用模型：传入系统提示、消息、工具和工具选择，拿回一条 assistant 消息。core 不认识任何协议。
 
-```
-{ model, ...OPENAI_RESPONSES_EXTRA_BODY, instructions, input, tools, tool_choice }
-```
+Vercel 部署的实现是 pi-ai（[`packages/adapters/src/pi-ai/chat-model/`](../packages/adapters/src/pi-ai/chat-model/)），用法参照 DeepSeek Harness 的 `llm-pi-ai`：
 
-网关按无状态的方式调用（不用 `previous_response_id`），`input` 就是从事件流推导出来的完整对话。思维链要原样回传，OpenRouter 会自动请求加密的思维链内容。用 OpenRouter 时，如果希望模型参考之前轮次的思维链，在 `OPENAI_RESPONSES_EXTRA_BODY` 里加上 `"reasoning":{"context":"all_turns"}`。
+- **四种协议**：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai`，由 `MODEL_API` 选，见[配置参考](configuration.md#模型)。只加载所选协议的 SDK。
+- **无状态**：每次请求带上从事件流推导出的完整对话，不用服务端会话（Responses 设 `store: false`）。
+- **思维链整个回传**：服务商要求回传的数据原样存在消息块里，下次请求原样带回：Responses 的整个 reasoning 对象（请求时总带上 `include: ["reasoning.encrypted_content"]`）、Anthropic 思考块的签名和被隐藏的思考、Gemini 的 thought signature、OpenRouter 的 `reasoning_details`、DeepSeek 的 `reasoning_content`。只回传给同一个“身份”（协议、服务地址、模型三者都相同）；换了任何一项，只保留文字和工具调用。
+- **缓存**：每个聊天一个固定的缓存键（Responses 里是 `prompt_cache_key`）；Anthropic 由 pi-ai 在系统提示、工具和最后一条消息上打缓存断点。
+- **额外参数**：`MODEL_EXTRA_BODY` 按协议的字段名合并进请求体，消息、工具、工具选择这些由网关生成的字段不能设。思维链的开关和强度也在这里设，pi-ai 自己不加推理参数。
+- **失败**：pi-ai 不给 HTTP 状态码，按错误信息分类（参照 dsh）：余额用完（`OutOfCreditError`，带恢复时间就提示几点恢复）、可以重试（限流、5xx、超时、连接断开：交给新的函数接着跑）、其余直接失败。SDK 自己不重试，重试由运行时决定。
 
 ## 说话与挂断
 
-模型只能通过工具行动，每次请求都设置 `tool_choice: "required"`：
+模型通过工具行动，每次请求都要求它调用工具（各协议的写法见下表）：
 
 - **说话**：调用 `send_message`，一次就是一条消息。想显示引用框时用 `reply_to`（填"第N条"里的 N）加 `quote: true`；不填 `reply_to` 时由运行时挂到这一轮合适的消息上。每条消息最多回复 5 次（文字、表情包、文件合计；上限由渠道适配器的 `maxRepliesPerMessage` 决定，不设置时默认 5），这个计数和 QQ 的 `msg_seq` 一起存在库里，跨轮次延续。
 - **挂断**：说完后调用 `end_turn`，通常和最后一条消息放在同一步，不会多一次模型调用。旁观时不想说话，就只调用 `end_turn`。
@@ -88,14 +91,15 @@
 - **同一步的执行顺序**：一步里的所有调用都按模型给出的顺序执行，`end_turn` 放在什么位置都一样，整步执行完才结束这一轮。
 - **发送失败先不挂断**：挂断的那一步里如果有消息发送失败，这一轮就先不结束，让模型看到错误再决定怎么办（比如回复窗口过期、回复次数用满时换一条消息回复）。
 - **平台连不上就停**：连接 QQ / Telegram 接口时如果连不上（连接超时、DNS 失败等），先等 1 秒自动重试一次；连接没建立说明请求没到平台，重试不会发出重复消息。还是不行，或者平台返回 5xx，这次运行就不再发送：后面的发送直接报错，模型看到“连不上，别重试，调用 end_turn”，这一轮在这一步后结束（`turn/end` 的原因是 `unreachable`），也不再接着处理新消息，留给下一次运行重试。实现见 [`packages/core/src/channels/net.ts`](../packages/core/src/channels/net.ts) 和 [`packages/core/src/runtime/outbox.ts`](../packages/core/src/runtime/outbox.ts)。
-- **兜底**：如果服务商没有遵守 `required`、模型直接输出了文字，私聊或被 @ 时会把这段文字发出去。
+- **兜底**：模型没调工具、直接输出了文字（协议不能强制调用工具时会出现），这段文字就是这一轮的回答：私聊或被 @ 时由运行时发出去。
 
-| 可选的 `tool_choice` | 含义 |
-|---|---|
-| `"auto"` | 模型自己决定是否调用工具 |
-| `"required"` | 必须至少调用一个工具（本项目的默认设置） |
-| `"none"` | 不允许调用工具（压缩摘要时使用） |
-| `{"type":"function","name":"…"}` | 必须调用指定的工具（本项目在最后一步强制 `send_message`） |
+| 协议 | 普通步骤 | 最后一步 | 压缩摘要 |
+|---|---|---|---|
+| `openai-responses` / `openai-completions` | 必须调用工具（`required`） | 必须调用 `send_message` | 不调用工具（`none`） |
+| `google-generative-ai` | `ANY` | `ANY`，只允许 `send_message` | `NONE` |
+| `anthropic-messages` | 不强制（默认 `auto`） | 不强制 | `none` |
+
+Anthropic 不强制，是因为强制调用工具时思考会被关掉，较新的模型（默认就思考的那些）还会直接报错；而且每一步都用同样的工具选择，消息部分的缓存才不会失效。
 
 ## 步数与时间
 
@@ -103,7 +107,7 @@
 - **步数用完，最后一步必须发消息**：追加一条系统提示，告诉模型步数用完了；同时把 `tool_choice` 设为必须调用 `send_message`（角色为 `say` 的工具），让它说出目前的结果，没做完就说做到哪了。如果默认消息已经回复满 5 次，就直接结束。
 - **时间**：函数最长运行 300 秒（`AGENT_MAX_DURATION_SECONDS`），所有规则写在 [`packages/core/src/agent/budget.ts`](../packages/core/src/agent/budget.ts)：
   - **剩余不到 100 秒，不开新的一步**：这一轮以 `paused` 结束，游标不动，交给一个新的 worker。中间不会强行收尾，也不会多发一句"还没做完"。
-  - **每次调用都要在截止前 20 秒结束**：模型请求的超时是"剩余时间减 20 秒"（同时不超过 `OPENAI_RESPONSES_TIMEOUT_MS`，默认 280 秒）；`bash`、画图、语音、联网搜索等工具的超时也按这个缩短；剩不到 5 秒时工具直接不执行，告诉模型"换个函数再调"。这 20 秒用来写库和交接，函数就不会在调用中途被平台杀掉。
+  - **每次调用都要在截止前 20 秒结束**：模型请求的超时是"剩余时间减 20 秒"（同时不超过 `MODEL_TIMEOUT_MS`，默认 280 秒）；`bash`、画图、语音、联网搜索等工具的超时也按这个缩短；剩不到 5 秒时工具直接不执行，告诉模型"换个函数再调"。这 20 秒用来写库和交接，函数就不会在调用中途被平台杀掉。
   - **模型请求超时或临时出错**（超时、断网、429、5xx）：这一轮以 `interrupted` 结束，游标不动，交给新的 worker 重试这一步。其他错误（比如 4xx）照旧算失败，回一句"出错了"。
   - **模型 key 没钱了**（402，或 OpenRouter 403 "Key limit exceeded"）：这一轮失败、游标前移，不重试。被 @ 和私聊回一句"没余额了"（报错里带重置时间就附上北京时间）；没 @ 的群消息不出声。日志只打一行 warn。
   - **接着跑**：新的 worker 发现上一轮是 `paused` 或 `interrupted`、消息还没处理完，就开一轮"接着上一段继续"，不经过旁观采样。模型能在事件流里看到之前做过什么、发过什么，系统提示让它从停下的地方接着做、不要重复发消息。函数中途被杀、由崩溃恢复补上的一轮也是 `interrupted`，同样会被接着跑。
@@ -116,7 +120,7 @@
 
 参照 dsh 的 compaction-basic：
 
-- **触发**：模型返回的 `usage.input_tokens` 超过 `AGENT_CONTEXT_TOKENS`（默认 20 万）的 80%。这个数是服务商给出的准确值，不用自己估算。
+- **触发**：上一次模型调用读入的 token 数（含缓存命中的部分）超过 `AGENT_CONTEXT_TOKENS`（默认 20 万）的 80%。这个数是服务商给出的准确值，不用自己估算。
 - **保留**：最近约 16% 的内容保持原文，之前的部分做摘要。切点只会落在一轮的开始，或者不在任何一步之内的消息上，工具调用和它的结果不会被拆开；当前这一轮要回复的消息也不会被摘要掉。
 - **摘要调用照顾缓存**：原样重放刚才那次请求的前缀（同样的系统提示词、工具和开头的输入），在末尾追加一条"请压缩上面的对话"，所以能命中服务商已经缓存的内容。
 - **结果**：追加一条 `compaction/summary`，然后从存储里删掉被替代的事件和它们引用的图片。dsh 的日志存本地、永不删除；我们的免费数据库空间有限，所以要删。

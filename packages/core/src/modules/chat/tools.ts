@@ -57,8 +57,8 @@ export const chatMembers: Tool = {
   name: "chat_members",
   description:
     "Who has been in this chat lately: everyone who wrote or was @-mentioned in the conversation you can still see, " +
-    "most recently seen first, as \"nickname #ID\" with when they were last seen. QQ doesn't give bots the member list, " +
-    "so people who never spoke aren't here. Use it to find someone's #ID, e.g. to @ them: write @#ID in send_message.",
+    "most recently seen first, as \"nickname #ID\" with when they were last seen. It comes from what this chat has seen, " +
+    "not from the platform's member list, so people who never spoke aren't here. Use it to find someone's #ID, e.g. to @ them: write @#ID in send_message.",
   parameters: { type: "object", properties: {} },
   run(_args, ctx) {
     const people = ctx.people();

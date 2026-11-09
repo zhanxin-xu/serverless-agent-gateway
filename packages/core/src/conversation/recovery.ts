@@ -1,3 +1,4 @@
+import { toolCalls } from "../llm/content.js";
 import { isEvent, type NewEvent, type SessionEvent } from "./events.js";
 
 /** A turn the next run should continue (it ended "paused" or "interrupted"). */
@@ -45,9 +46,7 @@ export function recoverOpenTurn(events: SessionEvent[]): NewEvent[] {
   for (const e of inTurn) {
     if (isEvent(e, "step/start")) step = e.data.step;
     if (!isEvent(e, "assistant/message")) continue;
-    for (const item of e.data.output) {
-      if (item.type !== "function_call") continue;
-      const callId = (item as { call_id: string }).call_id;
+    for (const { id: callId } of toolCalls(e.data.message)) {
       if (answered.has(callId)) continue;
       fixes.push({
         type: "tool/result",

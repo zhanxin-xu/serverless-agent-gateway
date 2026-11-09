@@ -14,16 +14,16 @@ export const chatKind = (c) => `${c.channelLabel ?? c.channel}${c.chatType === "
 /** "老王 #3B6834" → "老王"; a label without a name stays as its short id. */
 const personName = (label) => label.replace(/ #[0-9A-Za-z?]{1,6}$/, "");
 
-/** Who's been talking: "老王、阿青、小明 等". The platform gives no group names (QQ), so this is how a group is recognized. */
+/** Who's been talking: "老王、阿青、小明 等". Where the platform gives no group name, this is how a group is recognized. */
 export function speakersText(c) {
   const names = (c.speakers ?? []).map(personName);
   return names.length ? `${names.join("、")}${names.length >= 5 ? " 等" : ""}` : "";
 }
 
-/** A chat's name for people: its title; else, for a DM, the person; else a short form of its key. */
+/** A chat's name for people: its title; else, for a DM, the person; else a short form of its key (its last part). */
 export function chatName(c) {
   if (c.profile?.title) return c.profile.title;
   if (c.chatType === "private" && c.speakers?.length) return c.speakers[0];
-  const id = c.chat.replace(/^(\w+):(group:|c2c:)?/, "");
+  const id = c.chat.split(":").at(-1);
   return id.length > 10 ? `${id.slice(0, 10)}…` : id;
 }

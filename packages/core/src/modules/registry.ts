@@ -16,6 +16,7 @@ import { ORDER } from "../prompt/order.js";
 import { switchSetting } from "../settings/catalog.js";
 import { readiness, select } from "./capability.js";
 import { modules as composedModules } from "../composition.js";
+import type { ToolDefinition } from "../llm/types.js";
 import type { Tool, ToolContext, ToolRole } from "./tool.js";
 import type { Module, Readiness } from "./types.js";
 
@@ -44,7 +45,8 @@ export function checkModules(modules: readonly Module[]): void {
       meters.set(m.meter.key, m.id);
       for (const name of m.meter.tools) if (!m.tools.some((t) => t.name === name)) throw new Error(`module ${m.id} meters ${name}, which isn't its tool`);
     }
-    if (m.core && m.capability) throw new Error(`core module ${m.id} can't depend on a service that may be missing`);
+    // A core module is in every chat: one on a service that may be missing is the setup's first business (the chat model).
+    if (m.core && m.capability && m.setup !== "required") throw new Error(`core module ${m.id} depends on a service: the setup guide must ask for it (setup: "required")`);
   }
   for (const m of modules) for (const r of m.requires ?? []) if (!ids.has(r)) throw new Error(`module ${m.id} requires ${r}, which isn't loaded`);
 }
@@ -132,9 +134,9 @@ export class Toolset {
     return this.tools.some((t) => t.name === name);
   }
 
-  /** The `tools` of a Responses API request. */
-  definitions() {
-    return this.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters }));
+  /** The tools as the model is told about them. */
+  definitions(): ToolDefinition[] {
+    return this.tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
   }
 
   /** Names of the tools with one of these roles. */
@@ -149,7 +151,8 @@ export class Toolset {
     return name;
   }
 
-  async run(name: string, rawArgs: string, ctx: ToolContext): Promise<string> {
+  /** Run a tool. Never throws: a failure is output starting with "Error:", which the model reads. */
+  async run(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
     const tool = this.tools.find((t) => t.name === name);
     if (!tool) return `Error: unknown tool "${name}"`;
     const module = moduleOfTool(name);
@@ -157,7 +160,6 @@ export class Toolset {
     if (refused) return `Error: ${refused}`;
     let output: string;
     try {
-      const args = rawArgs ? (JSON.parse(rawArgs) as Record<string, unknown>) : {};
       output = await tool.run(args, ctx);
     } catch (err) {
       return `Error: ${err instanceof Error ? err.message : String(err)}`;

@@ -6,8 +6,8 @@ npm workspaces，依赖方向 core ← adapters ← vercel。
 
 | 包 | 内容 | 能依赖 | 对外 |
 |---|---|---|---|
-| `@gateway/core`（`packages/core/`） | 运行时、agent loop、事件流、提示词、配置、聊天设置、管理端、模块契约和 8 个内置模块、存储和渠道的接口 | 只有自己 | `src/index.ts` |
-| `@gateway/adapters`（`packages/adapters/`） | 第三方服务的实现：一家厂商一个目录，里面按实现的接口分（`deepseek/search/`、`openrouter/image/`、`supabase/store/`…），渠道一家一个（`qq/`、`telegram/`、`http/`） | `@gateway/core` | 每家厂商的 `index.ts`：`@gateway/adapters/<厂商>` |
+| `@gateway/core`（`packages/core/`） | 运行时、agent loop、事件流和模型消息格式、提示词、配置、聊天设置、管理端、模块契约和 8 个内置模块、存储和渠道的接口 | 只有自己 | `src/index.ts` |
+| `@gateway/adapters`（`packages/adapters/`） | 第三方服务的实现：一家厂商一个目录，里面按实现的接口分（`pi-ai/chat-model/`、`deepseek/search/`、`openrouter/image/`、`supabase/store/`…），渠道一家一个（`qq/`、`telegram/`、`http/`） | `@gateway/core` | 每家厂商的 `index.ts`：`@gateway/adapters/<厂商>` |
 | `@gateway/vercel`（`packages/vercel/`） | 部署包：组合、Vercel 宿主、`/api/worker`、人设、`assets/`、`api/`、`vercel.json` | 上面两个包的公开入口 | 无 |
 
 `scripts/moduletest.ts` 检查：
@@ -28,13 +28,14 @@ npm workspaces，依赖方向 core ← adapters ← vercel。
 | `host` | 后台任务、一次运行的时长、跑不完时怎么接力、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` |
 | `persona` | 人设 | 大肥鱼 |
 | `modules` | 加载哪些模块，按什么顺序 | 全部 8 个 |
-| `providers` | 各能力的实现 | DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 |
-| `modelAccount` | 怎么查聊天模型 key 的余额；没有就没有 `get_llm_key_limit` | OpenRouter `/key` |
+| `providers` | 各能力的实现 | pi-ai 聊天模型（余额向 OpenRouter `/key` 查）、DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 |
 | `channels` | 渠道 | QQ、Telegram、HTTP |
 | `store` / `database` | 存储，以及管理端怎么给它建表 | 配了 Supabase 用 Supabase，否则内存 |
 | `guide` | 管理端里随部署变的文案：怎么设管理密码、怎么连数据库 | Vercel 控制台的步骤 |
 
 `compose()` 拒绝不属于任何已加载模块的实现，以及同一能力下重复的实现 id。
+
+实现之间的配合也在组合里接：pi-ai 聊天模型拿到 OpenRouter 的余额查询，OpenRouter 画图拿到聊天模型的 key 来判断两者是不是共用一个 key。厂商目录之间互不引用。
 
 管理端跟着组合走：配置页列出组合里的模块、实现和渠道的配置项；引导页的密码和数据库步骤来自 `guide`，数据库状态来自 `database`，标题和头像来自人设。
 

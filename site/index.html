@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>免服务器 QQ / Telegram AI 机器人网关 · Serverless Agent Gateway</title>
   <meta name="description" content="跑在 Vercel Functions 上的免费多渠道 AI 机器人网关（serverless-agent-gateway）。支持 QQ 群聊与 Telegram 接入，基于只追加事件流驱动，自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒，按消息触发零维护。">
-  <meta name="keywords" content="QQ 机器人, QQ 群聊 AI, Telegram Bot, AI 机器人网关, 免服务器 Agent, Serverless Agent Gateway, serverless-agent-gateway, Vercel Functions, OpenRouter, Responses API, 大肥鱼">
+  <meta name="keywords" content="QQ 机器人, QQ 群聊 AI, Telegram Bot, AI 机器人网关, 免服务器 Agent, Serverless Agent Gateway, serverless-agent-gateway, Vercel Functions, OpenRouter, pi-ai, Responses API, Anthropic, Gemini, 大肥鱼">
   <meta name="author" content="zhanxin-xu">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta name="theme-color" content="#f3f6fb">
@@ -279,7 +279,7 @@ footer { width: min(1180px, 100% - 40px); margin: 0 auto; padding: 28px 0 56px; 
             "name": "支持接入哪些聊天渠道和大语言模型？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "内置支持 QQ（单聊、群聊、频道，支持 Ed25519 验签）、Telegram Bot 以及通用 HTTP Webhook；模型侧支持任意兼容 OpenAI Responses API（POST /responses）的服务商，默认通过 OpenRouter 调用。"
+              "text": "内置支持 QQ（单聊、群聊、频道，支持 Ed25519 验签）、Telegram Bot 以及通用 HTTP Webhook；模型侧通过 pi-ai 支持 OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Google Gemini 四种协议，默认通过 OpenRouter 调用。"
             }
           },
           {
@@ -323,7 +323,7 @@ footer { width: min(1180px, 100% - 40px); margin: 0 auto; padding: 28px 0 56px; 
             自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒——有消息才运行，平时零开销。
           </p>
           <div class="cta">
-            <a class="btn" href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&amp;env=OPENAI_RESPONSES_API_KEY&amp;envDescription=API%20key%20for%20an%20OpenAI%20Responses%20API%20server%20(OpenRouter%20by%20default)" rel="noopener">一键部署到 Vercel</a>
+            <a class="btn" href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&amp;env=MODEL_API_KEY&amp;envDescription=API%20key%20for%20the%20chat%20model%20(OpenRouter%20by%20default)" rel="noopener">一键部署到 Vercel</a>
             <a class="link" href="https://github.com/zhanxin-xu/serverless-agent-gateway" rel="noopener">查看源码 ↗</a>
           </div>
           <div class="scroll-hint"><i></i>往下滚，看一条消息怎么走完全程</div>
@@ -409,7 +409,7 @@ footer { width: min(1180px, 100% - 40px); margin: 0 auto; padding: 28px 0 56px; 
         <li data-reveal><b>05</b><h3>长期记忆</h3><p>基于 Upstash Vector 的语义检索，所有聊天共用一个记忆库，并记录每条记忆的来源。</p></li>
         <li data-reveal><b>06</b><h3>沙盒工作区</h3><p>在 Vercel Sandbox 里跑 bash、Python、Node，每个聊天有一块自己的持久盘，能读图、能把文件发回聊天。</p></li>
         <li data-reveal><b>07</b><h3>联网</h3><p>搜索和网页抓取，另有余额和额度查询工具。</p></li>
-        <li data-reveal><b>08</b><h3>任意 Responses API 模型</h3><p>直接调用 <code>POST /responses</code>，默认走 OpenRouter。请求体可透传任意参数，比如锁定供应商、设置推理强度。</p></li>
+        <li data-reveal><b>08</b><h3>四种模型协议</h3><p>通过 pi-ai 支持 OpenAI Responses、Chat Completions、Anthropic、Gemini，默认走 OpenRouter。思维链整个回传，请求体可透传任意参数，比如锁定供应商、设置推理强度。</p></li>
         <li data-reveal><b>09</b><h3>上下文自动压缩</h3><p>到 20 万 token 自动压缩成摘要，之前的内容由摘要替代；思维链原样回传，缓存持续命中。</p></li>
       </ol>
     </section>
@@ -419,7 +419,7 @@ footer { width: min(1180px, 100% - 40px); margin: 0 auto; padding: 28px 0 56px; 
       <h2 class="h2" data-reveal>三步跑起来。</h2>
       <div class="steps">
         <div data-reveal><b>1</b><h3>部署</h3><p>点击 Deploy 按钮，或者克隆仓库后在终端里：</p><pre><span>$</span> <code id="typed" data-text="npx vercel">npx vercel</code><button class="copy" type="button" data-copy="npx vercel">复制</button></pre></div>
-        <div data-reveal style="--d:.1s"><b>2</b><h3>配置</h3><p>最少需要模型 Key、一个渠道的凭据，以及在 Vercel Marketplace 添加 Supabase 后执行一次 <code>schema.sql</code>。</p><pre><code>OPENAI_RESPONSES_API_KEY
+        <div data-reveal style="--d:.1s"><b>2</b><h3>配置</h3><p>最少需要模型 Key、一个渠道的凭据，以及在 Vercel Marketplace 添加 Supabase 后执行一次 <code>schema.sql</code>。</p><pre><code>MODEL_API_KEY
 QQ_APP_ID / QQ_APP_SECRET
 SUPABASE_URL / SUPABASE_SECRET_KEY</code></pre></div>
         <div data-reveal style="--d:.2s"><b>3</b><h3>检查与接入</h3><p>访问 <code>/api/health</code> 确认模型、渠道和工具都已就绪，再到平台后台填上回调地址。</p><pre><code>GET /api/health

@@ -5,9 +5,11 @@
  * read. Webhooks may append at any time; only the lock holder reads,
  * recovers, compacts and trims.
  */
-import { imagePrefix, storeToolImages, type ImagePart } from "../media/images.js";
+import { createHash } from "node:crypto";
+import type { ImageContent, Message } from "../llm/types.js";
+import { imagePrefix, storeToolImages } from "../media/images.js";
 import type { ChatStore, SessionState } from "../store/index.js";
-import { deriveInput } from "./derive.js";
+import { deriveMessages } from "./derive.js";
 import { isEvent, visibleWindow, type NewEvent, type SessionEvent } from "./events.js";
 
 /**
@@ -54,6 +56,11 @@ export class Session {
     return this.state.chat;
   }
 
+  /** The chat's prompt-cache key for the model provider: stable, and not the chat's platform ids. */
+  get cacheKey() {
+    return createHash("sha256").update(this.state.chat).digest("hex").slice(0, 32);
+  }
+
   /** Add events read from the store, and forget those trimmed or reset away by now. */
   private merge(fresh: SessionEvent[]) {
     const last = this.events.at(-1)?.seq ?? -1;
@@ -94,18 +101,18 @@ export class Session {
     this.merge(events.map((e, i) => ({ seq: first + i, time, ...e }) as SessionEvent));
   }
 
-  /** The model input for the visible window (see deriveInput), images loaded in one call. */
-  async input(events = this.events): Promise<unknown[]> {
+  /** The model's messages for the visible window (see deriveMessages), images loaded in one call. */
+  async messages(events = this.events): Promise<Message[]> {
     const missing = imageKeys(visibleWindow(events).events).filter((k) => !this.images.has(k));
     if (missing.length) {
       const found = await this.store.getImages([...new Set(missing)]);
       for (const key of missing) this.images.set(key, found[key] ?? null);
     }
-    return deriveInput(events, async (key) => this.images.get(key) ?? null);
+    return deriveMessages(events, async (key) => this.images.get(key) ?? null);
   }
 
   /** Store images a tool opened (shrunk to 1024px) for a tool/images event; returns their keys. */
-  storeToolImages(id: string, images: ImagePart[]): Promise<string[]> {
+  storeToolImages(id: string, images: ImageContent[]): Promise<string[]> {
     return storeToolImages(this.store, this.chatKey, imagePrefix(this.chatKey, id), images);
   }
 

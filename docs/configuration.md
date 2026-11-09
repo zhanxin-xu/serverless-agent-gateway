@@ -8,30 +8,35 @@
 
 ## 模型
 
-网关调用的是 OpenAI 的 Responses API 协议（`POST {BASE_URL}/responses`），任何兼容这个协议的服务都能用：OpenRouter、OpenAI 官方、自建网关等。默认地址是 OpenRouter。
+模型由模型模块的实现提供（[模块](modules.md)）。Vercel 部署用的是 pi-ai 实现：通过 [pi-ai](https://github.com/earendil-works/pi) 支持四种接口协议，兼容其中任何一种的服务都能用。默认是 OpenRouter 的 Responses 接口。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `OPENAI_RESPONSES_API_KEY` | （必填） | 模型的 API Key |
-| `OPENAI_RESPONSES_BASE_URL` | `https://openrouter.ai/api/v1` | 任何兼容 Responses API 的地址，请求发到 `{BASE_URL}/responses`。用 OpenAI 官方时填 `https://api.openai.com/v1` |
-| `OPENAI_RESPONSES_MODEL` | `openai/gpt-6-luna` | 模型 ID，格式以服务商为准（OpenRouter 是 `厂商/模型`） |
-| `OPENAI_RESPONSES_EXTRA_BODY` | 空 | JSON 对象，原样合并进每次请求的请求体，见下文 |
-| `OPENAI_RESPONSES_EXTRA_HEADERS` | 空 | JSON 对象，作为额外的请求头，例如 `{"X-Title":"my-bot"}` |
-| `OPENAI_RESPONSES_TIMEOUT_MS` | `280000` | 单次模型请求的超时上限（毫秒）。运行中还会按函数剩余时间缩短（剩余时间减 20 秒），取两者较小的 |
-| `MODEL_PRICE_INPUT` / `MODEL_PRICE_CACHED` / `MODEL_PRICE_OUTPUT` | 空 | 美元 / 百万 token。接口不返回花费时，用它们估算每个聊天的花费（每群额度按它算）。OpenRouter 会返回花费，可以不填 |
+| `MODEL_API` | `openai-responses` | 接口协议：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai` |
+| `MODEL_BASE_URL` | `https://openrouter.ai/api/v1` | 协议的根地址，不含接口路径。OpenAI 两种填到 `/v1`（`https://api.openai.com/v1`），Anthropic 不带 `/v1`（`https://api.anthropic.com`），Gemini 带版本（`https://generativelanguage.googleapis.com/v1beta`） |
+| `MODEL_API_KEY` | （必填） | 模型的 API Key |
+| `MODEL_ID` | `openai/gpt-6-luna` | 模型 ID，格式以服务商为准（OpenRouter 是 `厂商/模型`） |
+| `MODEL_EXTRA_BODY` | 空 | JSON 对象，合并进每次请求的请求体，见下文 |
+| `MODEL_EXTRA_HEADERS` | 空 | JSON 对象，作为额外的请求头，例如 `{"X-Title":"my-bot"}` |
+| `MODEL_MAX_OUTPUT_TOKENS` | 空 | 单次最多输出（含思维链）。不填时只有 Anthropic 带上限（它必须有，用 32000） |
+| `MODEL_TIMEOUT_MS` | `280000` | 单次模型请求的超时上限（毫秒）。运行中还会按函数剩余时间缩短（剩余时间减 20 秒），取两者较小的 |
+| `MODEL_PRICE_INPUT` / `MODEL_PRICE_CACHED` / `MODEL_PRICE_OUTPUT` | 空 | 美元 / 百万 token。服务不在响应里报花费时，用它们估算每个聊天的花费（每群额度按它算）。OpenRouter 会报花费，可以不填 |
+| `MODEL_PROVIDER` | 空 | 模型模块用哪个实现。只有一个实现时不用填 |
 
-`OPENAI_RESPONSES_EXTRA_BODY` 的常见写法（`provider` 是 OpenRouter 特有的参数）：
+`MODEL_EXTRA_BODY` 按所选协议的字段名写，思维链也在这里开：
 
 ```bash
-# 锁定供应商、禁止回退
-OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":false}}'
-# 再加上推理强度
-OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}'
+# OpenRouter：锁定供应商、禁止回退、推理强度
+MODEL_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}'
+# Anthropic：自适应思考
+MODEL_EXTRA_BODY='{"thinking":{"type":"adaptive"}}'
+# Gemini：合并进请求的 config
+MODEL_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 ```
 
-它可以覆盖 `model`，但不能覆盖 `instructions`、`input`、`tools`、`tool_choice`，这几项由 agent loop 控制。JSON 写错时请求会直接报错，`/api/health` 的 `extraBody` 字段会显示解析结果。
+消息、系统提示、工具、工具选择由网关生成，写进来会报错。JSON 写错时调用也会报错。
 
-**旧变量名**：早期版本用的 `OPENROUTER_API_KEY` 等 `OPENROUTER_` 开头的名字已经不再读取，请改成上表的 `OPENAI_RESPONSES_` 开头的名字。
+换协议、服务地址或模型后，之前的思维链不再回传（只保留文字和工具调用），提示词缓存从头开始。
 
 ## Agent
 

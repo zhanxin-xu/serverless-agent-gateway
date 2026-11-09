@@ -13,7 +13,7 @@
  * doesn't matter.
  */
 import type { ChannelAdapter } from "./channels/types.js";
-import type { Balance, Module, Provider } from "./modules/types.js";
+import type { Module, Provider } from "./modules/types.js";
 import type { Store } from "./store/types.js";
 
 /** Where the gateway runs: what it can do beyond answering a request. */
@@ -72,9 +72,9 @@ export interface HandoffRequest {
 /** The store's own setup (create or upgrade its tables), for the console. */
 export interface Database {
   status(): Promise<DatabaseStatus>;
-  /** Create or upgrade the tables (idempotent). */
+  /** Create or upgrade the tables, and move any data an upgrade needs moved (idempotent). */
   apply(): Promise<void>;
-  /** The SQL, for people to run by hand. */
+  /** The SQL to run next by hand (an upgrade may take more than one step: run, check, run what comes next). */
   schema(): Promise<string>;
 }
 
@@ -94,11 +94,6 @@ export interface Persona {
   voice?: { clip: string; transcript: string };
   /** Her stickers (send_sticker): name → file under `baseUrl` and when to use it. None: no send_sticker. */
   stickers?: { set: Record<string, { file: string; when: string }>; baseUrl: string };
-}
-
-/** What's left on the chat model's key, from the service behind it (the model module's get_llm_key_limit). */
-export interface ModelAccount {
-  balance(llm: { baseUrl: string; apiKey: string; headers: Record<string, string> }): Promise<Balance>;
 }
 
 /** What the admin console says that depends on where it's deployed. */
@@ -124,8 +119,6 @@ export interface Composition {
   /** Implementations of the modules' capabilities (each names its capability). */
   providers: Provider<unknown>[];
   channels: ChannelAdapter[];
-  /** How to read the chat model's balance; without it the model module has no get_llm_key_limit. */
-  modelAccount?: ModelAccount;
   /** The store, made on first use. */
   store(): Store;
   /** The store's setup; without it the store needs none (memory). */
@@ -178,7 +171,6 @@ export const providers = (): Provider<unknown>[] => composed().providers;
 export const channels = (): ChannelAdapter[] => composed().channels;
 export const channel = (name: string): ChannelAdapter | undefined => composed().channels.find((c) => c.name === name);
 export const database = (): Database | undefined => composed().database;
-export const modelAccount = (): ModelAccount | undefined => composed().modelAccount;
 export const guide = (): ConsoleGuide => composed().guide;
 
 /** The store, made once. */

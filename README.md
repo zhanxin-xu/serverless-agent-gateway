@@ -18,7 +18,7 @@
 
 官网：[serverless-agent.cnday.cn](https://serverless-agent.cnday.cn)（源码在 [`site/`](site/)，作为独立的 Vercel 项目部署）。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&env=OPENAI_RESPONSES_API_KEY&envDescription=API%20key%20for%20an%20OpenAI%20Responses%20API%20server%20(OpenRouter%20by%20default))
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&env=MODEL_API_KEY&envDescription=API%20key%20for%20the%20chat%20model%20(OpenRouter%20by%20default))
 
 ## 特性
 
@@ -26,7 +26,7 @@
 - **事件流架构**：参照 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的会话日志，每个聊天一条只追加的事件流，消息、模型输出（含思维链）、工具调用和结果全部入库，模型输入从中推导，提示词缓存持续命中。上下文用到预算（默认 20 万 token）的 80% 时自动压缩。
 - **一个聊天一个 agent**：收消息和跑 agent 解耦。几个人同时发消息只会有一个 agent 来回答；回复过程中来的新消息，下一步就能看到。
 - **为 Serverless 设计**：先回执、后处理（`waitUntil`），平台重推靠共享存储去重；每次模型和工具调用都按函数剩余时间限时，一轮做不完就交给新的函数（内部的 `/api/worker`）接着做，函数中途被杀也能从事件流恢复。
-- **任意 Responses API 模型**：直接调用 `POST /responses`，默认走 OpenRouter。请求体可以透传任意参数，比如锁定供应商、设置推理强度。
+- **四种模型协议**：通过 pi-ai 支持 OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Google Gemini，默认走 OpenRouter。思维链按各家要求整个回传，请求体可以透传任意参数，比如锁定供应商、设置推理强度。
 - **像真人一样聊天**：用 `send_message` 分几条连发、用 `reply_to` 回复指定的消息，用 `end_turn` 主动挂断，会发表情包；在群里能旁观没 @ 它的消息，自己判断要不要插话。
 - **看图、听语音**：图片缩小后入库，以前的图片也能再看；QQ 语音使用平台自带的转写文字。
 - **长期记忆**：基于 Upstash Vector 的语义检索，所有聊天共用一个记忆库，并记录每条记忆的来源。
@@ -51,7 +51,7 @@
           每一步：读事件流 → 调用模型 → 输出和工具结果写回事件流
                          │ 这个函数的时间不够：POST /api/worker（带着运行锁），新的函数接着这一轮做
                          │
-      OpenRouter Responses API · Supabase · Upstash Vector · Vercel Sandbox
+  模型（pi-ai：Responses / Chat Completions / Anthropic / Gemini）· Supabase · Upstash Vector · Vercel Sandbox
 ```
 
 ## 快速开始

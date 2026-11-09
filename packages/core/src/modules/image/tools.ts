@@ -13,7 +13,6 @@ import path from "node:path";
 import sharp from "sharp";
 import { bundledDataUrl } from "../../media/assets.js";
 import { persona } from "../../composition.js";
-import type { ImagePart } from "../../media/images.js";
 import { select, use } from "../capability.js";
 import { WORKDIR, saveAttachment, sendFile, workspaceFor } from "../sandbox/index.js";
 import type { Tool, ToolContext } from "../tool.js";
@@ -153,8 +152,7 @@ export const generateImage: Tool = {
       const file = `${OUTDIR}/${base}-${i + 1}${EXTENSIONS[image.type] ?? ".png"}`;
       await ws.write(file, bytes);
       const preview = await sharp(bytes).resize(PREVIEW_SIDE, PREVIEW_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
-      const part: ImagePart = { type: "input_image", image_url: `data:image/jpeg;base64,${preview.toString("base64")}`, detail: "auto" };
-      ctx.images.push(part);
+      ctx.images.push({ type: "image", data: preview.toString("base64"), mimeType: "image/jpeg" });
       lines.push(`${file} (${width && height ? `${width}x${height}, ` : ""}${bytes.byteLength} bytes)`);
     }
     const cost = result.cost !== undefined ? `, cost $${result.cost}` : "";

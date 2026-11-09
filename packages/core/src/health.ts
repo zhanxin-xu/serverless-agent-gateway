@@ -1,13 +1,18 @@
 /** GET /api/health: what is configured, for a quick look (no secrets exposed). */
 import { channels, database, host } from "./composition.js";
 import { config } from "./config.js";
+import { select } from "./modules/capability.js";
+import { chatModelCapability } from "./modules/model/capability.js";
 import { activeTools, allModules, moduleStatus } from "./modules/registry.js";
 import { refreshSettings } from "./settings/service.js";
 
-function extraBodyStatus(): string {
+/** The chat model in use (protocol, endpoint, model), or why there is none. */
+function modelStatus(): { provider: string; api: string; endpoint: string; model: string } | string {
   try {
-    const keys = Object.keys(config.llm.extraBody);
-    return keys.length ? `ok (${keys.join(", ")})` : "none";
+    const selection = select(chatModelCapability);
+    if (!selection.ok) return selection.reason;
+    const { api, provider, model } = selection.provider.create().identity();
+    return { provider: selection.provider.id, api, endpoint: provider, model };
   } catch (err) {
     return `error: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -19,10 +24,7 @@ export async function healthReport(): Promise<Response> {
   return Response.json({
     ok: true,
     host: host().id,
-    model: config.llm.model,
-    baseUrl: config.llm.baseUrl,
-    apiKey: Boolean(config.llm.apiKey),
-    extraBody: extraBodyStatus(),
+    model: modelStatus(),
     tools: activeTools().map((t) => t.name),
     store: db ? (await db.status()).label : "memory",
     // Each module: on, or why not (src/modules).

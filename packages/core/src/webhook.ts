@@ -11,6 +11,7 @@ import { channel, host } from "./composition.js";
 import { handleMessage } from "./runtime/ingress.js";
 import { json, type ChannelAdapter, type InboundMessage } from "./channels/types.js";
 import { refreshSettings } from "./settings/service.js";
+import { getStore, SchemaOutdatedError } from "./store/index.js";
 
 async function processInbound(adapter: ChannelAdapter, message: InboundMessage, origin: string): Promise<void> {
   try {
@@ -40,6 +41,15 @@ export async function handleWebhook(request: Request, channelName: string): Prom
   const result = await adapter.receive(request, rawBody);
   if (result.kind === "respond") return result.response;
   const origin = publicOrigin(request);
+
+  // Before the ACK: while the database waits for an upgrade, the platform keeps the message and retries.
+  try {
+    await getStore().ready?.();
+  } catch (err) {
+    if (!(err instanceof SchemaOutdatedError)) throw err;
+    console.warn(`[webhook] ${channelName}: ${err.message}`);
+    return json({ error: "the database is being upgraded; try again later" }, 503);
+  }
 
   if (adapter.send) {
     host().background(processInbound(adapter, result.message, origin));

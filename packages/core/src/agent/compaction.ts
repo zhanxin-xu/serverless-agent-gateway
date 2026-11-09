@@ -1,21 +1,24 @@
 /**
  * Context compaction, after dsh's compaction-basic:
  *
- *   - Trigger: the last model call's `usage.input_tokens` (exact, from the
- *     provider) passed 80% of AGENT_CONTEXT_TOKENS.
+ *   - Trigger: the last model call's prompt tokens (exact, from the provider)
+ *     passed 80% of AGENT_CONTEXT_TOKENS.
  *   - Keep the newest ~16% of the context verbatim; summarize everything
  *     before it. The cut falls on a turn start or an incoming message outside
  *     any step, so a tool call is never separated from its result.
  *   - The summary call replays the exact prefix of the request that was just
- *     made (same instructions, tools and leading input) plus one trailing
+ *     made (same system prompt, tools and leading messages) plus one trailing
  *     instruction, so the provider reuses its cached tokens.
  *   - The result is appended as `compaction/summary` (fromSeq = the cut); the
  *     events it replaces are then deleted from the store.
  */
 import { config } from "../config.js";
 import { isEvent, visibleWindow, type SessionEvent } from "../conversation/events.js";
-import { createResponse, outputText } from "./model.js";
 import type { Session } from "../conversation/session.js";
+import { messageText } from "../llm/content.js";
+import type { ToolDefinition } from "../llm/types.js";
+import { use } from "../modules/capability.js";
+import { chatModelCapability } from "../modules/model/capability.js";
 
 const TRIGGER_RATIO = 0.8;
 const KEEP_RATIO = 0.16;
@@ -28,7 +31,7 @@ const COMPACTION_INSTRUCTION =
 /** Rough size of an event as the model sees it; only used to place the cut. */
 function size(e: SessionEvent): number {
   if (isEvent(e, "user/message")) return e.data.header.length + e.data.text.length + (e.data.images?.length ?? 0) * 200;
-  if (isEvent(e, "assistant/message")) return JSON.stringify(e.data.output).length;
+  if (isEvent(e, "assistant/message")) return JSON.stringify(e.data.message.content).length;
   if (isEvent(e, "tool/result")) return e.data.output.length;
   if (isEvent(e, "developer/message")) return e.data.text.length;
   if (isEvent(e, "tool/images")) return e.data.images.length * 400;
@@ -49,7 +52,7 @@ function cutPoints(events: SessionEvent[]): number[] {
 
 export async function compactIfNeeded(
   session: Session,
-  o: { systemPrompt: string; tools: unknown[]; inputTokens: number; keepFrom: number; timeoutMs?: number },
+  o: { systemPrompt: string; tools: ToolDefinition[]; inputTokens: number; keepFrom: number; timeoutMs: number },
 ): Promise<boolean> {
   const budget = config.agent.contextTokens;
   if (o.inputTokens < budget * TRIGGER_RATIO) return false;
@@ -75,30 +78,27 @@ export async function compactIfNeeded(
   // The head of the last request: the previous summary plus everything before the cut.
   const head = session.events.filter((e) => e.seq < cut || e === previous);
   const started = Date.now();
-  const response = await createResponse(
-    {
-      model: config.llm.model,
-      ...config.llm.extraBody,
-      instructions: o.systemPrompt,
-      input: [...(await session.input(head)), { role: "user", content: COMPACTION_INSTRUCTION }],
-      tools: o.tools,
-      tool_choice: "none",
-    },
-    { timeoutMs: o.timeoutMs },
-  );
-  const text = outputText(response.output ?? []);
+  const message = await use(chatModelCapability).complete({
+    systemPrompt: o.systemPrompt,
+    messages: [...(await session.messages(head)), { role: "user", content: COMPACTION_INSTRUCTION, timestamp: Date.now() }],
+    tools: o.tools,
+    toolChoice: "none",
+    cacheKey: session.cacheKey,
+    timeoutMs: Math.min(config.model.timeoutMs, o.timeoutMs),
+  });
+  const text = messageText(message);
   if (!text) {
     console.warn(`[compaction] ${session.chatKey}: empty summary, skipped`);
     return false;
   }
   await session.append({
     type: "compaction/summary",
-    data: { fromSeq: cut, summary: text, ...(response.usage ? { usage: response.usage } : {}) },
+    data: { fromSeq: cut, summary: text, usage: message.usage },
   });
   await session.trimBefore(cut);
   console.log(
     `[compaction] ${session.chatKey}: ${o.inputTokens} tokens, summarized events before ${cut} into ${text.length} chars ` +
-      `(cached ${response.usage?.input_tokens_details?.cached_tokens ?? 0}) ms=${Date.now() - started}`,
+      `(cached ${message.usage.cacheRead}) ms=${Date.now() - started}`,
   );
   return true;
 }

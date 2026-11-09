@@ -72,6 +72,12 @@ export type LockMode = "acquire" | "renew" | "release";
 
 export interface ChatStore {
   /**
+   * Resolves once the store can hold this code's events; throws
+   * SchemaOutdatedError while its tables are behind (until the console
+   * upgrades them). Cheap after the first success. Stores without tables omit it.
+   */
+  ready?(): Promise<void>;
+  /**
    * One webhook delivery, atomically: de-duplicate, create/update the session,
    * optionally reset it, append the event (or `upgrade`, see IngestInput), and
    * if it should wake the agent, try the run lock. The store doesn't look at
@@ -101,17 +107,18 @@ export interface ChatStore {
 // ── The admin console's data (supabase/schema.sql, "Admin console") ──
 // Separate interfaces, so each part of the gateway depends only on what it uses.
 
-/** The schema version this code expects; keep in step with the end of supabase/schema.sql. */
-export const SCHEMA_VERSION = 5;
+/** The schema version this code expects; a store with tables keeps its setup (Database) in step with it. */
+export const SCHEMA_VERSION = 6;
 
 /**
- * A call to a store function the database doesn't have yet (the schema is
- * older than the code). Runtime features built on the admin tables treat it as
- * "nothing configured" so the bot keeps working until the schema is upgraded.
+ * The store's tables are older than this code (`detail`: what's missing or
+ * behind); the console's setup guide upgrades them. Runtime features built on
+ * the admin tables treat it as "nothing configured", so the bot keeps working
+ * until the schema is upgraded.
  */
 export class SchemaOutdatedError extends Error {
-  constructor(fn: string) {
-    super(`the database has no function ${fn}: run supabase/schema.sql (or upgrade from /admin)`);
+  constructor(detail: string) {
+    super(`the database is behind this code (${detail}): upgrade it in the admin console's setup guide`);
     this.name = "SchemaOutdatedError";
   }
 }

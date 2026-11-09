@@ -1,6 +1,6 @@
 /**
  * Images in the event log. Each image is shrunk to what the model looks at
- * (longest side 512px for chat images, `detail: "low"`; 1024px for files the
+ * (longest side 512px for chat images; 1024px for images tools return, like files the
  * agent opens) and stored once under its own key as a data URL (table
  * gateway.images); events hold only the keys. Every request then replays the exact same image, so the
  * prompt cache stays valid, and the bot can still look at earlier pictures.
@@ -9,6 +9,7 @@
  * provider would have to fetch QQ's CDN from abroad, and attachment links expire.
  */
 import sharp from "sharp";
+import type { ImageContent } from "../llm/types.js";
 import type { ChatStore } from "../store/index.js";
 
 const MAX_IMAGES = 4;
@@ -31,13 +32,6 @@ async function fetchImage(url: string): Promise<Response> {
     }
     console.warn(`[images] retrying ${url.slice(0, 80)} (attempt ${attempt} failed)`);
   }
-}
-
-export interface ImagePart {
-  type: "input_image";
-  image_url: string;
-  /** "low" for chat images (small fixed cost); files the agent opens on purpose use "auto". */
-  detail: "low" | "auto";
 }
 
 /** Shrink to a JPEG data URL (first frame of an animation); falls back to the original bytes. */
@@ -90,13 +84,12 @@ export async function storeChatImages(
   return { keys, failed: Math.min(images.length, MAX_IMAGES) - keys.length };
 }
 
-/** Store images a tool produced (data URLs) under `{prefix}:{i}`, shrunk to 1024px. */
-export async function storeToolImages(store: ChatStore, chat: string, prefix: string, parts: ImagePart[]): Promise<string[]> {
+/** Store images a tool returned under `{prefix}:{i}`, shrunk to 1024px. */
+export async function storeToolImages(store: ChatStore, chat: string, prefix: string, images: ImageContent[]): Promise<string[]> {
   return Promise.all(
-    parts.map(async (part, i) => {
-      const [, type = "image/png", data = ""] = /^data:([^;]+);base64,(.*)$/s.exec(part.image_url) ?? [];
+    images.map(async (image, i) => {
       const key = `${prefix}:${i}`;
-      await store.putImage(chat, key, await toDataUrl(Buffer.from(data, "base64"), type, 1024));
+      await store.putImage(chat, key, await toDataUrl(Buffer.from(image.data, "base64"), image.mimeType, 1024));
       return key;
     }),
   );

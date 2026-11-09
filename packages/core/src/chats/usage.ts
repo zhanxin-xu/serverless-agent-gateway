@@ -11,8 +11,9 @@
  * once the cost quota is used up, and a metered tool is refused once its count
  * is (quotaPolicy). The model is told why, so it can say so in its own words.
  */
-import { config } from "../config.js";
-import { isEvent, type SessionEvent, type Usage } from "../conversation/events.js";
+import { isEvent, type SessionEvent } from "../conversation/events.js";
+import { promptTokens } from "../llm/content.js";
+import type { Usage } from "../llm/types.js";
 import { getStore, SchemaOutdatedError, type UsageCounts, type UsageStore } from "../store/index.js";
 import { moduleOfTool, type ToolPolicy } from "../modules/registry.js";
 import { beijingTime, nextDayStart, utcDay } from "./day.js";
@@ -24,32 +25,24 @@ function counterOf(toolName: string): string | undefined {
   return meter?.tools.includes(toolName) ? meter.key : undefined;
 }
 
-/** What a call cost: as reported, else estimated from the configured prices. */
-function callCost(usage: Usage): number {
-  if (typeof usage.cost === "number" && Number.isFinite(usage.cost)) return usage.cost;
-  const { input, cached, output } = config.llm.prices;
-  const inTokens = usage.input_tokens ?? 0;
-  const cachedTokens = Math.min(usage.input_tokens_details?.cached_tokens ?? 0, inTokens);
-  return ((inTokens - cachedTokens) * input + cachedTokens * cached + (usage.output_tokens ?? 0) * output) / 1e6;
-}
-
 /** What these events (one turn's) used. */
 export function turnUsage(events: SessionEvent[]): UsageCounts {
   const counts: UsageCounts = { turns: 0, model_calls: 0, input_tokens: 0, cached_tokens: 0, output_tokens: 0, cost_usd: 0 };
+  // The cost is the provider's bill where it reports one, else the model provider's estimate from its prices.
   const add = (usage: Usage | undefined) => {
     if (!usage) return;
     counts.model_calls! += 1;
-    counts.input_tokens! += usage.input_tokens ?? 0;
-    counts.cached_tokens! += usage.input_tokens_details?.cached_tokens ?? 0;
-    counts.output_tokens! += usage.output_tokens ?? 0;
-    counts.cost_usd! += callCost(usage);
+    counts.input_tokens! += promptTokens(usage);
+    counts.cached_tokens! += usage.cacheRead;
+    counts.output_tokens! += usage.output;
+    counts.cost_usd! += usage.cost.total;
   };
   const failed = new Set(
     events.filter((e) => isEvent(e, "tool/result") && e.data.output.startsWith("Error:")).map((e) => (e as SessionEvent<"tool/result">).data.callId),
   );
   for (const e of events) {
     if (isEvent(e, "turn/start")) counts.turns! += 1;
-    else if (isEvent(e, "assistant/message")) add(e.data.usage);
+    else if (isEvent(e, "assistant/message")) add(e.data.message.usage);
     else if (isEvent(e, "compaction/summary")) add(e.data.usage);
     else if (isEvent(e, "tool/call") && !failed.has(e.data.callId)) {
       const counter = counterOf(e.data.name);

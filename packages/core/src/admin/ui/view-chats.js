@@ -66,7 +66,7 @@ export async function renderChats(main) {
 
   fill(
     main,
-    h("header", { class: "page-head" }, h("h1", null, "聊天"), h("p", { class: "muted" }, "QQ 不提供群名和私聊昵称：群下面列出最近说话的人，也可以在聊天的“设置与额度”里填备注名。")),
+    h("header", { class: "page-head" }, h("h1", null, "聊天"), h("p", { class: "muted" }, "平台不提供群名或昵称时，群下面列出最近说话的人；也可以在聊天的“设置与额度”里填备注名。")),
     h("div", { class: "row between" }, h("div", { class: "row" }, seg, filter), count),
     h(
       "div",

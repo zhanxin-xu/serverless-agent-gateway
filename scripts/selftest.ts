@@ -1,18 +1,19 @@
 /**
  * Offline end-to-end test of the Vercel deployment: `npm test`.
- * Composes the gateway as packages/vercel does, stubs global fetch (Responses
- * API, DeepSeek tools, QQ, Telegram, Supabase, Upstash Vector) and Vercel's
+ * Composes the gateway as packages/vercel does, stubs global fetch (the model
+ * over the Responses API's stream, DeepSeek tools, QQ, Telegram, Supabase, Upstash Vector) and Vercel's
  * waitUntil, then drives each channel through the real webhook handler, event
  * log and agent loop.
  */
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { responsesStream } from "./fake-llm.js";
 
-process.env.OPENAI_RESPONSES_API_KEY = "test-key";
-process.env.OPENAI_RESPONSES_BASE_URL = "https://gw.example.com/api/v1/";
-process.env.OPENAI_RESPONSES_MODEL = "openai/gpt-6-luna";
-process.env.OPENAI_RESPONSES_EXTRA_BODY = '{"provider":{"only":["openai"],"allow_fallbacks":false},"max_output_tokens":2000}';
-process.env.OPENAI_RESPONSES_EXTRA_HEADERS = '{"X-Title":"selftest"}';
+process.env.MODEL_API_KEY = "test-key";
+process.env.MODEL_BASE_URL = "https://gw.example.com/api/v1/";
+process.env.MODEL_ID = "openai/gpt-6-luna";
+process.env.MODEL_EXTRA_BODY = '{"provider":{"only":["openai"],"allow_fallbacks":false},"max_output_tokens":2000}';
+process.env.MODEL_EXTRA_HEADERS = '{"X-Title":"selftest"}';
 process.env.DEEPSEEK_API_KEY = "ds-key";
 process.env.QQ_APP_ID = "102000000";
 process.env.QQ_APP_SECRET = "naOC0ocQE3shWLAfffVLB1rhYPG7";
@@ -74,6 +75,19 @@ const fnCall = (callId: string, name: string, args: unknown) => ({
   arguments: JSON.stringify(args),
 });
 const sendCall = (callId: string, text: string, extra: Record<string, unknown> = {}) => fnCall(callId, "send_message", { text, ...extra });
+/** A tool call's id in the log is "call_id|item id" (pi-ai's): its call_id, as the fake model chose it. */
+const callOf = (e: { data: { callId: string } }) => e.data.callId.split("|")[0];
+/** An assistant message as the log stores it, from the configured model. */
+const assistantMessage = (content: unknown[]) => ({
+  role: "assistant",
+  content,
+  api: "openai-responses",
+  provider: "https://gw.example.com/api/v1",
+  model: "openai/gpt-6-luna",
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  stopReason: "toolUse",
+  timestamp: 0,
+});
 
 /**
  * Supabase's Data API: the real functions of the Supabase adapter's schema.sql in a local
@@ -111,6 +125,8 @@ function fakeVector(url: string, method: string, body: any) {
 }
 
 const textOf = (m: any): string => (typeof m.content === "string" ? m.content : m.content.find((p: any) => p.type === "input_text").text);
+/** A system note ("（系统提示）…"): sent as a user message. */
+const isNote = (m: any) => m.role === "user" && textOf(m).startsWith("（系统提示）");
 
 /**
  * Fake Responses API, keyed off the newest user message (its header line dropped).
@@ -134,7 +150,7 @@ async function fakeResponses(body: any) {
       (i: any) => (i.type === "function_call_output" && i.output === "turn ended") || (i.type === "message" && i.role === "assistant"),
     );
     const toolOutput = body.input.slice(turnStart + 1).findLast((i: any) => i.type === "function_call_output");
-    const lastUser = body.input.findLast((i: any) => i.role === "user" && !textOf(i).startsWith("（系统提示）"));
+    const lastUser = body.input.findLast((i: any) => i.role === "user" && !isNote(i));
     const userText = textOf(lastUser).split("\n").slice(1).join("\n");
     if (userText.startsWith("慢") && gate) await gate;
 
@@ -155,7 +171,7 @@ async function fakeResponses(body: any) {
     } else if (userText.startsWith("死循环")) {
       // Keeps calling tools until the last-step note shows up, then reports.
       const calc = fnCall(`call_l${llmCalls}`, "calculate", { expression: "1+1" });
-      output = last.role === "developer" && last.content.includes("最后一步") ? [sendCall("call_done", "做到一半")] : [calc];
+      output = isNote(last) && textOf(last).includes("最后一步") ? [sendCall("call_done", "做到一半")] : [calc];
     } else if (userText.startsWith("发文件")) {
       output = toolOutput ? [textMessage(`结果：${toolOutput.output}`)] : [fnCall("call_f", "send_file", { path: userText.slice(3).trim() })];
     } else if (userText.startsWith("存附件")) {
@@ -192,14 +208,14 @@ async function fakeResponses(body: any) {
     inFlight--;
   }
 }
-function respond(body: any, output: unknown[]) {
-  return Response.json({
-    id: "resp_1",
-    object: "response",
-    status: "completed",
-    model: body.model,
-    output,
-    usage: { input_tokens: fakeInputTokens ?? 10, input_tokens_details: { cached_tokens: 6 }, output_tokens: 5, output_tokens_details: { reasoning_tokens: 3 } },
+function respond(_body: any, output: any[]) {
+  const input = fakeInputTokens ?? 10;
+  return responsesStream(output, {
+    input_tokens: input,
+    input_tokens_details: { cached_tokens: 6 },
+    output_tokens: 5,
+    output_tokens_details: { reasoning_tokens: 3 },
+    total_tokens: input + 5,
   });
 }
 
@@ -306,7 +322,8 @@ worker = handleWorker;
 const registry = await import("../packages/core/src/modules/registry.js");
 const { activeTools } = registry;
 /** Run one tool the way a turn would, with every active tool and no chat policy. */
-const runTool = (name: string, rawArgs: string, ctx: import("../packages/core/src/modules/tool.js").ToolContext) => new registry.Toolset().run(name, rawArgs, ctx);
+const runTool = (name: string, rawArgs: string, ctx: import("../packages/core/src/modules/tool.js").ToolContext) =>
+  new registry.Toolset().run(name, JSON.parse(rawArgs || "{}"), ctx);
 const { callBudgetMs } = await import("../packages/core/src/agent/budget.js");
 const { evaluate } = await import("../packages/core/src/modules/basics/tools.js");
 const { messageHeader } = await import("../packages/core/src/channels/format.js");
@@ -314,6 +331,7 @@ const { getStore, resetStore } = await import("../packages/core/src/store/index.
 const { PostgresStore, supabaseConfig } = await import("../packages/adapters/src/supabase/index.js");
 const qqHint = (await import("../packages/adapters/src/qq/index.js")).qqAdapter.promptHint!;
 const { config } = await import("../packages/core/src/config.js");
+const { piAiConfig } = await import("../packages/adapters/src/pi-ai/index.js");
 const { setWorkspaceFactory } = await import("../packages/core/src/modules/sandbox/workspace.js");
 const { attachmentFileName } = await import("../packages/core/src/modules/sandbox/tools.js");
 const { driveName } = await import("../packages/adapters/src/vercel-sandbox/sandbox/client.js");
@@ -379,7 +397,14 @@ const httpCall = (text: string, conversationId = "c1") =>
   ).then((r) => r.json() as Promise<{ reply: string | null; messages: string[]; queued?: true }>);
 
 const llmRequests = () => calls.filter((c) => c.url.endsWith("/responses"));
-const userLines = (req: Call) => req.body.input.filter((i: any) => i.role === "user").map(textOf);
+/** What people said (system notes left out). */
+const userLines = (req: Call) => req.body.input.filter((i: any) => i.role === "user" && !isNote(i)).map(textOf);
+/** The system prompt of a Responses request: its leading system message. */
+const systemOf = (body: any): string => {
+  const first = body.input[0];
+  assert.equal(first.role, "system");
+  return textOf(first);
+};
 const sentTo = (path: string) => calls.filter((c) => c.url.endsWith(path)).map((c) => c.body);
 
 let passed = 0;
@@ -401,13 +426,13 @@ await test("calculator", () => {
 });
 
 await test("config: extra body / base url parsing", () => {
-  assert.equal(config.llm.baseUrl, "https://gw.example.com/api/v1");
-  const saved = process.env.OPENAI_RESPONSES_EXTRA_BODY;
-  process.env.OPENAI_RESPONSES_EXTRA_BODY = "{bad";
-  assert.throws(() => config.llm.extraBody, /OPENAI_RESPONSES_EXTRA_BODY is not valid JSON/);
-  process.env.OPENAI_RESPONSES_EXTRA_BODY = "[1]";
-  assert.throws(() => config.llm.extraBody, /must be a JSON object/);
-  process.env.OPENAI_RESPONSES_EXTRA_BODY = saved;
+  assert.equal(piAiConfig.baseUrl, "https://gw.example.com/api/v1");
+  const saved = process.env.MODEL_EXTRA_BODY;
+  process.env.MODEL_EXTRA_BODY = "{bad";
+  assert.throws(() => piAiConfig.extraBody, /MODEL_EXTRA_BODY is not valid JSON/);
+  process.env.MODEL_EXTRA_BODY = "[1]";
+  assert.throws(() => piAiConfig.extraBody, /must be a JSON object/);
+  process.env.MODEL_EXTRA_BODY = saved;
 });
 
 await test("DeepSeek-backed tools only enabled with DEEPSEEK_API_KEY", () => {
@@ -502,20 +527,26 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   assert.equal(first!.body.model, "openai/gpt-6-luna");
   assert.deepEqual(first!.body.provider, { only: ["openai"], allow_fallbacks: false }, "extra body passed through");
   assert.equal(first!.body.max_output_tokens, 2000);
-  assert.ok(first!.body.instructions.startsWith("# 身份"), "built-in persona prompt");
-  const instructions: string = first!.body.instructions;
+  assert.ok(systemOf(first!.body).startsWith("# 身份"), "built-in persona prompt");
+  const instructions: string = systemOf(first!.body);
   assert.ok(instructions.includes(`\n\n${qqHint}\n\n# 发消息、表情包与结束一轮`), "the channel hint comes after the rules, before the modules' sections");
-  assert.match(first!.body.instructions, /# 这个聊天\n\n这是私聊，每条消息都是对你说的。/, "a DM gets the DM rule");
-  assert.doesNotMatch(first!.body.instructions, /这是群聊/);
+  assert.match(systemOf(first!.body), /# 这个聊天\n\n这是私聊，每条消息都是对你说的。/, "a DM gets the DM rule");
+  assert.doesNotMatch(systemOf(first!.body), /这是群聊/);
   assert.equal(first!.body.tool_choice, "required");
-  const [message, ...rest] = first!.body.input;
-  assert.match(message.content, /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
+  // Stateless, with the reasoning sent back encrypted, on the chat's own prompt cache (its key not the chat's ids).
+  assert.equal(first!.body.store, false);
+  assert.deepEqual(first!.body.include, ["reasoning.encrypted_content"]);
+  assert.match(first!.body.prompt_cache_key, /^[0-9a-f]{32}$/);
+  assert.equal(second!.body.prompt_cache_key, first!.body.prompt_cache_key);
+  const [, message, ...rest] = first!.body.input;
+  assert.match(textOf(message), /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
   assert.deepEqual(rest, [], "an ordinary turn starts with the messages alone: no note");
 
-  // Stateless replay of the log: reasoning (encrypted_content kept) + function_call, then the output.
-  assert.deepEqual(second!.body.input.slice(1).map((i: any) => i.type), ["reasoning", "function_call", "function_call_output"]);
-  assert.equal(second!.body.input[1].encrypted_content, "enc");
-  assert.deepEqual(second!.body.input[3], { type: "function_call_output", call_id: "call_1", output: "20" });
+  // Stateless replay of the log: the reasoning item as the model returned it (whole), the call, its output.
+  assert.deepEqual(second!.body.input.slice(2).map((i: any) => i.type), ["reasoning", "function_call", "function_call_output"]);
+  assert.deepEqual(second!.body.input[2], { type: "reasoning", id: "rs_1", summary: [{ type: "summary_text", text: "先算一下" }], encrypted_content: "enc" });
+  assert.deepEqual(second!.body.input[3], { type: "function_call", id: "fc_call_1", call_id: "call_1", name: "calculate", arguments: '{"expression":"(2+3)*4"}' });
+  assert.deepEqual(second!.body.input[4], { type: "function_call_output", call_id: "call_1", output: "20" });
 
   const sent = calls.find((c) => c.url.includes("/v2/users/USER1/messages"))!;
   assert.equal(sent.headers.get("authorization"), "QQBot qq-token");
@@ -550,9 +581,9 @@ await test("event log: the next turn replays the last request verbatim (cache pr
   const firstOfTurn2 = llmRequests()[turn1]!.body.input;
   // Turn 2's request starts with turn 1's last request plus turn 1's final output: a strict extension.
   assert.deepEqual(firstOfTurn2.slice(0, lastOfTurn1.length), lastOfTurn1);
-  assert.equal(firstOfTurn2[1].type, "reasoning");
-  assert.deepEqual(firstOfTurn2[1].summary, [{ type: "summary_text", text: "先算一下" }]);
-  assert.equal(firstOfTurn2[1].encrypted_content, "enc");
+  assert.equal(firstOfTurn2[2].type, "reasoning");
+  assert.deepEqual(firstOfTurn2[2].summary, [{ type: "summary_text", text: "先算一下" }]);
+  assert.equal(firstOfTurn2[2].encrypted_content, "enc");
   assert.match(textOf(firstOfTurn2.at(-1)), /\]\nsecond$/, "turn 2 ends with its message, no note");
 });
 
@@ -579,7 +610,7 @@ await test("reply_to: replies go to the chosen message; msg_seq and the reply co
       ["ra", 3, "回你之前那条"],
     ],
   );
-  const result = (await events("qq:c2c:RUSER")).findLast((e) => e.type === "tool/result" && e.data.callId === "call_r")!;
+  const result = (await events("qq:c2c:RUSER")).findLast((e) => e.type === "tool/result" && callOf(e) === "call_r")!;
   assert.match(result.data.output, /^sent as a reply to 第0条 \(3\/5\)/);
 });
 
@@ -587,7 +618,7 @@ await test("reply cap: 5 replies per message, the 6th is refused and the model s
   await handleWebhook(c2c("cap", "刷屏", "CAPUSER"), "qq");
   await drain();
   assert.equal(sentTo("/v2/users/CAPUSER/messages").length, 5);
-  const sixth = (await events("qq:c2c:CAPUSER")).find((e) => e.type === "tool/result" && e.data.callId === "call_f6")!;
+  const sixth = (await events("qq:c2c:CAPUSER")).find((e) => e.type === "tool/result" && callOf(e) === "call_f6")!;
   assert.match(sixth.data.output, /^Error: already replied to 第0条 5 times/);
   assert.equal(llmCalls, 2, "a failed send keeps the turn going after end_turn");
 });
@@ -649,7 +680,7 @@ await test("message header: time, scene, sender, @你 (the 第N条 number is add
   assert.match(messageHeader({ ...base, chatType: "private", userId: "7", senderName: "Alice" }, now), /｜私聊｜发送人 Alice #7$/);
 });
 
-await test("postgres store: one function call per operation over /rest/v1/rpc with the secret key", async () => {
+await test("postgres store: one function call per operation over /rest/v1/rpc with the secret key, after one schema check", async () => {
   const store = new PostgresStore("https://db.example.supabase.co/", "sb_secret_test");
   calls.length = 0;
   const ingest = {
@@ -689,7 +720,11 @@ await test("postgres store: one function call per operation over /rest/v1/rpc wi
     p_lock_owner: "me",
     p_lock_ttl_ms: 60000,
   });
-  assert.equal(calls.length, 4);
+  assert.deepEqual(
+    calls.map((c) => c.url.split("/").at(-1)),
+    ["gateway_info", "chat_ingest", "chat_append", "chat_open", "reply_get"],
+    "the schema is checked once, before the first call that touches the log",
+  );
 });
 
 await test("supabase store: picked when configured; a whole conversation runs on it", async () => {
@@ -765,7 +800,7 @@ await test("http: sync reply, /reset hides everything before it", async () => {
   await httpCall("after", "rst");
   const input = llmRequests().at(-1)!.body.input;
   assert.ok(!input.some((i: any) => i.role === "user" && /first/.test(textOf(i))), "nothing before /reset");
-  assert.match(input[0].content, /\]\nafter$/);
+  assert.match(textOf(input[1]), /\]\nafter$/);
   const stored = await events("http:rst");
   assert.equal(stored[0]!.type, "session/reset", "events before the reset were deleted");
 });
@@ -809,7 +844,7 @@ await test("concurrency: messages during a turn are seen at the next step; one m
   assert.equal(maxInFlight, 1, "never two model calls for one chat at once");
   const step2 = llmRequests()[1]!.body.input;
   assert.match(textOf(step2.findLast((i: any) => i.role === "user")), /\]\n顺便问个事$/);
-  assert.ok(!step2.some((i: any) => i.role === "developer"), "no note: the new message is in the log where the model reads it");
+  assert.ok(!step2.some(isNote), "no note: the new message is in the log where the model reads it");
   assert.equal(llmCalls, 2, "handled inside the same turn, no second run");
 });
 
@@ -853,9 +888,9 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   await drain();
   assert.equal(llmCalls, 2, "first ordinary message wakes an ambient turn");
   const ambient = llmRequests()[0]!.body.input;
-  assert.ok(!ambient.some((i: any) => i.role === "developer"), "no note: the header shows there's no @");
-  assert.match(llmRequests()[0]!.body.instructions, /# 这个聊天\n\n这是群聊。.*消息头带「@你」的是在叫你/, "a group gets the group rule");
-  assert.match(ambient[0].content, /｜群聊｜发送人 老王 #MA\]\n今天吃啥$/, "no @你 marker, nickname shown");
+  assert.ok(!ambient.some(isNote), "no note: the header shows there's no @");
+  assert.match(systemOf(llmRequests()[0]!.body), /# 这个聊天\n\n这是群聊。.*消息头带「@你」的是在叫你/, "a group gets the group rule");
+  assert.match(textOf(ambient[1]), /｜群聊｜发送人 老王 #MA\]\n今天吃啥$/, "no @你 marker, nickname shown");
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 0, "ambient turn's plain text is not auto-sent");
 
   await handleWebhook(groupMsg("GROUP3", "a2", "火锅吧"), "qq");
@@ -936,9 +971,9 @@ await test("qq image: stored once, replayed in later turns (detail low)", async 
   await handleWebhook(c2cWith("i1", "这是啥", [{ content_type: "image/png", url: "//multimedia.nt.qq.com.cn/a.png" }]), "qq");
   await drain();
   assert.ok(calls.some((c) => c.url === "https://multimedia.nt.qq.com.cn/a.png"), "// URL normalized to https and fetched");
-  const msg = llmRequests()[0]!.body.input[0];
+  const msg = llmRequests()[0]!.body.input[1];
   assert.match(msg.content[0].text, /｜私聊｜发送人 #MGUSER\]\n这是啥\n\[图片\]$/);
-  assert.deepEqual(msg.content[1], { type: "input_image", image_url: "data:image/png;base64,iVBORw==", detail: "low" });
+  assert.deepEqual(msg.content[1], { type: "input_image", image_url: "data:image/png;base64,iVBORw==", detail: "auto" });
 
   // The next run on this (warm) instance reads only the new image from the store.
   const store = getStore() as unknown as { getImages(keys: string[]): Promise<Record<string, string>> };
@@ -952,7 +987,7 @@ await test("qq image: stored once, replayed in later turns (detail low)", async 
     store.getImages = getImages;
   }
   const input = llmRequests().at(-2)!.body.input;
-  assert.deepEqual(input[0], msg, "the earlier image is still there, byte for byte");
+  assert.deepEqual(input[1], msg, "the earlier image is still there, byte for byte");
   assert.equal(calls.filter((c) => c.url.endsWith("/a.png")).length, 1, "downloaded once");
   assert.deepEqual(asked.flat().filter((k) => k.includes(":i1:")), [], "the earlier image came from the instance's cache");
 });
@@ -994,7 +1029,7 @@ await test("qq voice/video/file: voice uses QQ's transcript, others become place
     "qq",
   );
   await drain();
-  assert.match(llmRequests()[0]!.body.input[0].content, /\n\[语音\] 你好呀\n\[视频\]\n\[文件：报告\.pdf\]$/);
+  assert.match(textOf(llmRequests()[0]!.body.input[1]), /\n\[语音\] 你好呀\n\[视频\]\n\[文件：报告\.pdf\]$/);
 });
 
 await test("qq mentions: others become \"@昵称 #ID\", the bot's own @ is dropped, and the log keeps who was mentioned", async () => {
@@ -1222,9 +1257,9 @@ await test("compaction: past 80% of the context, older events become a summary (
     // The summary call replays the start of the request just made, plus one instruction.
     assert.match(textOf(summarize!.input.at(-1)), /对话压缩器/);
     assert.deepEqual(summarize!.input.slice(0, -1), step1!.input.slice(0, summarize!.input.length - 1));
-    assert.equal(summarize!.instructions, step1!.instructions);
+    assert.equal(systemOf(summarize!), systemOf(step1!));
     // The next request starts from the summary.
-    assert.match(step2!.input[0].content, /^（系统提示）以下是更早对话的摘要.*\n摘要：大家聊过天气和算术。$/);
+    assert.match(textOf(step2!.input[1]), /^（系统提示）以下是更早对话的摘要.*\n摘要：大家聊过天气和算术。$/);
     assert.ok(!step2!.input.some((i: any) => i.role === "user" && /\]\nfirst$/.test(textOf(i))), "summarized messages are gone");
     const stored = await events("http:cmp");
     assert.ok(!stored.some((e) => e.type === "user/message" && e.data.text === "first"), "deleted from the store");
@@ -1258,14 +1293,14 @@ await test("recovery: a turn cut off mid-tool is closed with interrupted results
     [
     { type: "turn/start", data: { turn: 1, trigger: "direct" } },
     { type: "step/start", data: { turn: 1, step: 1 } },
-    { type: "assistant/message", data: { turn: 1, step: 1, output: [fnCall("call_long", "calculate", { expression: "1" })] } },
+    { type: "assistant/message", data: { turn: 1, step: 1, message: assistantMessage([{ type: "toolCall", id: "call_long", name: "calculate", arguments: { expression: "1" } }]) } },
     { type: "tool/call", data: { turn: 1, step: 1, callId: "call_long", name: "calculate" } },
     ],
   );
   await store.lock("http:crash", "crashed-run", 0, "release"); // its lease ran out
   await httpCall("还在吗", "crash");
   const stored = await events("http:crash");
-  const fix = stored.find((e) => e.type === "tool/result" && e.data.callId === "call_long")!;
+  const fix = stored.find((e) => e.type === "tool/result" && callOf(e) === "call_long")!;
   assert.equal(fix.data.interrupted, true);
   assert.match(fix.data.output, /may or may not have taken effect/);
   const at = stored.indexOf(fix);
@@ -1333,7 +1368,7 @@ await test("worker: unreachable when a turn pauses → the work stays in the log
   await handleWebhook(c2c("run-w4", "在吗", "NOWORKER"), "qq");
   await drain();
   assert.deepEqual(await turnEnds("qq:c2c:NOWORKER"), ["paused", "completed"]);
-  assert.match(llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content, /^（系统提示）这一轮接着上一段继续/);
+  assert.match(llmRequests()[0]!.body.input.findLast(isNote).content[0].text, /^（系统提示）这一轮接着上一段继续/);
 });
 
 await test("pause: not enough time for the next step → the turn ends paused and a fresh worker continues it", async () => {
@@ -1358,7 +1393,7 @@ await test("pause: not enough time for the next step → the turn ends paused an
   assert.equal(replay.status, 401, "a hand-over is used once");
   assert.deepEqual(await turnEnds("qq:c2c:PAUSE"), ["paused", "completed"]);
   assert.equal(llmCalls, 2, "no forced wrap-up step: the calculation's result is answered in the fresh function");
-  const resumed = llmRequests()[1]!.body.input.findLast((i: any) => i.role === "developer").content;
+  const resumed = llmRequests()[1]!.body.input.findLast(isNote).content[0].text;
   assert.match(resumed, /^（系统提示）这一轮接着上一段继续：上一段在这个函数里的时间用完了，/);
   assert.deepEqual(sentTo("/v2/users/PAUSE/messages").map((b) => b.content), ["答案是 20"], "one answer, no progress report");
 });
@@ -1383,7 +1418,7 @@ await test("interrupted: a model call that times out → a fresh worker retries 
     await drain();
   });
   assert.deepEqual(await turnEnds("qq:c2c:FLAKY"), ["interrupted", "completed"]);
-  assert.match(llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content, /上一段的最后一步被打断了/);
+  assert.match(llmRequests()[0]!.body.input.findLast(isNote).content[0].text, /上一段的最后一步被打断了/);
   assert.equal(sentTo("/v2/users/FLAKY/messages").length, 1, "answered once, by the retry");
 
   calls.length = 0;
@@ -1430,7 +1465,7 @@ await test("push refused (the group doesn't allow the bot to post on its own): g
     calls.length = 0;
     await handleWebhook(at("late-2", " 路过", minutesAgo(0)), "qq");
     await drain();
-    const opening = llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content;
+    const opening = llmRequests()[0]!.body.input.findLast(isNote).content[0].text;
     assert.match(opening, /之前有 2 条消息没能发出去：「红温了」「气死我了」。还用得上的话，这一轮补上。/);
 
     // Once a message gets through, the reminder stops. (One at a time: a message that lands
@@ -1441,7 +1476,7 @@ await test("push refused (the group doesn't allow the bot to post on its own): g
     assert.equal(sentTo("/v2/groups/GLATE/messages").filter((b) => b.msg_id === "late-3").length, 2, "the sticker and the text got through");
     await handleWebhook(at("late-4", " 路过", minutesAgo(0)), "qq");
     await drain();
-    assert.doesNotMatch(llmRequests().at(-1)!.body.input.findLast((i: any) => i.role === "developer").content, /没发出去/);
+    assert.doesNotMatch(llmRequests().at(-1)!.body.input.findLast(isNote).content[0].text, /没发出去/);
   } finally {
     qqReply = undefined;
   }
@@ -1618,7 +1653,7 @@ await test("save_attachment: a QQ attachment's original is logged, then curled i
     const logged = (await events("qq:c2c:ATTUSER")).find((e) => e.type === "user/message")!;
     assert.equal(logged.seq, 0);
     assert.deepEqual(logged.data.attachments, [{ name: "retouch 1.jpg", url: "https://multimedia.nt.qq.com.cn/download?fileid=abc", contentType: "file" }]);
-    assert.match(llmRequests()[0]!.body.input[0].content, /\n\[文件：retouch 1\.jpg\]$/, "the model still sees the placeholder");
+    assert.match(textOf(llmRequests()[0]!.body.input[1]), /\n\[文件：retouch 1\.jpg\]$/, "the model still sees the placeholder");
     assert.equal(runs.length, 1);
     assert.ok(
       runs[0]!.includes(`curl -fsSL --retry 2 -o '/workspace/inbox/0-retouch 1.jpg' 'https://multimedia.nt.qq.com.cn/download?fileid=abc'`),
@@ -1674,7 +1709,7 @@ await test("generate_image: workspace references become data URLs; results cappe
     const big = await sharp({ create: { width: 2400, height: 1600, channels: 3, background: "#336699" } }).png().toBuffer();
     imageResponse = () => Response.json({ created: 1, data: [{ b64_json: big.toString("base64"), media_type: "image/png" }], usage: { cost: 0.011 } });
     assert.ok(activeTools().some((t) => t.name === "generate_image"));
-    const ctx = { ...noCtx, images: [] as import("../packages/core/src/media/images.js").ImagePart[] };
+    const ctx = { ...noCtx, images: [] as import("../packages/core/src/llm/types.js").ImageContent[] };
     const out = await runTool(
       "generate_image",
       JSON.stringify({ prompt: "暖金胶片氛围", input_references: ["inbox/5-photo.jpg", "https://example.com/style.png"], aspect_ratio: "3:2" }),
@@ -1698,7 +1733,7 @@ await test("generate_image: workspace references become data URLs; results cappe
     assert.match(out, /^generated 1 image\(s\), cost \$0\.011/);
     assert.ok(out.includes(`${saved} (1620x1080, `), out);
     assert.equal(ctx.images.length, 1, "shown to the model");
-    assert.match(ctx.images[0]!.image_url, /^data:image\/jpeg;base64,/);
+    assert.deepEqual([ctx.images[0]!.type, ctx.images[0]!.mimeType], ["image", "image/jpeg"]);
 
     // include_self: the persona's own picture goes first, and the image model is told who it is.
     calls.length = 0;
@@ -1882,7 +1917,7 @@ await test("qq unreachable: the turn ends after that step, later sends fail fast
     assert.equal(llmRequests().length, 1, "no second step to retry in");
     assert.equal(sentTo("/v2/users/USER1/messages").length, 2, "one connect + one retry; the second message isn't even tried");
     const log = await events("qq:c2c:USER1");
-    const results = log.filter((e) => e.type === "tool/result" && /^call_n\d+[ab]$/.test(e.data.callId)).slice(-2);
+    const results = log.filter((e) => e.type === "tool/result" && /^call_n\d+[ab]$/.test(callOf(e)!)).slice(-2);
     for (const r of results) assert.match(r.data.output, /^Error: qq can't be reached right now \(network error: UND_ERR_CONNECT_TIMEOUT\); nothing was sent\. Stop for this turn/);
     assert.equal(log.filter((e) => e.type === "turn/end").at(-1)!.data.reason, "unreachable");
   } finally {
@@ -1908,7 +1943,7 @@ await test("qq: send_voice → SILK uploaded as file_type 3, then sent as msg_ty
     assert.ok(isSilk(silk), "a SILK file");
     assert.ok(Math.abs(getDuration(silk) - 500) <= 40, `about 0.5 s, got ${getDuration(silk)} ms`);
     assert.deepEqual(sentTo("/v2/users/USER1/messages"), [{ msg_type: 7, media: { file_info: "FILEINFO" }, msg_id: "msg-v1", msg_seq: 1 }]);
-    const result = (await events("qq:c2c:USER1")).filter((e) => e.type === "tool/result" && e.data.callId === "call_v").at(-1)!;
+    const result = (await events("qq:c2c:USER1")).filter((e) => e.type === "tool/result" && callOf(e) === "call_v").at(-1)!;
     assert.match(result.data.output, /voice message: spoken, .*0\.5s/);
   } finally {
     resetTts();
@@ -1971,10 +2006,10 @@ await test("end_turn: wherever it sits, every call in the step still runs, in or
   }
   assert.deepEqual(ran, ["send_message", "calculate", "send_message"]);
   assert.equal(llmRequests().length, 1);
-  const results = (await events("http:c-order")).filter((e) => e.type === "tool/result").map((e) => e.data.callId);
+  const results = (await events("http:c-order")).filter((e) => e.type === "tool/result").map(callOf);
   assert.deepEqual(results, ["call_1", "call_c", "call_2", "call_e"], "every call has its result in the log");
   // The loop, not each talking tool, says how to end the turn: after a message sent, never after other tools.
-  const output = async (id: string) => (await events("http:c-order")).find((e) => e.type === "tool/result" && e.data.callId === id)!.data.output;
+  const output = async (id: string) => (await events("http:c-order")).find((e) => e.type === "tool/result" && callOf(e) === id)!.data.output;
   assert.match(await output("call_1"), /If you're done, call end_turn \(in the same step as your last message\)\.$/);
   assert.doesNotMatch(await output("call_c"), /end_turn/);
 });
@@ -1988,8 +2023,8 @@ await test("step limit: the last step gets a wrap-up note and must send", async 
     const last = reqs[2]!.body;
     assert.deepEqual(last.tool_choice, { type: "function", name: "send_message" });
     assert.equal(reqs[1]!.body.tool_choice, "required");
-    assert.match(last.input.at(-1).content, /^（系统提示）步数用完了，这是这一轮的最后一步：必须现在用 send_message 发一条消息/);
-    assert.ok(!reqs[1]!.body.input.some((i: any) => i.role === "developer" && /最后一步/.test(i.content)));
+    assert.match(textOf(last.input.at(-1)), /^（系统提示）步数用完了，这是这一轮的最后一步：必须现在用 send_message 发一条消息/);
+    assert.ok(!reqs[1]!.body.input.some((i: any) => isNote(i) && /最后一步/.test(textOf(i))));
     assert.equal((await events("http:c-steps")).at(-1)!.data.reason, "max-steps");
   } finally {
     delete process.env.AGENT_MAX_STEPS;
@@ -2012,7 +2047,7 @@ await test("time limit: close to the function's deadline, the next step is the l
       globalThis.fetch = original;
     }
     assert.equal(llmRequests().length, 2);
-    assert.match(llmRequests()[1]!.body.input.at(-1).content, /^（系统提示）时间快用完了/);
+    assert.match(textOf(llmRequests()[1]!.body.input.at(-1)), /^（系统提示）时间快用完了/);
   } finally {
     delete process.env.AGENT_MAX_DURATION_SECONDS;
     clockOffset = 0;
@@ -2059,21 +2094,21 @@ const { deepseekConfig } = await import("../packages/adapters/src/deepseek/searc
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
-    await saveSettings({ OPENAI_RESPONSES_MODEL: "x/console-model", DEEPSEEK_API_KEY: "ds-from-console-123" });
-    assert.equal(config.llm.model, "x/console-model");
+    await saveSettings({ MODEL_ID: "x/console-model", DEEPSEEK_API_KEY: "ds-from-console-123" });
+    assert.equal(piAiConfig.model, "x/console-model");
     assert.equal(deepseekConfig.apiKey, "ds-from-console-123");
     const view = (await describeSettings()).values.find((v) => v.key === "DEEPSEEK_API_KEY")!;
     assert.deepEqual([view.source, view.value], ["db", "ds-fro…-123"], "a masked preview");
-    assert.deepEqual((await getStore().adminLog(1))[0]!.detail, { keys: ["OPENAI_RESPONSES_MODEL", "DEEPSEEK_API_KEY"] }, "the log has names, not values");
+    assert.deepEqual((await getStore().adminLog(1))[0]!.detail, { keys: ["MODEL_ID", "DEEPSEEK_API_KEY"] }, "the log has names, not values");
 
-    await assert.rejects(saveSettings({ OPENAI_RESPONSES_EXTRA_BODY: "[1]", AGENT_MAX_STEPS: "0" }), (err: any) => {
-      assert.deepEqual(Object.keys(err.errors).sort(), ["AGENT_MAX_STEPS", "OPENAI_RESPONSES_EXTRA_BODY"]);
+    await assert.rejects(saveSettings({ MODEL_EXTRA_BODY: "[1]", AGENT_MAX_STEPS: "0" }), (err: any) => {
+      assert.deepEqual(Object.keys(err.errors).sort(), ["AGENT_MAX_STEPS", "MODEL_EXTRA_BODY"]);
       return true;
     });
     await assert.rejects(saveSettings({ NOT_A_SETTING: "x" }), /NOT_A_SETTING/);
 
-    await saveSettings({ OPENAI_RESPONSES_MODEL: null, DEEPSEEK_API_KEY: "" });
-    assert.equal(config.llm.model, "openai/gpt-6-luna", "cleared: back to the environment");
+    await saveSettings({ MODEL_ID: null, DEEPSEEK_API_KEY: "" });
+    assert.equal(piAiConfig.model, "openai/gpt-6-luna", "cleared: back to the environment");
     assert.equal(deepseekConfig.apiKey, "ds-key");
     assert.equal((await describeSettings()).values.find((v) => v.key === "QQ_APP_SECRET")!.source, "env", "not in the console: the environment's");
   } finally {
@@ -2128,21 +2163,25 @@ await test("admin api: login, cookie session, same-origin JSON only; a new ADMIN
   }
 });
 
-await test("deploying before the database upgrade: on the old schema the bot runs on its environment as before", async () => {
+await test("deploying before the database upgrade: the bot keeps the log untouched, platforms retry, the console asks for the upgrade", async () => {
   const memory = getStore();
   process.env.SUPABASE_URL = "https://olddb.example.supabase.co";
   process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
   process.env.ADMIN_PASSWORD = "admin-pw";
   resetStore(new PostgresStore(supabaseConfig.url, supabaseConfig.key));
+  const before = llmCalls;
   try {
     await refreshSettings({ force: true });
-    assert.equal(config.llm.model, "openai/gpt-6-luna");
-    assert.equal((await httpCall("first", "oldschema")).reply, "答案是 20");
-    await handleWebhook(groupAt("GOLD", "o1", " 在吗"), "qq");
+    assert.equal(piAiConfig.model, "openai/gpt-6-luna", "settings come from the environment");
+    const res = await handleWebhook(groupAt("GOLD", "o1", " 在吗"), "qq");
+    assert.equal(res.status, 503, "not ACKed: QQ delivers it again after the upgrade");
+    const http = await httpCall("first", "oldschema");
+    assert.equal((http as unknown as { error: string }).error, "the database is being upgraded; try again later");
     await drain();
-    assert.equal(sentTo("/v2/groups/GOLD/messages").length, 1, "a group @ is answered");
-    const { session } = (await supabaseRpc("chat_open", { p_chat: "http:oldschema", p_after_seq: -1 })) as any;
-    assert.equal(session.turn, 1);
+    assert.equal(llmCalls, before, "no turn ran");
+    assert.equal(sentTo("/v2/groups/GOLD/messages").length, 0);
+    const { session } = (await supabaseRpc("chat_open", { p_chat: "qq:group:GOLD", p_after_seq: -1 })) as any;
+    assert.equal(session, null, "nothing was written in the old format");
     const { handleAdmin } = await import("../packages/core/src/admin/handler.js");
     const login = await handleAdmin(new Request("https://bot.example.com/api/admin/session", { method: "POST", headers: { "content-type": "application/json" }, body: '{"password":"admin-pw"}' }));
     const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
@@ -2176,7 +2215,7 @@ await test("chat profiles: block drops, record keeps quiet context, mention neve
   await handleWebhook(groupAt("GREC", "r2", " 现在呢"), "qq");
   await drain();
   const req = llmRequests()[0]!;
-  assert.match(req.body.instructions, /# 这个聊天的额外设定\n\n这个群说话要学术一点$/);
+  assert.match(systemOf(req.body), /# 这个聊天的额外设定\n\n这个群说话要学术一点$/);
   assert.deepEqual(userLines(req).map((l: string) => l.split("\n")[1]), ["记住这个", "/reset", "现在呢"], "the quiet messages are context");
   const { session: grec } = await getStore().open("qq:group:GREC", Number.MAX_SAFE_INTEGER);
   assert.equal(grec!.cursor, 2, "but not work: the turn handled only the new @");
@@ -2218,7 +2257,15 @@ await test("usage and quotas: tool calls are counted from the log; a used-up too
   const ev = (seq: number, type: string, data: unknown) => ({ seq, type, time: 0, data }) as any;
   const counts = turnUsage([
     ev(0, "turn/start", { turn: 1, trigger: "direct" }),
-    ev(1, "assistant/message", { turn: 1, step: 1, output: [], usage: { input_tokens: 1000, output_tokens: 10, input_tokens_details: { cached_tokens: 800 }, cost: 0.002 } }),
+    ev(1, "assistant/message", {
+      turn: 1,
+      step: 1,
+      message: {
+        role: "assistant",
+        content: [],
+        usage: { input: 200, output: 10, cacheRead: 800, cacheWrite: 0, totalTokens: 1010, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.002, totalFromProvider: true } },
+      },
+    }),
     ev(2, "tool/call", { turn: 1, step: 1, callId: "a", name: "web_search" }),
     ev(3, "tool/call", { turn: 1, step: 1, callId: "b", name: "generate_image" }),
     ev(4, "tool/result", { turn: 1, step: 1, callId: "a", output: "results…" }),
@@ -2227,7 +2274,7 @@ await test("usage and quotas: tool calls are counted from the log; a used-up too
   assert.deepEqual(counts, { turns: 1, model_calls: 1, input_tokens: 1000, cached_tokens: 800, output_tokens: 10, cost_usd: 0.002, searches: 1 });
 
   const toolset = new Toolset(quotaPolicy({ quota: { searches: 1 }, disabledModules: ["memory"] }, { searches: 1 }));
-  assert.match(await toolset.run("web_search", '{"query":"x"}', noCtx), /^Error: this chat's daily quota for web_search \(1\) is used up/);
+  assert.match(await toolset.run("web_search", { query: "x" }, noCtx), /^Error: this chat's daily quota for web_search \(1\) is used up/);
   assert.ok(!toolset.modules.some((m) => m.id === "memory") && !toolset.has("remember"));
   assert.ok(toolset.tools.some((t) => t.name === "web_fetch"));
 });
@@ -2254,12 +2301,12 @@ await test("model order: what arrived while a step ran is read after that step; 
 await test("history from the log: what people, the bot and admins said; not the model's tool calls", async () => {
   const { historyFromEvents } = await import("../packages/core/src/chats/history.js");
   const ev = (seq: number, type: string, data: unknown) => ({ seq, type, time: seq * 1000, data }) as any;
-  const call = (id: string, name: string, args: unknown) => ({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });
+  const call = (id: string, name: string, args: Record<string, unknown>) => ({ type: "toolCall", id, name, arguments: args });
   const lines = historyFromEvents([
     ev(0, "user/message", { eventId: "m0", sender: "老王 #3B6834", text: "看图", images: ["k1", "k2"], mentioned: true, reply: {} }),
     ev(1, "turn/start", { turn: 1, trigger: "direct" }),
     ev(2, "developer/message", { turn: 1, text: "（系统提示）…" }),
-    ev(3, "assistant/message", { turn: 1, step: 1, output: [{ type: "reasoning" }, call("a", "send_message", { text: "答案是 20" })] }),
+    ev(3, "assistant/message", { turn: 1, step: 1, message: { role: "assistant", content: [{ type: "thinking", thinking: "" }, call("a", "send_message", { text: "答案是 20" })] } }),
     ev(4, "bot/sent", { turn: 1, text: "答案是 20", replyTo: 0 }),
     ev(5, "tool/result", { turn: 1, step: 1, callId: "a", output: "sent" }),
     ev(6, "user/message", { eventId: "admin-1", sender: "管理员 #ADMIN", text: "（管理员悄悄告诉你）开会", mentioned: true, reply: {}, replyVia: "m0" }),
@@ -2297,7 +2344,7 @@ await test("admin: say speaks in the bot's name on the newest open message, and 
   await Promise.all(background);
   await drain();
   const req = llmRequests().at(-1)!;
-  assert.ok(req.body.input.some((i: any) => i.role === "assistant" && i.content === "管理员替我说的"));
+  assert.ok(req.body.input.some((i: any) => i.role === "assistant" && i.content[0]?.text === "管理员替我说的"));
   assert.match(userLines(req).at(-1), /管理员悄悄告诉你，群里看不到这句）提醒大家开会$/);
   const all = sentTo("/v2/groups/GADMIN/messages");
   assert.ok(all.length > said.length, "she answered");

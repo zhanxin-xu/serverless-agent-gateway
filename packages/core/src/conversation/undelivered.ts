@@ -6,25 +6,18 @@
  * a reminder of them (undelivered) until the agent gets a message through, so
  * it can say it when someone next writes in the chat.
  */
-import { isEvent, type OutputItem, type SessionEvent } from "./events.js";
+import { toolCalls } from "../llm/content.js";
+import type { ToolCall } from "../llm/types.js";
+import { isEvent, type SessionEvent } from "./events.js";
 
 export const REPLY_WINDOW_CLOSED = "reply window closed";
 
-/** How tools report a thrown error (tools/registry.ts). */
+/** How tools report a thrown error (modules/registry.ts). */
 const REFUSED = `Error: ${REPLY_WINDOW_CLOSED}`;
 
-type FunctionCall = Extract<OutputItem, { type: "function_call" }>;
-const isFunctionCall = (item: OutputItem): item is FunctionCall => item.type === "function_call";
-
 /** What a send call wanted to deliver, in a few words: its text, or what it was sending. */
-function describeSend(call: FunctionCall): string {
-  let args: Record<string, unknown> = {};
-  try {
-    args = JSON.parse(call.arguments) as Record<string, unknown>;
-  } catch {
-    // Unparseable arguments: fall back to the tool's name.
-  }
-  const what = args.text ?? args.path ?? args.name;
+function describeSend(call: ToolCall): string {
+  const what = call.arguments.text ?? call.arguments.path ?? call.arguments.name;
   return typeof what === "string" && what.trim() ? what.trim() : call.name;
 }
 
@@ -34,11 +27,11 @@ function describeSend(call: FunctionCall): string {
  * tools apart (by role, never by name).
  */
 export function undelivered(events: SessionEvent[], isSend: (tool: string) => boolean): string[] {
-  const calls = new Map<string, FunctionCall>();
+  const calls = new Map<string, ToolCall>();
   let missed: string[] = [];
   for (const e of events) {
     if (isEvent(e, "assistant/message")) {
-      for (const item of e.data.output.filter(isFunctionCall)) calls.set(item.call_id, item);
+      for (const call of toolCalls(e.data.message)) calls.set(call.id, call);
       continue;
     }
     if (!isEvent(e, "tool/result")) continue;

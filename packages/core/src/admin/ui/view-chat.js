@@ -196,15 +196,20 @@ const REASONS = {
   unreachable: ["bad", "平台连不上"],
 };
 
-const usageCost = (u) => (typeof u?.cost === "number" ? u.cost : undefined);
+/** A model call's usage (src/llm/types.ts): the whole prompt, the cached part, the output, the cost. */
+const promptTokens = (u) => (u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0);
+const usageLine = (u) =>
+  ` · 输入 ${fmtTokens(promptTokens(u))}（缓存 ${fmtTokens(u.cacheRead)}）输出 ${fmtTokens(u.output)}${u.cost?.total ? ` · ${fmtUsd(u.cost.total)}${u.cost.totalFromProvider ? "" : "（估算）"}` : ""}`;
 
-function outputSummary(output) {
+/** An assistant message's blocks, briefly: its reasoning, what it wrote, which tools it called. */
+function messageSummary(message) {
   const parts = [];
-  const reasoning = output.filter((i) => i.type === "reasoning").length;
-  if (reasoning) parts.push(pill("mute", `思考 ${reasoning} 段`));
-  for (const item of output) {
-    if (item.type === "message") parts.push(`“${(item.content ?? []).map((c) => c.text ?? "").join("")}”`);
-    if (item.type === "function_call") parts.push(h("code", null, `${item.name}(${item.arguments ?? ""})`));
+  const content = message?.content ?? [];
+  const thinking = content.filter((b) => b.type === "thinking").length;
+  if (thinking) parts.push(pill("mute", `思考 ${thinking} 段`));
+  for (const block of content) {
+    if (block.type === "text" && block.text) parts.push(`“${block.text}”`);
+    if (block.type === "toolCall") parts.push(h("code", null, `${block.name}(${JSON.stringify(block.arguments ?? {})})`));
   }
   return parts.flatMap((p, i) => (i ? [" ", p] : [p]));
 }
@@ -237,11 +242,8 @@ function summarize(e) {
     case "developer/message":
       return h("span", { class: "muted" }, d.text);
     case "assistant/message": {
-      const u = d.usage;
-      return [
-        outputSummary(d.output ?? []),
-        u ? h("span", { class: "muted" }, ` · 输入 ${fmtTokens(u.input_tokens)}（缓存 ${fmtTokens(u.input_tokens_details?.cached_tokens)}）输出 ${fmtTokens(u.output_tokens)}${usageCost(u) !== undefined ? ` · ${fmtUsd(usageCost(u))}` : ""}`) : null,
-      ];
+      const u = d.message?.usage;
+      return [messageSummary(d.message), u ? h("span", { class: "muted" }, usageLine(u)) : null];
     }
     case "assistant/attempt":
       return [pill("bad", "调用失败"), ` ${d.error}`];
@@ -250,7 +252,7 @@ function summarize(e) {
     case "tool/result":
       return d.output.startsWith("Error:") ? [pill("bad", "失败"), ` ${d.output}`] : d.output;
     case "tool/images":
-      return `打开了 ${d.images.length} 张图片`;
+      return `工具返回了 ${d.images.length} 张图片`;
     case "compaction/summary":
       return `压缩了第 ${d.fromSeq} 条之前的内容：${d.summary}`;
     case "admin/message":
@@ -319,14 +321,14 @@ function turnHeader(group) {
   const turn = end?.data.turn ?? start?.data.turn;
   if (turn === undefined) return h("div", { class: "turn-head" }, h("b", null, "等着下一轮"));
   const steps = group.log.filter((e) => e.type === "step/start").length;
-  let input = 0, cached = 0, output = 0, cost = 0, priced = false;
+  let input = 0, cached = 0, output = 0, cost = 0;
   for (const e of group.log) {
-    const u = e.type === "assistant/message" ? e.data.usage : undefined;
+    const u = e.type === "assistant/message" ? e.data.message?.usage : undefined;
     if (!u) continue;
-    input += u.input_tokens ?? 0;
-    cached += u.input_tokens_details?.cached_tokens ?? 0;
-    output += u.output_tokens ?? 0;
-    if (usageCost(u) !== undefined) (cost += usageCost(u)), (priced = true);
+    input += promptTokens(u);
+    cached += u.cacheRead ?? 0;
+    output += u.output ?? 0;
+    cost += u.cost?.total ?? 0;
   }
   return h(
     "div",
@@ -334,7 +336,7 @@ function turnHeader(group) {
     h("b", null, `第 ${turn} 轮`),
     start ? ` · ${start.data.trigger === "direct" ? "被叫" : "旁观"}` : "",
     ` · ${steps} 步 · 输入 ${fmtTokens(input)}（缓存 ${fmtTokens(cached)}）输出 ${fmtTokens(output)}`,
-    priced ? ` · ${fmtUsd(cost)}` : "",
+    cost ? ` · ${fmtUsd(cost)}` : "",
     " ",
     end ? pill(...(REASONS[end.data.reason] ?? ["mute", end.data.reason])) : pill("info", "进行中"),
   );
@@ -519,7 +521,7 @@ function renderSettings(body, chat, info, app) {
       h(
         "div",
         { class: "stack" },
-        field("title", "备注名", title, "QQ 不给群名，起个好认的名字。"),
+        field("title", "备注名", title, "平台不提供群名时，起个好认的名字。"),
         field("mode", "回复方式", mode, "正常：被 @ 必回，平时偶尔插话。只回 @：不插话。只记录：一律不回，消息留作上下文。屏蔽：连记录都不存。"),
         field("interval", "插话频率（秒）", interval, "群里没 @ 的消息，每这么多秒最多给她看一次。0 = 不插话。"),
         h(

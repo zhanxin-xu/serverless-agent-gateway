@@ -21,8 +21,8 @@ npm run dev                  # 本地跑 Vercel 部署包：http://localhost:300
 不需要任何真实凭据也能跑测试：
 
 ```bash
-npm test             # 离线端到端测试，所有外部接口都已经 mock
-npm run test:store   # 存储契约测试
+npm test             # 离线测试：端到端、模块、四种模型协议，所有外部接口都已经 mock
+npm run test:store   # 存储契约测试和数据迁移测试（迁移测试需要 TEST_DATABASE_URL）
 npm run typecheck
 ```
 
@@ -34,12 +34,12 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm run test:store
 TEST_DATABASE_URL=postgresql:///gateway_test npm test
 ```
 
-`npm test` 会替换掉全局的 `fetch`，模拟模型、QQ、Telegram、DeepSeek、Supabase、Upstash Vector 等所有外部服务，然后走一遍真实的 Webhook 处理和 agent loop。沙盒相关的测试使用内存里的假工作区；要在真实的 Vercel Sandbox 上验证，见[工具文档](docs/tools.md#沙盒工作区)。
+`npm test` 会替换掉全局的 `fetch`，模拟模型、QQ、Telegram、DeepSeek、Supabase、Upstash Vector 等所有外部服务，然后走一遍真实的 Webhook 处理和 agent loop。模型按各协议的流式格式回复（`scripts/fake-llm.ts`），请求经过 pi-ai 真实的客户端；`scripts/llmtest.ts` 逐个协议检查请求、思维链回传和失败分类。沙盒相关的测试使用内存里的假工作区；要在真实的 Vercel Sandbox 上验证，见[工具文档](docs/tools.md#沙盒工作区)。
 
 ## 提交代码
 
 1. Fork 仓库并新建分支。
-2. 修改代码，**同时在 `scripts/selftest.ts`（存储相关的在 `scripts/storetest.ts`）里补上或更新测试**。
+2. 修改代码，**同时在 `scripts/selftest.ts`（存储相关的在 `scripts/storetest.ts`，表结构升级在 `scripts/migrationtest.ts`）里补上或更新测试**。
 3. 确认 `npm run typecheck`、`npm run build`、`npm test` 和 `npm run test:store` 都通过。CI 会在每个 Pull Request 上自动运行，并且带一个真实的 Postgres。
 4. 改了行为或配置的话，同步更新 `docs/`、`README.md` 和 `.env.example`。
 5. 提交 Pull Request，说明改了什么、为什么改。

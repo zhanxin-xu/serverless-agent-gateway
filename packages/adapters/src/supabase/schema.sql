@@ -311,7 +311,7 @@ create table if not exists gateway.meta (
 );
 
 create table if not exists gateway.settings (
-  key text primary key, -- the env var it stands in for, e.g. OPENAI_RESPONSES_MODEL
+  key text primary key, -- the env var it stands in for, e.g. MODEL_ID
   value text not null,
   updated_at timestamptz not null default now()
 );
@@ -357,9 +357,21 @@ language sql immutable set search_path = '' as $$
   select (extract(epoch from t) * 1000)::bigint;
 $$;
 
+-- An assistant/message still holding Responses API output items, or a summary with Responses usage.
+create or replace function gateway.has_legacy_events() returns boolean
+language sql stable set search_path = '' as $$
+  select exists (
+    select from gateway.events
+    where (type = 'assistant/message' and data ? 'output')
+       or (type = 'compaction/summary' and data -> 'usage' ? 'input_tokens'));
+$$;
+
+-- legacyEvents: events still in the format before version 6, waiting for gateway.migrate_events_v6.
 create or replace function public.gateway_info() returns jsonb
 language sql stable security definer set search_path = '' as $$
-  select jsonb_build_object('schemaVersion', (select value::int from gateway.meta where key = 'schema_version'));
+  select jsonb_build_object(
+    'schemaVersion', (select value::int from gateway.meta where key = 'schema_version'),
+    'legacyEvents', gateway.has_legacy_events());
 $$;
 
 -- Settings: [{key, value, updatedAt}].
@@ -542,6 +554,133 @@ begin
 end;
 $$;
 
+-- ── Upgrades ──
+
+-- Version 6: the chat model's settings and the model's messages are no longer
+-- tied to the OpenAI Responses API.
+--
+-- The settings set in the console are renamed (the old names stop meaning anything).
+do $$
+declare
+  pair text[];
+begin
+  foreach pair slice 1 in array array[
+    ['OPENAI_RESPONSES_BASE_URL', 'MODEL_BASE_URL'], ['OPENAI_RESPONSES_API_KEY', 'MODEL_API_KEY'],
+    ['OPENAI_RESPONSES_MODEL', 'MODEL_ID'], ['OPENAI_RESPONSES_EXTRA_BODY', 'MODEL_EXTRA_BODY'],
+    ['OPENAI_RESPONSES_EXTRA_HEADERS', 'MODEL_EXTRA_HEADERS'], ['OPENAI_RESPONSES_TIMEOUT_MS', 'MODEL_TIMEOUT_MS']
+  ] loop
+    insert into gateway.settings (key, value, updated_at)
+      select pair[2], value, updated_at from gateway.settings where key = pair[1]
+      on conflict (key) do nothing;
+    delete from gateway.settings where key = pair[1];
+  end loop;
+end;
+$$;
+
+-- Responses API usage → the gateway's (src/llm/types.ts Usage): input without the cached tokens,
+-- the cost as billed when the provider reported it.
+create or replace function gateway.legacy_usage(u jsonb) returns jsonb
+language sql immutable set search_path = '' as $$
+  select jsonb_build_object(
+    'input', greatest(t.input - t.cached, 0), 'output', t.output, 'cacheRead', t.cached, 'cacheWrite', 0,
+    'totalTokens', t.input + t.output,
+    'cost', jsonb_build_object('input', 0, 'output', 0, 'cacheRead', 0, 'cacheWrite', 0,
+      'total', coalesce(t.cost, 0), 'totalFromProvider', t.cost is not null))
+    || case when t.reasoning is null then '{}'::jsonb else jsonb_build_object('reasoning', t.reasoning) end
+  from (select
+    coalesce((u ->> 'input_tokens')::numeric, 0) as input,
+    coalesce((u -> 'input_tokens_details' ->> 'cached_tokens')::numeric, 0) as cached,
+    coalesce((u ->> 'output_tokens')::numeric, 0) as output,
+    (u -> 'output_tokens_details' ->> 'reasoning_tokens')::numeric as reasoning,
+    case when jsonb_typeof(u -> 'cost') = 'number' then (u ->> 'cost')::numeric end as cost) t;
+$$;
+
+-- A function call's arguments (a JSON string) as an object; {} when they aren't one.
+create or replace function gateway.legacy_arguments(p_arguments text) returns jsonb
+language plpgsql immutable set search_path = '' as $$
+declare
+  parsed jsonb;
+begin
+  parsed := p_arguments::jsonb;
+  return case when jsonb_typeof(parsed) = 'object' then parsed else '{}'::jsonb end;
+exception when others then
+  return '{}'::jsonb;
+end;
+$$;
+
+-- A tool call's id: the call id, and the output item's id after a "|", as pi-ai writes it.
+create or replace function gateway.legacy_call_id(item jsonb) returns text
+language sql immutable set search_path = '' as $$
+  select (item ->> 'call_id') || coalesce('|' || (item ->> 'id'), '');
+$$;
+
+-- One Responses API output item → a content block, the way pi-ai reads the same item off the stream
+-- (so it is sent back the same way): the whole reasoning item is its signature. Other items: null.
+create or replace function gateway.legacy_block(item jsonb) returns jsonb
+language sql immutable set search_path = '' as $$
+  select case item ->> 'type'
+    when 'message' then jsonb_strip_nulls(jsonb_build_object(
+      'type', 'text',
+      'text', coalesce((select string_agg(c ->> 'text', '') from jsonb_array_elements(coalesce(item -> 'content', '[]')) c
+        where c ->> 'type' = 'output_text'), ''),
+      'textSignature', case when item ? 'id' then (jsonb_strip_nulls(jsonb_build_object(
+        'v', 1, 'id', item ->> 'id', 'phase', item ->> 'phase')))::text end))
+    when 'reasoning' then jsonb_build_object(
+      'type', 'thinking',
+      'thinking', coalesce(
+        (select string_agg(x ->> 'text', E'\n\n') from jsonb_array_elements(coalesce(item -> 'summary', '[]')) x),
+        (select string_agg(x ->> 'text', '') from jsonb_array_elements(coalesce(item -> 'content', '[]')) x), ''),
+      'thinkingSignature', item::text)
+    when 'function_call' then jsonb_build_object(
+      'type', 'toolCall', 'id', gateway.legacy_call_id(item), 'name', item ->> 'name',
+      'arguments', gateway.legacy_arguments(item ->> 'arguments'))
+  end;
+$$;
+
+-- Move the events written before version 6 to the new format, then mark the schema version 6.
+-- Every legacy assistant message came from the Responses API; p_provider and p_model are the
+-- chat model's identity now (the gateway passes them, see the Supabase adapter's database.ts),
+-- so the replay data in them is sent back as long as that identity doesn't change.
+create or replace function gateway.migrate_events_v6(p_api text, p_provider text, p_model text) returns jsonb
+language plpgsql set search_path = '' as $$
+declare
+  messages int;
+  tool_events int;
+  summaries int;
+begin
+  -- Tool calls are now known by "call_id|item id": their markers and results follow.
+  create temp table call_ids on commit drop as
+    select distinct e.chat, item ->> 'call_id' as old_id, gateway.legacy_call_id(item) as new_id
+    from gateway.events e, jsonb_array_elements(e.data -> 'output') item
+    where e.type = 'assistant/message' and e.data ? 'output' and item ->> 'type' = 'function_call';
+  update gateway.events e set data = jsonb_set(e.data, '{callId}', to_jsonb(c.new_id))
+    from call_ids c
+    where e.chat = c.chat and e.type in ('tool/call', 'tool/result') and e.data ->> 'callId' = c.old_id
+      and c.old_id <> c.new_id;
+  get diagnostics tool_events = row_count;
+
+  update gateway.events e set data = (e.data - 'output' - 'usage') || jsonb_build_object('message', jsonb_build_object(
+    'role', 'assistant',
+    'content', coalesce((select jsonb_agg(b order by n) from jsonb_array_elements(e.data -> 'output') with ordinality as o(item, n),
+      lateral gateway.legacy_block(o.item) b where b is not null), '[]'::jsonb),
+    'api', p_api, 'provider', p_provider, 'model', p_model,
+    'usage', gateway.legacy_usage(coalesce(e.data -> 'usage', '{}')),
+    'stopReason', case when exists (select from jsonb_array_elements(e.data -> 'output') i where i ->> 'type' = 'function_call')
+      then 'toolUse' else 'stop' end,
+    'timestamp', gateway.epoch_ms(e.time)))
+  where e.type = 'assistant/message' and e.data ? 'output';
+  get diagnostics messages = row_count;
+
+  update gateway.events set data = jsonb_set(data, '{usage}', gateway.legacy_usage(data -> 'usage'))
+  where type = 'compaction/summary' and data -> 'usage' ? 'input_tokens';
+  get diagnostics summaries = row_count;
+
+  insert into gateway.meta (key, value) values ('schema_version', '6')
+    on conflict (key) do update set value = excluded.value;
+  return jsonb_build_object('messages', messages, 'toolEvents', tool_events, 'summaries', summaries);
+end;
+$$;
+
 -- ── Housekeeping ──
 
 -- Chats quiet for p_days go away with everything they own; retries are only
@@ -604,8 +743,10 @@ exception when others then
 end;
 $$;
 
--- Keep in step with SCHEMA_VERSION in src/store/types.ts.
-insert into gateway.meta (key, value) values ('schema_version', '5')
+-- Keep in step with SCHEMA_VERSION in src/store/types.ts. Events in an older format wait for
+-- gateway.migrate_events_v6 (above), which sets the version itself.
+insert into gateway.meta (key, value)
+  select 'schema_version', '6' where not gateway.has_legacy_events()
   on conflict (key) do update set value = excluded.value;
 
 -- Let the Data API see new functions right away.

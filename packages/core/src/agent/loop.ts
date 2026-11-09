@@ -1,22 +1,24 @@
 /**
- * One turn of the agent loop on the Responses API (`POST {baseURL}/responses`),
- * driven by the chat's event log (see conversation/events.ts):
+ * One turn of the agent loop, driven by the chat's event log (see
+ * conversation/events.ts), over whichever chat model is configured (src/modules/model):
  *
- *   each step: read the log's new events → derive the input → call the model
- *   → append its output verbatim (reasoning included) → append a tool/call
+ *   each step: read the log's new events → derive the messages → call the model
+ *   → append its message verbatim (reasoning included) → append a tool/call
  *   marker, run the tool, append its tool/result → repeat.
  *
  * Nothing lives only in memory: messages that arrive mid-turn show up at the
  * next step, and a run that dies can be picked up from the log. Each request
  * extends the previous one, so the prompt cache keeps hitting.
  *
- * Every request sets tool_choice "required", so the model always acts through
- * a tool. The turn ends when the model calls end_turn (usually alongside its
- * last message), or after the last step: when the step budget runs out, a note
- * tells the model to wrap up and tool_choice forces a send_message. Every call
- * in a step runs, in order, wherever end_turn sits among them; the turn ends
- * after the step, unless a message failed to send (before the last step), so
- * the model can react. When the failure was the platform being unreachable,
+ * Every request asks for a tool call, so the model acts through tools. The
+ * turn ends when the model calls end_turn (usually alongside its last
+ * message), or after the last step: when the step budget runs out, a note
+ * tells the model to wrap up and the tool choice asks for send_message.
+ * Where a protocol can't force a tool (Anthropic while thinking) and the
+ * model answers in plain text, that text ends the turn and the runner sends it.
+ * Every call in a step runs, in order, wherever end_turn sits among them; the
+ * turn ends after the step, unless a message failed to send (before the last
+ * step), so the model can react. When the failure was the platform being unreachable,
  * the turn ends anyway: a retry would only wait out the same timeout.
  *
  * Time (agent/budget.ts): every model and tool call must end before the
@@ -26,13 +28,9 @@
  * "interrupted"; either way the runner hands the chat over and the next run
  * continues the turn from the log (`resume`). A run that can't continue (sync
  * channels) gets a forced last step instead, like the step budget.
- *
- * The request body is `{ model, ...OPENAI_RESPONSES_EXTRA_BODY, instructions, input,
- * tools, tool_choice }`, so any provider-specific parameter (provider routing,
- * reasoning, max_output_tokens, …) can be set from config without code changes.
  */
 import { config } from "../config.js";
-import type { NewEvent, OutputItem, SessionEvent, TurnEndReason } from "../conversation/events.js";
+import type { NewEvent, SessionEvent, TurnEndReason } from "../conversation/events.js";
 import type { UnfinishedTurn } from "../conversation/recovery.js";
 import type { Session } from "../conversation/session.js";
 import { undelivered } from "../conversation/undelivered.js";
@@ -41,10 +39,11 @@ import type { Toolset } from "../modules/registry.js";
 import type { ToolContext } from "../modules/tool.js";
 import { callBudgetMs, LAST_STEP_MIN_MS, MIN_CALL_MS, NEW_STEP_MIN_MS, timeLeftMs } from "./budget.js";
 import { compactIfNeeded } from "./compaction.js";
-import { createResponse, ModelCallError, outputText, type ResponsesResult } from "./model.js";
-
-type FunctionCall = Extract<OutputItem, { type: "function_call" }>;
-const isFunctionCall = (item: OutputItem): item is FunctionCall => item.type === "function_call";
+import { ModelCallError } from "../llm/errors.js";
+import { messageText, promptTokens, toolCalls } from "../llm/content.js";
+import type { AssistantMessage, ToolCall } from "../llm/types.js";
+import { use } from "../modules/capability.js";
+import { chatModelCapability } from "../modules/model/capability.js";
 
 /** A tool call the function had no time left for. */
 const NO_TIME_FOR_TOOL =
@@ -106,14 +105,13 @@ export interface TurnResult {
   reason: TurnEndReason;
   /** Seq of the newest user message the model saw; the cursor moves here. */
   handledUpTo: number;
-  /** Plain text the model wrote without calling a tool (only if a provider ignores tool_choice). */
+  /** Plain text the model wrote without calling a tool (where the protocol couldn't force one). */
   text: string;
   usage: { input: number; cached: number; reasoning: number };
 }
 
 export async function runTurn(o: TurnOptions): Promise<TurnResult> {
   const { session, ctx, turn } = o;
-  const { model, extraBody } = config.llm;
   const { toolset } = o;
   const tools = toolset.definitions();
   // Tools are told apart by role (tools/types.ts), never by name.
@@ -137,6 +135,10 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     data: { turn, reason, ...(error ? { error } : {}) },
   });
   const result = (step: number, reason: TurnEndReason, text = ""): TurnResult => ({ steps: step, reason, handledUpTo, text, usage });
+  const runCall = (call: ToolCall): Promise<string> =>
+    call.argumentsError
+      ? Promise.resolve(`Error: the arguments weren't valid JSON (${call.argumentsError}); call ${call.name} again with a JSON object.`)
+      : toolset.run(call.name, call.arguments, ctx);
 
   for (let step = 1; ; step++) {
     const notes: string[] = [];
@@ -175,21 +177,18 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     );
     opening = [];
 
-    let response: ResponsesResult;
+    let message: AssistantMessage;
     try {
-      response = await createResponse(
-        {
-          model,
-          ...extraBody,
-          instructions: o.systemPrompt,
-          input: await session.input(),
-          tools,
-          // Every step acts through a tool: talk, or hang up.
-          // The last step must say something: whoever is waiting hears the result or where it got stuck.
-          tool_choice: lastStep ? { type: "function", name: say } : "required",
-        },
-        { timeoutMs: callBudgetMs(ctx.deadline) },
-      );
+      message = await use(chatModelCapability).complete({
+        systemPrompt: o.systemPrompt,
+        messages: await session.messages(),
+        tools,
+        // Every step acts through a tool: talk, or hang up.
+        // The last step must say something: whoever is waiting hears the result or where it got stuck.
+        toolChoice: lastStep ? { tool: say } : "required",
+        cacheKey: session.cacheKey,
+        timeoutMs: Math.min(config.model.timeoutMs, callBudgetMs(ctx.deadline)),
+      });
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       // A timeout or a provider hiccup: a fresh function retries the step. Anything else fails the turn.
@@ -204,27 +203,23 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
       return result(step, "interrupted");
     }
 
-    const output = response.output ?? [];
-    const u = response.usage ?? {};
-    usage.input = u.input_tokens ?? usage.input;
-    usage.cached = u.input_tokens_details?.cached_tokens ?? usage.cached;
-    usage.reasoning += u.output_tokens_details?.reasoning_tokens ?? 0;
-    if (response.status === "incomplete") {
-      console.warn(`[agent] response incomplete: ${response.incomplete_details?.reason ?? "unknown"}`);
-    }
+    usage.input = promptTokens(message.usage);
+    usage.cached = message.usage.cacheRead;
+    usage.reasoning += message.usage.reasoning ?? 0;
+    if (message.stopReason === "length") console.warn(`[agent] turn ${turn} step ${step}: the model hit its output limit`);
 
-    const calls = output.filter(isFunctionCall);
+    const calls = toolCalls(message);
     await session.append(
-      { type: "assistant/message", data: { turn, step, output, ...(response.usage ? { usage: response.usage } : {}) } },
+      { type: "assistant/message", data: { turn, step, message } },
       ...calls
         .filter((c) => !hangups.has(c.name))
-        .map((c) => ({ type: "tool/call" as const, data: { turn, step, callId: c.call_id, name: c.name } })),
+        .map((c) => ({ type: "tool/call" as const, data: { turn, step, callId: c.id, name: c.name } })),
     );
 
-    // Only if a provider ignores tool_choice "required": treat plain text as the final answer.
+    // No tool call (the protocol couldn't force one): the plain text is the final answer.
     if (calls.length === 0) {
       await session.append({ type: "step/end", data: { turn, step } }, turnEnd("completed"));
-      return result(step, "completed", outputText(output));
+      return result(step, "completed", messageText(message));
     }
 
     // The tool/call markers are already in the log, so a run killed mid-tool is
@@ -235,12 +230,12 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     for (const call of calls) {
       if (hangups.has(call.name)) continue;
       // Tools keep to the time budget themselves; this catches the step that used it all up.
-      let output = callBudgetMs(ctx.deadline) < MIN_CALL_MS ? NO_TIME_FOR_TOOL : await toolset.run(call.name, call.arguments, ctx);
-      console.log(`[agent] tool ${call.name}(${call.arguments}) -> ${output.slice(0, 200)}`);
+      let output = callBudgetMs(ctx.deadline) < MIN_CALL_MS ? NO_TIME_FOR_TOOL : await runCall(call);
+      console.log(`[agent] tool ${call.name}(${JSON.stringify(call.arguments)}) -> ${output.slice(0, 200)}`);
       const failed = output.startsWith("Error:");
       sendFailed ||= talks.has(call.name) && failed;
       if (talks.has(call.name) && !failed) output += doneHint;
-      results.push({ type: "tool/result", data: { turn, step, callId: call.call_id, output } });
+      results.push({ type: "tool/result", data: { turn, step, callId: call.id, output } });
     }
     const unreachable = sendFailed && (o.unreachable?.() ?? false);
     const done = lastStep || unreachable || (hangingUp && !sendFailed);
@@ -256,7 +251,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
         .filter((c) => hangups.has(c.name))
         .map((c) => ({
           type: "tool/result" as const,
-          data: { turn, step, callId: c.call_id, output: done ? "turn ended" : "not ended: a message failed to send, see the error above" },
+          data: { turn, step, callId: c.id, output: done ? "turn ended" : "not ended: a message failed to send, see the error above" },
         })),
       ...(imageKeys.length ? [{ type: "tool/images" as const, data: { turn, step, images: imageKeys } }] : []),
       { type: "step/end", data: { turn, step } },
@@ -271,7 +266,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
         await compactIfNeeded(session, {
           systemPrompt: o.systemPrompt,
           tools,
-          inputTokens: u.input_tokens ?? 0,
+          inputTokens: promptTokens(message.usage),
           keepFrom: o.pending[0]!.seq,
           timeoutMs: callBudgetMs(ctx.deadline),
         });

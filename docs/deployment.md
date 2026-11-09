@@ -21,9 +21,7 @@ Vercel 部署的是部署包 `packages/vercel/`：它的 `api/` 目录下的文�
    | 字段 | 含义 |
    |---|---|
    | `host` | 部署在哪（`vercel`） |
-   | `model` / `baseUrl` | 聊天模型和服务地址 |
-   | `apiKey` | 是否配置了模型 API Key |
-   | `extraBody` | `OPENAI_RESPONSES_EXTRA_BODY` 的解析结果 |
+   | `model` | 聊天模型：实现（`provider`）、协议（`api`）、服务地址（`endpoint`）、模型（`model`）；没配好时是原因 |
    | `modules` | 每个模块开没开；没开时写原因，见[模块](modules.md) |
    | `tools` | 当前启用的工具 |
    | `store` | 存储的名字（`Supabase`）；部署没有数据库设置时是 `memory` |
@@ -32,7 +30,7 @@ Vercel 部署的是部署包 `packages/vercel/`：它的 `api/` 目录下的文�
 
 **在管理端改的配置 30 秒内生效**，不用重新部署。**直接改环境变量后要重新部署**，已经在运行的部署不会读到新值。可以在 Deployments 页面对最新一次部署点 Redeploy，或者再运行一次 `npx vercel --prod`。
 
-**敏感变量读不出来。** 标记为 Sensitive 的变量保存后无法再查看原值，修改时只能整段重写。像 `OPENAI_RESPONSES_EXTRA_BODY` 这种不含密钥的配置，建议存成普通变量（CLI 加 `--no-sensitive`），方便以后查看和修改。
+**敏感变量读不出来。** 标记为 Sensitive 的变量保存后无法再查看原值，修改时只能整段重写。像 `MODEL_EXTRA_BODY` 这种不含密钥的配置，建议存成普通变量（CLI 加 `--no-sensitive`），方便以后查看和修改。
 
 ## 函数区域
 
@@ -57,6 +55,10 @@ Supabase（Postgres）保存每个聊天的会话、事件流、回复状态、�
 3. 重新部署，`/api/health` 的 `store` 应显示 `Supabase`，管理端引导里“数据库”一步显示已就绪。
 
 每个存储操作是一次函数调用（`POST /rest/v1/rpc/<函数名>`），多步操作（比如"去重 + 写入 + 抢锁"）在函数里是一个事务。表结构见 [Agent 文档](agent.md#存储结构)。
+
+**升级代码后升级数据库**：新代码要求的表结构版本比数据库新时，网关不读写聊天记录（Webhook 回 503，平台会重推），管理端引导里“数据库”一步提示升级。点“升级”会执行 `schema.sql`，需要时再迁移已有数据；手动升级时，SQL Editor 里先执行 `schema.sql`，回到引导点“检测”，有数据要迁移的话它会再给出一句 SQL。
+
+- **第 6 版**：聊天记录不再绑定 OpenAI Responses 格式，模型配置改名（`OPENAI_RESPONSES_*` → `MODEL_*`，`OPENAI_RESPONSES_MODEL` → `MODEL_ID`）。管理端里存的配置随升级自动改名；**写在环境变量里的要自己改名**，再重新部署。已有的聊天记录按当前的模型转换，思维链原样保留，升级后接着回传。
 
 **数据保留**：每天的清理任务（`gateway_expire`）删除 7 天没有新消息的聊天，连同它的事件、回复状态和图片。要改天数，修改 `schema.sql` 末尾 `cron.schedule` 里的参数后重新执行。
 

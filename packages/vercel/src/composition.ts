@@ -1,6 +1,6 @@
 /**
  * What the Vercel deployment is made of (Composition in @gateway/core): every module,
- * a provider for each capability, QQ / Telegram / HTTP over webhooks,
+ * a provider for each capability (the chat model through pi-ai), QQ / Telegram / HTTP over webhooks,
  * Supabase as the store (memory until it's connected), 大肥鱼 as the persona,
  * and the console's Vercel-specific steps.
  */
@@ -9,6 +9,7 @@ import { deepseekProvider } from "@gateway/adapters/deepseek";
 import { httpAdapter } from "@gateway/adapters/http";
 import { openaiSpeechProvider } from "@gateway/adapters/openai-speech";
 import { openrouterAccount, openrouterImagesProvider } from "@gateway/adapters/openrouter";
+import { piAiChatModel, piAiConfig } from "@gateway/adapters/pi-ai";
 import { qqAdapter } from "@gateway/adapters/qq";
 import { PostgresStore, supabaseConfig, supabaseDatabase } from "@gateway/adapters/supabase";
 import { telegramAdapter } from "@gateway/adapters/telegram";
@@ -27,8 +28,16 @@ export function composeVercel(): void {
     host: vercelHost,
     persona: dafeiyu,
     modules: [chatModule, basicsModule, modelModule, memoryModule, searchModule, sandboxModule, imageModule, voiceModule],
-    providers: [deepseekProvider, upstashVectorProvider, vercelSandboxProvider, openrouterImagesProvider, openaiSpeechProvider],
-    modelAccount: openrouterAccount,
+    providers: [
+      // The chat model's key is an OpenRouter key by default: OpenRouter tells what's left on it, and the
+      // image provider may share it.
+      piAiChatModel({ account: openrouterAccount }),
+      deepseekProvider,
+      upstashVectorProvider,
+      vercelSandboxProvider,
+      openrouterImagesProvider({ modelKey: () => piAiConfig.apiKey }),
+      openaiSpeechProvider,
+    ],
     channels: [qqAdapter, telegramAdapter, httpAdapter],
     store: () => (supabaseConfig.configured ? new PostgresStore(supabaseConfig.url, supabaseConfig.key) : new MemoryStore()),
     database: supabaseDatabase,

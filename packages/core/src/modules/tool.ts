@@ -4,7 +4,7 @@
  */
 import type { Attachment, OutgoingFile, OutgoingVoice } from "../channels/types.js";
 import type { ChatPerson } from "../conversation/people.js";
-import type { ImagePart } from "../media/images.js";
+import type { ImageContent } from "../llm/types.js";
 
 /** Something a tool delivers to the chat. */
 export type Outgoing =
@@ -54,7 +54,7 @@ export interface ToolContext {
   /** The chat this run belongs to: memory metadata and the per-chat workspace. */
   chat: { key: string; scene: "群聊" | "私聊"; sender: string };
   /** Images a tool wants the model to see; the loop shows them after the step's tool outputs. */
-  images: ImagePart[];
+  images: ImageContent[];
   /** Run `fn` when the agent run ends, e.g. to stop a sandbox the tool started. */
   onRunEnd(fn: () => Promise<void> | void): void;
   /** The attachments of message `seq` (its 第N条 number): [] when it has none, undefined when there's no such message. */

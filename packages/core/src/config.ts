@@ -8,7 +8,7 @@
  * Bootstrap values the gateway needs before it can reach the database come
  * from the environment only (`env`).
  *
- * This holds the core: the model, chats, the agent. Every adapter (a
+ * This holds the core: chats, the agent, the model calls. Every adapter (a
  * provider, a channel, the store) and the host read their own settings
  * (src/adapters/<x>/config.ts, deploy/<target>/) with the readers exported below.
  */
@@ -91,45 +91,14 @@ export const config = {
     },
   },
 
-  /** Any server that speaks the OpenAI Responses API (POST {baseUrl}/responses). Defaults to OpenRouter. */
-  llm: {
-    get apiKey() {
-      return str("OPENAI_RESPONSES_API_KEY");
-    },
-    /** Any Responses-API-compatible base URL; `/responses` is appended. */
-    get baseUrl() {
-      return str("OPENAI_RESPONSES_BASE_URL").replace(/\/+$/, "");
-    },
-    get model() {
-      return str("OPENAI_RESPONSES_MODEL");
-    },
-    /**
-     * Extra fields merged into every Responses API request body (snake_case,
-     * sent as-is), e.g. OpenRouter provider locking:
-     *   {"provider":{"only":["openai"],"allow_fallbacks":false}}
-     * Cannot override instructions / input / tools / tool_choice.
-     */
-    get extraBody() {
-      return jsonObject("OPENAI_RESPONSES_EXTRA_BODY");
-    },
-    /** Extra request headers, e.g. {"HTTP-Referer":"https://example.com","X-Title":"my-bot"}. */
-    get extraHeaders() {
-      return jsonObject("OPENAI_RESPONSES_EXTRA_HEADERS") as Record<string, string>;
-    },
+  /** The chat model, whichever provider serves it (src/modules/model): what the loop asks of every call. */
+  model: {
     /**
      * Upper bound for one model call. Inside a run a call also ends when the
      * host's time budget does (agent/budget.ts), whichever comes first.
      */
     get timeoutMs() {
-      return int("OPENAI_RESPONSES_TIMEOUT_MS");
-    },
-    /**
-     * USD per million tokens, to estimate what a turn cost when the API doesn't
-     * report it (OpenRouter does). Unset prices count as 0.
-     */
-    get prices() {
-      const price = (name: string) => Number(str(name)) || 0;
-      return { input: price("MODEL_PRICE_INPUT"), cached: price("MODEL_PRICE_CACHED"), output: price("MODEL_PRICE_OUTPUT") };
+      return int("MODEL_TIMEOUT_MS");
     },
   },
 

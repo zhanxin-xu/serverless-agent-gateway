@@ -22,7 +22,8 @@
     "url": "https://github.com/zhanxin-xu/serverless-agent-gateway/issues"
   },
   "scripts": {
-    "dev": "tsx watch scripts/dev-server.ts",
+    "dev": "tsx watch deploy/node/server.ts",
+    "start": "tsx deploy/node/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx scripts/selftest.ts && tsx scripts/moduletest.ts",
     "test:store": "tsx scripts/storetest.ts",

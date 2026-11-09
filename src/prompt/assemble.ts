@@ -9,9 +9,9 @@
  * thing. The runner, compaction, the console's preview and the tests all use
  * this, so they all see exactly what the model gets.
  */
-import { MODULES, type Toolset } from "../modules/registry.js";
+import { persona } from "../composition.js";
+import { allModules, type Toolset } from "../modules/registry.js";
 import { ORDER } from "./order.js";
-import { EXAMPLES, PERSONA_PROMPT } from "../persona/index.js";
 import { RULES, SCENE_RULES } from "./rules.js";
 import type { PromptSection, PromptSectionContext } from "./types.js";
 import { interpolate } from "./variables.js";
@@ -45,12 +45,13 @@ export interface Assembly {
 /** Every section there is; each decides its own text for a turn. */
 function sections(input: AssemblyInput): PromptSection[] {
   const fixed = (name: string, source: string, order: number, text: string | undefined): PromptSection => ({ name, source, order, text: () => text ?? "" });
+  const who = persona();
   return [
-    fixed("persona", "人设", ORDER.persona, PERSONA_PROMPT),
+    fixed("persona", "人设", ORDER.persona, who.prompt),
     fixed("rules", "业务规则", ORDER.rules, RULES),
     fixed("scene", input.chatType === "group" ? "场景：群聊" : "场景：私聊", ORDER.scene, SCENE_RULES[input.chatType]),
     fixed("channel", "渠道", ORDER.channel, input.channelHint),
-    ...MODULES.flatMap((m): PromptSection[] =>
+    ...allModules().flatMap((m): PromptSection[] =>
       m.section
         ? [
             {
@@ -69,7 +70,7 @@ function sections(input: AssemblyInput): PromptSection[] {
       order: ORDER.examples,
       // Only for the modules that are on: an example never shows a tool the model doesn't have.
       text: () => {
-        const lines = input.toolset.modules.flatMap((m) => EXAMPLES[m.id] ?? []);
+        const lines = input.toolset.modules.flatMap((m) => who.examples[m.id] ?? []);
         return lines.length ? `# 典型反应示例（参考语气与动作连招）\n\n${lines.join("\n")}` : "";
       },
     },

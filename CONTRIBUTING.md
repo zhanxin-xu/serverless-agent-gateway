@@ -15,7 +15,7 @@
 ```bash
 npm install
 cp .env.example .env.local   # 只填你要调试的部分
-npm run dev                  # 本地服务：http://localhost:3000/api/webhook/{qq,telegram,http}
+npm run dev                  # 本地 Node 部署（deploy/node）：http://localhost:3000/admin
 ```
 
 不需要任何真实凭据也能跑测试：
@@ -55,7 +55,7 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm test
 
 ## 常见改动
 
-- **改人设**：编辑 `src/persona/`。人设里不要写工具名，工具怎么用写在它所在模块的说明里；模块里也不要写人设（测试都会检查）。
+- **改人设**：编辑 `src/personas/dafeiyu/`（换一个人设：新建 `src/personas/<名字>/`，在部署的组合里换掉）。人设里不要写工具名，工具怎么用写在它所在模块的说明里；模块里也不要写人设（测试都会检查）。
 - **新增工具、模块，或给一种能力加一家服务**：见[模块](docs/modules.md)。
 - **新增渠道**：见[渠道接入](docs/channels.md#新增渠道)。
 

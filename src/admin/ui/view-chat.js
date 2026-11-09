@@ -4,7 +4,8 @@ import { action, confirmAction, every, fill, fmtClock, fmtTime, fmtTokens, fmtUs
 import { icon } from "./icons.js";
 import { chatKind, chatName, modePill, speakersText } from "./labels.js";
 
-const BOT = "大肥鱼";
+/** The bot's name in this chat's lines and placeholders (the composed persona's, set when the view opens). */
+let BOT = "机器人";
 const TABS = [
   ["history", "聊天记录"],
   ["events", "事件"],
@@ -12,6 +13,7 @@ const TABS = [
 ];
 
 export async function renderChat(main, [chat, tabId], app) {
+  BOT = app.botName;
   const info = await api.get("chat", { chat });
   const tab = TABS.some(([id]) => id === tabId) ? tabId : "history";
   const body = h("div", { class: `tab-body tab-${tab}` });
@@ -463,7 +465,7 @@ function renderSettings(body, chat, info, app) {
   const field = (id, label, input, help, key = id) =>
     h("div", { class: "field" }, h("label", { for: `profile-${id}` }, label), input, help ? h("p", { class: "help" }, help) : null, errorSlot(key));
 
-  const title = h("input", { id: "profile-title", type: "text", value: p.title ?? "", maxlength: 60, placeholder: "比如：鲸鱼研究所" });
+  const title = h("input", { id: "profile-title", type: "text", value: p.title ?? "", maxlength: 60, placeholder: "比如：技术交流群" });
   const mode = h(
     "select",
     { id: "profile-mode" },

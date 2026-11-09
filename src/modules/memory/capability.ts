@@ -1,6 +1,6 @@
 /** Long-term memory: a store of short texts searched by meaning, shared by every chat. */
+import { providersOf } from "../capability.js";
 import type { Capability } from "../types.js";
-import { upstashVectorProvider } from "./providers/upstash-vector/index.js";
 
 /** Where a memory came from. */
 export interface MemoryMetadata {
@@ -32,9 +32,9 @@ export const memoryCapability: Capability<VectorMemory> = {
   id: "vector-memory",
   label: "记忆存储",
   selectionSetting: "MEMORY_PROVIDER",
-  // Read when used, not while the files load (see src/modules/index.ts).
+  // Whatever the deployment composed for it (src/composition.ts).
   get providers() {
-    return [upstashVectorProvider];
+    return providersOf<VectorMemory>(this.id);
   },
   stateful: true,
 };

@@ -1,5 +1,5 @@
 /** The overview page: what's left on each module's service, today's usage, recent problems; and the admin log. */
-import { channels } from "../../channels/index.js";
+import { channels } from "../../composition.js";
 import { utcDay } from "../../chats/day.js";
 import { getStore, type UsageCounts } from "../../store/index.js";
 import { activeModules } from "../../modules/registry.js";
@@ -37,7 +37,7 @@ export const overviewRoutes: Route[] = [
         balances,
         today: { total: sum(today), chats: Object.keys(today).length },
         problems,
-        channels: [...channels.values()].map((c) => ({ name: c.name, configured: c.isConfigured() })),
+        channels: channels().map((c) => ({ name: c.name, configured: c.isConfigured() })),
       };
     },
   },

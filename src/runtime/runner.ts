@@ -8,19 +8,20 @@
  * releases the lock, then checks for work once more, so a message can't fall
  * in the gap.
  *
- * Time: async channels run in /api/worker (ingress starts them there). When a
- * turn can't finish in this function, it ends "paused" or "interrupted"
- * without moving the cursor, and the run hands the chat to a fresh worker,
- * which continues that turn from the log (unfinishedTurn). A turn that keeps
- * getting interrupted is given up after MAX_INTERRUPTIONS. Sync channels can't
- * continue elsewhere: their turns end with a forced last step instead.
+ * Time: a run lasts as long as the host allows (Host.runBudgetMs). When a
+ * turn can't finish in that time, it ends "paused" or "interrupted" without
+ * moving the cursor, and the run hands the chat over (Host.handoff: on Vercel
+ * a fresh function), which continues that turn from the log (unfinishedTurn). A turn that keeps
+ * getting interrupted is given up after MAX_INTERRUPTIONS. Sync channels, and
+ * hosts that can't hand over, can't continue elsewhere: their turns end with a
+ * forced last step instead.
  *
  * Per chat (chats/): the profile adds to the system prompt, picks the tools
  * and sets the ambient interval; a turn doesn't start once today's cost quota
  * is used up; and after each turn its usage is added up from the log.
  */
 import type { ChannelAdapter } from "../channels/types.js";
-import { config } from "../config.js";
+import { host } from "../composition.js";
 import { LAST_STEP_MIN_MS, NEW_STEP_MIN_MS, timeLeftMs } from "../agent/budget.js";
 import { runTurn, type TurnResult } from "../agent/loop.js";
 import { OutOfCreditError } from "../agent/model.js";
@@ -34,7 +35,6 @@ import { getStore, LockLostError, type ChatStore } from "../store/index.js";
 import { Toolset } from "../modules/registry.js";
 import { assemble } from "../prompt/assemble.js";
 import { makeToolContext } from "./context.js";
-import { startWorker } from "./handoff.js";
 import { RunLock } from "./lock.js";
 import { Outbox } from "./outbox.js";
 import { wakeFor, type Trigger } from "./sampler.js";
@@ -63,7 +63,7 @@ export interface RunOptions {
   collect?: string[];
   /** The sampler window was already claimed for this run (an ambient message woke it). */
   ambientClaimed?: boolean;
-  /** When the platform kills this function (epoch ms). Default: maxDuration from now. */
+  /** When the host stops this run (epoch ms). Default: the host's run budget from now. */
   deadline?: number;
   /** A lock the caller already took for this run (ingress takes it while logging the message). */
   lock?: RunLock;
@@ -85,9 +85,9 @@ export async function runChat(adapter: ChannelAdapter, meta: ChatMeta, opts: Run
   const store = getStore();
   const chatKey = `${meta.channel}:${meta.conversationId}`;
   // Every round of this function shares one deadline: when the platform kills it.
-  const deadline = opts.deadline ?? Date.now() + config.agent.maxDurationSeconds * 1000;
-  // A run can only hand over if a worker can carry on: an async channel, and somewhere to reach it.
-  const continuable = !opts.collect && Boolean(adapter.send) && Boolean(meta.origin);
+  const deadline = opts.deadline ?? Date.now() + host().runBudgetMs();
+  // A run can only hand over if something can carry on: a host that hands over, an async channel, and somewhere to reach it.
+  const continuable = Boolean(host().handoff) && !opts.collect && Boolean(adapter.send) && Boolean(meta.origin);
   let ambientClaimed = opts.ambientClaimed ?? false;
 
   for (let round = 0; ; round++) {
@@ -115,7 +115,7 @@ export async function runChat(adapter: ChannelAdapter, meta: ChatMeta, opts: Run
 
     if (end.outcome === "handoff") {
       // If the worker can't be reached, the work stays in the log for the next message's run.
-      await startWorker(meta.origin!, { chatKey, ambientClaimed: end.ambientClaimed });
+      await host().handoff!(meta.origin!, { chatKey, ambientClaimed: end.ambientClaimed });
       return true;
     }
     if (end.outcome === "stopped" || !session) return true;

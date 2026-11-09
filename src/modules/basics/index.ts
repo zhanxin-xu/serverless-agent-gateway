@@ -2,7 +2,7 @@
 import type { Module } from "../types.js";
 import { calculate, getCurrentTime } from "./tools.js";
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function basicsModule(): Module {
   return {
     id: "basics",

@@ -2,7 +2,7 @@
 
 下面的配置都可以在[管理端](admin.md)（`/admin`）里填写，存进数据库，改完 30 秒内生效，不用重新部署。每一项按这个顺序取值：**管理端 → 同名环境变量 → 默认值**，所以也可以照旧只用环境变量。直接改环境变量时，需要**重新部署**才会生效。
 
-只能用环境变量设置的有：`ADMIN_PASSWORD`（管理端密码）、数据库连接（`SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`POSTGRES_URL_NON_POOLING`），以及 `AGENT_MAX_DURATION_SECONDS`。
+只能用环境变量设置的有：`ADMIN_PASSWORD`（管理端密码）、数据库连接（`SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`POSTGRES_URL_NON_POOLING`），以及宿主的时间：Vercel 部署的 `AGENT_MAX_DURATION_SECONDS`、本地 Node 部署的 `AGENT_RUN_BUDGET_SECONDS`。
 
 本地开发时把变量写进 `.env.local`，模板见 [`.env.example`](../.env.example)。
 
@@ -39,7 +39,8 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 |---|---|---|
 | `AGENT_TIMEZONE` | `Asia/Shanghai` | 消息头里时间使用的时区 |
 | `AGENT_MAX_STEPS` | `40` | 一轮最多调用模型的次数（旁观轮次也一样；不插话时只用 1 次） |
-| `AGENT_MAX_DURATION_SECONDS` | `300` | 函数的时间上限，要和 `vercel.json` 的 `maxDuration` 保持一致。剩余不到 100 秒时不开新的一步，交给新的 worker 接着做，见[步数与时间](agent.md#步数与时间) |
+| `AGENT_MAX_DURATION_SECONDS` | `300` | Vercel 部署：函数的时间上限，要和 `vercel.json` 的 `maxDuration` 保持一致。剩余不到 100 秒时不开新的一步，交给新的 worker 接着做，见[步数与时间](agent.md#步数与时间)。只能用环境变量 |
+| `AGENT_RUN_BUDGET_SECONDS` | `1800` | 本地 Node 部署：一次运行最长多久（常驻进程没有函数时限，也不接力，到点前最后一步必须回复）。只能用环境变量 |
 | `AGENT_CONTEXT_TOKENS` | `200000` | 上下文预算（token）。请求输入超过它的 80% 时，较早的对话会被压缩成摘要，见[上下文压缩](agent.md#上下文压缩) |
 | `AGENT_AMBIENT_INTERVAL_SECONDS` | `10` | 群里没 @ 的消息，每个群每隔多少秒最多唤起一次 agent；`0` 表示只记录、不唤起 |
 
@@ -108,7 +109,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `SANDBOX_ENABLED` | 自动 | 部署在 Vercel 上或本地有 `VERCEL_OIDC_TOKEN` 时自动启用；设为 `0` 关闭，设为 `1` 强制启用 |
 | `SANDBOX_REGION` | `iad1` | 沙盒和工作区盘所在的区域。盘建好以后区域不能再改，请在第一次使用前设置 |
 | `SANDBOX_COMMAND_TIMEOUT_SECONDS` | `60` | 单条 `bash` 命令的时间上限，临近函数时限时会自动缩短 |
-| `WORKER_SECRET` | 由其他密钥派生 | 请求 `/api/worker` 的签名密钥。不设置时用模型 Key 和渠道密钥派生；建议设成一个随机字符串 |
+| `WORKER_SECRET` | 由其他密钥派生 | Vercel 部署才有，在配置页的“Vercel”分组：请求 `/api/worker` 的签名密钥。不设置时由管理密码和模型 Key 派生；建议设成一个随机字符串 |
 | `STICKER_BASE_URL` | 梗鲸 CDN | 表情包图片的根地址，自托管时修改。属于“聊天”模块，在它的模块页里改 |
 
 ## 画图

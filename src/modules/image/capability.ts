@@ -1,6 +1,6 @@
 /** Image generation: the interface every image provider implements, and the providers. */
+import { providersOf } from "../capability.js";
 import type { Balance, Capability } from "../types.js";
-import { openrouterImagesProvider } from "./providers/openrouter-images/index.js";
 
 export interface ImageRequest {
   prompt: string;
@@ -30,8 +30,8 @@ export const imageCapability: Capability<ImageBackend> = {
   id: "image",
   label: "画图服务",
   selectionSetting: "IMAGE_PROVIDER",
-  // Read when used, not while the files load (see src/modules/index.ts).
+  // Whatever the deployment composed for it (src/composition.ts).
   get providers() {
-    return [openrouterImagesProvider];
+    return providersOf<ImageBackend>(this.id);
   },
 };

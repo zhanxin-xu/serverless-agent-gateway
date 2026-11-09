@@ -1,19 +1,18 @@
 /**
- * Webhook entry shared by the Vercel function and the local dev server.
+ * Webhook entry, for any host that receives HTTP (deploy/<target>).
  *
  * Async channels (QQ, Telegram) must be ACKed quickly or the platform
- * retries, so logging the message and running the agent happen inside
- * `waitUntil` after the ACK is returned (a turn that outlasts the function
- * continues in /api/worker). Sync channels (no `send`) wait for the agent and
- * return its replies.
+ * retries, so logging the message and running the agent happen in the
+ * background after the ACK is returned (Host.background; a turn that outlasts
+ * the host's time limit continues through Host.handoff). Sync channels (no
+ * `send`) wait for the agent and return its replies.
  */
-import { waitUntil } from "@vercel/functions";
+import { channel, host } from "./composition.js";
 import { handleMessage } from "./runtime/ingress.js";
-import { channels } from "./channels/index.js";
 import { json, type ChannelAdapter, type InboundMessage } from "./channels/types.js";
 import { refreshSettings } from "./settings/service.js";
 
-async function process(adapter: ChannelAdapter, message: InboundMessage, origin: string): Promise<void> {
+export async function processInbound(adapter: ChannelAdapter, message: InboundMessage, origin: string): Promise<void> {
   try {
     if (message.mode !== "ambient") await adapter.typing?.(message).catch(() => {});
     await handleMessage(adapter, message, { origin });
@@ -24,7 +23,7 @@ async function process(adapter: ChannelAdapter, message: InboundMessage, origin:
 
 export async function handleWebhook(request: Request, channelName: string): Promise<Response> {
   await refreshSettings();
-  const adapter = channels.get(channelName);
+  const adapter = channel(channelName);
   if (!adapter) return json({ error: `unknown channel "${channelName}"` }, 404);
   if (!adapter.isConfigured()) return json({ error: `channel "${channelName}" is not configured` }, 503);
   if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
@@ -43,7 +42,7 @@ export async function handleWebhook(request: Request, channelName: string): Prom
   const origin = publicOrigin(request);
 
   if (adapter.send) {
-    waitUntil(process(adapter, result.message, origin));
+    host().background(processInbound(adapter, result.message, origin));
     return result.ack ?? json({ ok: true });
   }
 

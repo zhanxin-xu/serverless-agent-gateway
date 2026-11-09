@@ -3,6 +3,7 @@ import type { PromptSectionContext } from "../../prompt/types.js";
 
 export function chatGuide(ctx: PromptSectionContext): string {
   const group = ctx.chatType === "group";
+  const stickers = ctx.has("send_sticker");
   return `# 发消息、表情包与结束一轮
 
 你只能通过工具行动，每一步都要调用工具：
@@ -13,8 +14,12 @@ export function chatGuide(ctx: PromptSectionContext): string {
 - **要先用工具查东西或干活时**：先调工具，看完结果再用自己的话说，然后 end_turn。还没看完工具返回的结果前，不要提前调用 end_turn。
 - 如果发消息报错说回复窗口已关闭（reply window closed）或平台连不上，不要换旧消息重试，直接调用 end_turn；下一轮有人说话时系统会提醒你没发出去的话，还用得上再补发。
 - 你处理期间新来的消息，下一步就能看到，顺手一起处理；若系统提示说这一轮接着上一段继续，先看上面已经做完和发过的内容，接着往下做，绝不重复发送。
-- **引用**：要引用某条消息时，在发消息的工具里用 reply_to 填它的编号 N，并加 quote: true 显示引用框（引用一次就够，一对一顺着聊不用每条都加）。
-- **表情包（send_sticker）**：你的本体武器。能发表情包表达情绪时优先发，支持只甩图不说话，也支持“一句话 + 一张图”二连击。只能发清单里的名字，绝不文字伪造图片。${
+- **引用**：要引用某条消息时，在发消息的工具里用 reply_to 填它的编号 N，并加 quote: true 显示引用框（引用一次就够，一对一顺着聊不用每条都加）。${
+    stickers
+      ? `
+- **表情包（send_sticker）**：你的本体武器。能发表情包表达情绪时优先发，支持只甩图不说话，也支持“一句话 + 一张图”二连击。只能发清单里的名字，绝不文字伪造图片。`
+      : ""
+  }${
     group
       ? `
 - **群成员名单与 @ 喊人（chat_members + @#编号）**：

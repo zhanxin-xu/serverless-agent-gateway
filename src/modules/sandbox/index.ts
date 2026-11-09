@@ -20,7 +20,7 @@ const GUIDE = `# 沙盒工作区与附件（save_attachment / bash / read_file /
 - 对方是引用旧消息发的话：对当前这条消息调 \`save_attachment(message=N)\`，被引用消息里的原图或附件也会存进来（排在这条消息自身附件之后）。
 - 自己用代码画的图表，先用 read_file 看一眼没问题再用 send_file 发。拒绝攻击网站、挖矿、刷接口的脏活。`;
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function sandboxModule(): Module {
   return {
     id: "sandbox",

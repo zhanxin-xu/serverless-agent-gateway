@@ -152,12 +152,13 @@ curl -X POST https://<域名>/api/webhook/http \
 
 ## 新增渠道
 
-实现 [`src/channels/types.ts`](../src/channels/types.ts) 里的 `ChannelAdapter`，然后在 [`src/channels/index.ts`](../src/channels/index.ts) 里注册，路由会自动生成 `/api/webhook/<name>`。
+在 `src/adapters/<渠道>/` 里实现 [`src/channels/types.ts`](../src/channels/types.ts) 的 `ChannelAdapter`（凭据声明在它的 `config` 里，管理端自动生成配置页），然后加进部署的组合（`deploy/<部署>/composition.ts` 的 `channels`），路由会自动生成 `/api/webhook/<name>`。
 
 | 成员 | 必需 | 作用 |
 |---|---|---|
 | `name` | 是 | 渠道名，也是 URL 里的路径 |
 | `label` | 是 | 给人看的平台名（“QQ”），管理端显示用 |
+| `config` | 否 | 它的配置项（一组 `ConfigDecl`），管理端“配置”页按渠道列出 |
 | `isConfigured()` | 是 | 凭据是否齐全，不齐全时返回 503 |
 | `receive(req, rawBody)` | 是 | 验签并解析成 `InboundMessage`；也可以直接返回一个响应（比如地址校验） |
 | `send(message, text)` | 否 | 发送一条文字回复。不实现时，该渠道为同步模式 |

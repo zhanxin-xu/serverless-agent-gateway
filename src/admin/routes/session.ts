@@ -1,4 +1,5 @@
 /** Logging in and out. */
+import { guide, persona } from "../../composition.js";
 import { config } from "../../config.js";
 import { getStore } from "../../store/index.js";
 import { isLoggedIn, login, logoutCookie } from "../auth.js";
@@ -9,7 +10,12 @@ export const sessionRoutes: Route[] = [
     method: "GET",
     path: "session",
     public: true,
-    handler: (req) => ({ passwordSet: Boolean(config.admin.password), loggedIn: isLoggedIn(req.request) }),
+    // Without a password, how to set one where this is deployed (shown before anyone can sign in).
+    handler: (req) =>
+      // The bot's name titles the console, before sign-in too.
+      config.admin.password
+        ? { botName: persona().name, passwordSet: true, loggedIn: isLoggedIn(req.request) }
+        : { botName: persona().name, passwordSet: false, loggedIn: false, howToSetPassword: guide().password },
   },
   {
     method: "POST",

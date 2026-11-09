@@ -9,8 +9,14 @@
  *   none chosen, none usable    → off: nothing configured
  *   none chosen, several usable → off: choose one
  */
+import { providers } from "../composition.js";
 import { settingValue } from "../config.js";
 import { providerLabel, type Capability, type Provider, type Readiness } from "./types.js";
+
+/** The providers the deployment composed for a capability (src/composition.ts), in its order. */
+export function providersOf<Impl>(capabilityId: string): Provider<Impl>[] {
+  return providers().filter((p) => p.capability === capabilityId) as Provider<Impl>[];
+}
 
 export type Selection<Impl> = { ok: true; provider: Provider<Impl> } | { ok: false; reason: string };
 

@@ -81,12 +81,13 @@
 
 | 想改什么 | 改哪里 |
 |---|---|
-| 人设：她是谁、长相、声音、表情包、示例 | [`src/persona/`](src/persona/) |
+| 人设：她是谁、长相、声音、表情包、示例 | [`src/personas/dafeiyu/`](src/personas/dafeiyu/)；换人设在部署的组合里换 |
 | 每一轮怎么决策 | [`src/prompt/rules.ts`](src/prompt/rules.ts) |
 | 某个工具怎么用 | 它所在模块的说明，比如 [`src/modules/memory/index.ts`](src/modules/memory/index.ts) |
-| 新增工具、模块，或换一家服务 | [`src/modules/`](src/modules/)，见[模块](docs/modules.md) |
-| 渠道 | [`src/channels/`](src/channels/)，见[新增渠道](docs/channels.md#新增渠道) |
-| 表情包 | [`src/persona/stickers.ts`](src/persona/stickers.ts) |
+| 新增工具、模块 | [`src/modules/`](src/modules/)，见[模块](docs/modules.md) |
+| 换一家服务、加渠道、换存储 | [`src/adapters/`](src/adapters/)，见[模块](docs/modules.md)、[新增渠道](docs/channels.md#新增渠道) |
+| 部署在哪、装哪些模块和实现 | [`deploy/`](deploy/)：每种部署一个组合 |
+| 表情包 | [`src/personas/dafeiyu/stickers.ts`](src/personas/dafeiyu/stickers.ts) |
 
 ## 本地开发
 
@@ -95,95 +96,63 @@
 ```bash
 npm install
 cp .env.example .env.local   # 填写需要的变量
-npm run dev                  # http://localhost:3000/api/webhook/{qq,telegram,http}
+npm run dev                  # 本地 Node 部署（deploy/node）：http://localhost:3000/admin
 npm test                     # 离线端到端测试，不调用任何真实接口
 npm run typecheck
 ```
 
-想在本地接收真实的 QQ 或 Telegram 回调，可以用 `cloudflared tunnel` 或 `ngrok` 把 3000 端口暴露出去。
+本地是一种独立的部署（`deploy/node`）：常驻进程，没有函数时限，也不需要 `/api/worker` 接力。QQ、Telegram 用 webhook 推消息，平台必须能访问到这台机器，可以用 `cloudflared tunnel` 或 `ngrok` 把 3000 端口暴露出去；HTTP 渠道直接可用。
 
 ## 项目结构
 
 ```
-api/
-  webhook/[channel].ts   Vercel Function 入口：POST /api/webhook/{qq|telegram|http}
-  worker.ts              POST /api/worker：一轮做不完时由新的函数接着做（内部，带签名）
-  health.ts              GET /api/health：配置自检
-  admin.ts               管理端：/admin 页面和 /api/admin/* 接口
-src/
-  webhook.ts             路由：选择适配器 → 验签解析 → 回执 → 后台处理
-  worker.ts              worker 请求的验签与接着运行
+src/                     核心 + 适配器 + 人设（同一个仓库，按层分目录，测试守住边界）
+  composition.ts         组合：部署交给核心的东西（宿主、人设、模块、实现、渠道、存储、管理端文案）
+  webhook.ts             路由：选择适配器 → 验签解析 → 回执 → 后台处理（Host.background）
+  health.ts              配置自检
   config.ts              配置：管理端 → 环境变量 → 默认值
   settings/              存在数据库里的配置
-    catalog.ts           每项配置的默认值、类型与校验（各模块的配置项在模块目录里，这里汇总）
+    catalog.ts           汇总组合里每个模块、实现、渠道、宿主声明的配置项
     service.ts           加载、保存、各项配置的来源
-  chats/                 每个聊天
-    profile.ts           回复方式、插话频率、模块开关、额外设定、额度
-    usage.ts             用量统计与额度
-    history.ts           从事件流渲染聊天记录
-  admin/                 管理端
-    handler.ts / routes/ 接口
-    auth.ts              登录
-    chat-actions.ts      代发、悄悄话、重置、解锁
-    ui/                  页面（原生 JS，没有构建步骤）
-  channels/              消息通道
-    types.ts             适配器接口
-    qq.ts / telegram.ts / http.ts
-    format.ts            消息头：模型看到的"第N条｜时间｜场景｜发送人"
-  runtime/               运行时：谁、什么时候跑 agent
-    ingress.ts           入口：去重、写入、按需抢锁（一个事务），然后运行
-    sampler.ts           采样器：@ 必唤起，普通群消息每个窗口最多一次
-    runner.ts            运行者：一轮接一轮处理待办、选默认回复目标
-    lock.ts              运行锁（会话行上的租约）
-    outbox.ts            按消息回复，5 次上限，QQ 的 msg_seq
-    context.ts           工具上下文：工具怎么发消息、表情包、文件、语音
-    deliver.ts           把要发的内容变成渠道调用（工具和代发共用）
-    handoff.ts           时间不够时交给 /api/worker 接着做
-  conversation/          事件流
-    events.ts            事件格式、可见窗口
-    derive.ts            从事件流推导模型输入
-    recovery.ts          崩溃恢复：补完被打断的一轮，找出要接着跑的一轮
-    session.ts           持锁期间的内存视图
-  agent/                 模型这一侧
-    loop.ts              一轮 agent loop
-    budget.ts            时间预算：什么时候交接、每次调用能用多久
-    model.ts             Responses API 请求
-    compaction.ts        上下文压缩
-  persona/               人设：她的全部事实，模块从这里读
-    prompt.ts            她是谁（系统提示第一段，不提任何工具）
-    examples.ts          她用各模块工具的示例
-    stickers.ts          她的表情包
-  prompt/                系统提示：有名字、有序号的段落
-    rules.ts             业务规则：每一轮怎么决策、你看到的信息、私聊 / 群聊
-    order.ts             每段的位置
-    assemble.ts          把人设、规则、渠道、开启的模块的段落和工具定义一起拼好
-  modules/               模块：一组工具 + 说明它们的段落 + 配置 + 背后的服务
-    index.ts             模块清单：加载哪些模块（新增模块只改这里）
-    types.ts / registry.ts   模块、能力、实现的接口；定义检查和开关判断
-    capability.ts        从一种能力的多个实现里选一个
-    tool.ts              工具接口
-    chat/                核心：send_message、send_sticker、end_turn、chat_members
-    basics/              核心：时间、计算器
-    model/               核心：聊天模型的配置、检查、key 的余额
-    search/              搜索：web_search、web_fetch、余额；实现 providers/deepseek
-    memory/              长期记忆；实现 providers/upstash-vector
-    sandbox/             沙盒工作区；实现 providers/vercel-sandbox
-    image/               画图、画图 key 的余额；实现 providers/openrouter-images
-    voice/               语音；实现 providers/openai-speech（Fish / Seed 写法）
-  media/images.ts        图片下载、缩小、入库
-  media/voice.ts         语音编码：PCM → SILK（QQ）/ WAV
-  media/assets.ts        读取随部署打包的文件（参考声音、形象图）
-assets/voice/            大肥鱼的参考声音（send_voice 克隆用）
-assets/persona/          大肥鱼的形象图（画她自己时作为参考图）
-  store/                 存储：types.ts 接口，postgres.ts（Supabase），memory.ts（本地与测试）
-supabase/
-  schema.sql             表和函数（会话、事件流、回复状态、图片、去重）
+  chats/                 每个聊天：回复方式、模块开关、额度、聊天记录
+  admin/                 管理端（接口 + ui/ 页面，原生 JS，没有构建步骤）
+  channels/              渠道接口：types.ts（ChannelAdapter）、消息头格式、网络重试
+  runtime/               运行时：入口、采样、运行者、锁、发件箱；时限和接力问宿主（Host）
+  conversation/          事件流：格式、推导模型输入、崩溃恢复
+  agent/                 模型这一侧：agent loop、时间预算、Responses API、上下文压缩
+  prompt/                系统提示：有名字、有序号的段落，人设从组合里读
+  modules/               模块：一组工具 + 说明它们的段落 + 配置 + 背后的能力接口
+    types.ts / registry.ts / capability.ts   模块、能力、实现的接口；检查、开关、选实现
+    chat/ basics/ model/ search/ memory/ sandbox/ image/ voice/
+  store/                 存储接口（types.ts）和内存实现（本地与测试）
+  media/                 图片下载缩小、WAV、读取随部署打包的文件
+  adapters/              第三方适配：每个目录一家服务，只依赖核心
+    deepseek/            搜索能力的实现
+    upstash-vector/      长期记忆能力的实现
+    vercel-sandbox/      沙盒能力的实现
+    openrouter/          画图能力的实现；聊天模型 key 的余额（ModelAccount）
+    openai-speech/       语音能力的实现（Fish / Seed 写法）
+    qq/ telegram/ http/  渠道（各自带配置项；QQ 的 SILK 编码在 qq/silk.ts）
+    supabase/            存储实现（PostgresStore）和建表（Database）
+  personas/
+    dafeiyu/             人设：提示词、示例、表情包、形象图和声音的路径
+deploy/                  部署：每种一个组合 + 宿主 + 管理端文案
+  vercel/                Vercel Functions：waitUntil、maxDuration、/api/worker 接力（WORKER_SECRET）
+  node/                  常驻 Node 服务：npm run dev / npm start
+api/                     Vercel 的函数入口，只转给 deploy/vercel
+  webhook/[channel].ts   POST /api/webhook/{qq|telegram|http}
+  worker.ts              POST /api/worker：一轮做不完时由新的函数接着做（内部，带签名）
+  health.ts              GET /api/health
+  admin.ts               /admin 页面和 /api/admin/* 接口
+assets/                  人设的参考声音和形象图
+supabase/schema.sql      Supabase 适配器的表和函数
 scripts/
-  selftest.ts            离线端到端测试
+  selftest.ts            离线端到端测试（按 Vercel 部署组合）
+  moduletest.ts          模块、提示词和分层边界测试
   storetest.ts           存储契约测试（内存，以及设置 TEST_DATABASE_URL 时的真实 Postgres）
+  loadtest.ts            每个文件先加载也不出错（npm run test:load）
   rpc-shim.ts            测试用的 Supabase Data API 替身
   sandbox-smoke.ts       用真实 Vercel Sandbox 跑一遍工作区工具
-  dev-server.ts          本地开发服务器
 docs/                    详细文档
 ```
 

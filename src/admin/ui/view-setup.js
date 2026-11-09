@@ -17,7 +17,7 @@ const skippedFeatures = () => {
 function steps(s) {
   return [
     { id: "password", title: "管理密码", done: true },
-    { id: "database", title: "数据库", done: s.database.backend === "supabase" && s.database.ready },
+    { id: "database", title: "数据库", done: s.database.connected && s.database.ready },
     // A step for each module the bot can't work without (src/modules: setup "required"): the chat model.
     ...s.modules.filter((m) => m.setup === "required").map((m) => ({ id: `module-${m.id}`, module: m, title: m.label, done: m.ok })),
     { id: "channels", title: "接入渠道", done: s.channels.some((c) => c.configured) },
@@ -73,41 +73,32 @@ export async function renderSetup(main, [stepId], app) {
 }
 
 const STEP_VIEWS = {
-  password(panel, _status, _app, next) {
+  password(panel, status, _app, next) {
     fill(
       panel,
       h("h2", null, "管理密码"),
       h("p", null, pill("ok", "已设置"), " 你已经用它登录了。"),
-      h("p", { class: "muted" }, "要换密码：在 Vercel 改 ADMIN_PASSWORD 并重新部署，用新密码登录就行，已存的配置不受影响。"),
+      h("p", { class: "muted" }, status.guide.changePassword),
       h("div", { class: "row" }, h("button", { type: "button", class: "btn btn-primary", onClick: next }, "下一步")),
     );
   },
 
   async database(panel, status, app, next) {
+    // What the database is and how to connect it depend on the deployment (src/composition.ts).
     const db = status.database;
-    if (db.backend !== "supabase") {
-      return fill(
-        panel,
-        h("h2", null, "连接数据库"),
-        h("p", null, "聊天记录、设置和密钥都存在 Supabase（免费版就够）。现在还没连上，数据只在这个实例的内存里，重启就没了，只适合本地开发。"),
-        h(
-          "ol",
-          null,
-          h("li", null, "打开 Vercel 项目的 Storage 页面，添加 Supabase：套餐选 Free，区域选 Singapore。"),
-          h("li", null, "把它连接到这个项目，Vercel 会自动注入 SUPABASE_URL、SUPABASE_SECRET_KEY 和数据库直连地址。"),
-          h("li", null, "在 Deployments 页面 Redeploy，然后回到这一步。"),
-        ),
-      );
+    if (!db.connected) {
+      const how = status.guide.database;
+      return fill(panel, h("h2", null, "连接数据库"), h("p", null, how.intro), h("ol", null, how.steps.map((s) => h("li", null, s))));
     }
     if (db.ready) {
       return fill(
         panel,
         h("h2", null, "数据库"),
-        h("p", null, pill("ok", "已就绪"), ` Supabase，表结构 v${db.schemaVersion}。`),
+        h("p", null, pill("ok", "已就绪"), ` ${db.label}，表结构 v${db.version}。`),
         h("div", { class: "row" }, h("button", { type: "button", class: "btn btn-primary", onClick: next }, "下一步")),
       );
     }
-    const upgrade = db.schemaVersion !== null;
+    const upgrade = db.version !== null;
     const result = h("p", { class: "check-result" });
     const runIt = action(upgrade ? `升级到 v${db.expected}` : "建表", async () => {
       fill(result, h("span", { class: "muted" }, "执行中…"));
@@ -128,7 +119,7 @@ const STEP_VIEWS = {
       const { sql } = await api.get("setup/schema");
       const pre = h("pre", { class: "sql" }, sql);
       manual.append(
-        h("p", null, "打开 Supabase 控制台的 SQL Editor，粘贴下面的 SQL 执行，再回来点“检测”。"),
+        h("p", null, db.manualNote),
         h("div", { class: "row" }, h("button", { type: "button", class: "btn", onClick: () => copy(sql, pre) }, "复制 SQL"), action("检测", async () => {
           await app.refreshStatus();
           app.go("#/setup/database");
@@ -140,10 +131,10 @@ const STEP_VIEWS = {
     return fill(
       panel,
       h("h2", null, upgrade ? "升级数据库" : "创建数据表"),
-      h("p", null, upgrade ? `数据库的表结构是 v${db.schemaVersion}，这个版本的代码需要 v${db.expected}。升级不会删数据，机器人在升级前后都能照常工作。` : "Supabase 已经连上，还需要建表。"),
-      db.connectionVar
-        ? h("div", null, h("p", { class: "muted" }, `会用 ${db.connectionVar} 直接执行 supabase/schema.sql，可以重复执行。`), h("div", { class: "row" }, runIt), result)
-        : h("p", { class: "muted" }, "没有找到数据库直连地址（POSTGRES_URL_NON_POOLING），只能手动执行。"),
+      h("p", null, upgrade ? `数据库的表结构是 v${db.version}，这个版本的代码需要 v${db.expected}。升级不会删数据，机器人在升级前后都能照常工作。` : `${db.label} 已经连上，还需要建表。`),
+      db.canApply
+        ? h("div", null, h("p", { class: "muted" }, db.applyNote), h("div", { class: "row" }, runIt), result)
+        : h("p", { class: "muted" }, db.applyNote),
       manual,
     );
   },

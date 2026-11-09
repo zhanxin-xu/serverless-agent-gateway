@@ -1,4 +1,4 @@
-/** The image module's own settings (its provider has its own: providers/<id>/config.ts). */
+/** The image module's own settings (its provider has its own, in src/adapters/<id>/config.ts). */
 import { settingValue } from "../../config.js";
 
 export const imageConfig = {

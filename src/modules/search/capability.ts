@@ -1,6 +1,6 @@
 /** Web search: the interface every search provider implements, and the providers. */
+import { providersOf } from "../capability.js";
 import type { Balance, Capability } from "../types.js";
-import { deepseekProvider } from "./providers/deepseek/index.js";
 
 export interface SearchHit {
   title?: string;
@@ -25,8 +25,8 @@ export const searchCapability: Capability<SearchBackend> = {
   id: "search",
   label: "搜索服务",
   selectionSetting: "SEARCH_PROVIDER",
-  // Read when used, not while the files load (see src/modules/index.ts).
+  // Whatever the deployment composed for it (src/composition.ts).
   get providers() {
-    return [deepseekProvider];
+    return providersOf<SearchBackend>(this.id);
   },
 };

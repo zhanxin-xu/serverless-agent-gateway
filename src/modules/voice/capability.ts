@@ -1,6 +1,6 @@
 /** Speech: the interface every speech provider implements, and the providers. */
+import { providersOf } from "../capability.js";
 import type { Capability } from "../types.js";
-import { openaiSpeechProvider } from "./providers/openai-speech/index.js";
 
 /** A voice the model can pick. */
 export interface VoiceChoice {
@@ -46,8 +46,8 @@ export const speechCapability: Capability<SpeechBackend> = {
   id: "speech",
   label: "语音服务",
   selectionSetting: "VOICE_PROVIDER",
-  // Read when used, not while the files load (see src/modules/index.ts).
+  // Whatever the deployment composed for it (src/composition.ts).
   get providers() {
-    return [openaiSpeechProvider];
+    return providersOf<SpeechBackend>(this.id);
   },
 };

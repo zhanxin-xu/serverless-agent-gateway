@@ -12,7 +12,7 @@
 import path from "node:path";
 import sharp from "sharp";
 import { bundledDataUrl } from "../../media/assets.js";
-import { persona } from "../../persona/index.js";
+import { persona } from "../../composition.js";
 import type { ImagePart } from "../../media/images.js";
 import { select, use } from "../capability.js";
 import { WORKDIR, workspaceFor } from "../sandbox/index.js";
@@ -39,7 +39,8 @@ const MEDIA_TYPES: Record<string, string> = {
 const EXTENSIONS: Record<string, string> = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp" };
 const MAX_REFERENCES = 16;
 /** Tells the image model who the first reference is (it reads prompts best in English). */
-const SELF_NOTE = `The first reference image is the character herself: draw the same girl, keeping ${persona.appearanceForImages}, whatever the pose, scene or outfit asked for.`;
+const selfNote = () =>
+  `The first reference image is the character herself: draw the same girl, keeping ${persona().appearanceForImages}, whatever the pose, scene or outfit asked for.`;
 
 /** The persona's picture as a reference: an https URL as-is, or a bundled file as a data URL. */
 async function selfReference(): Promise<string> {
@@ -108,7 +109,7 @@ export const generateImage: Tool = {
           description: `Reference images: workspace paths (relative paths are under ${WORKDIR}, e.g. "inbox/632-photo.jpg") or https URLs.`,
         },
         ...(imageConfig.selfImage
-          ? { include_self: { type: "boolean", description: `You (${persona.name}) are in the picture: add your own picture as the first reference.` } }
+          ? { include_self: { type: "boolean", description: `You (${persona().name}) are in the picture: add your own picture as the first reference.` } }
           : {}),
         aspect_ratio: { type: "string", enum: ASPECT_RATIOS, description: "Default: auto (follows the reference, or square)." },
         background: { type: "string", enum: ["auto", "transparent", "opaque"] },
@@ -136,7 +137,7 @@ export const generateImage: Tool = {
 
     const references = [...(self ? [await selfReference()] : []), ...(await Promise.all(refs.map((r) => reference(ctx, r))))];
     const result = await use(imageCapability).generate({
-      prompt: self ? `${prompt}\n\n${SELF_NOTE}` : prompt,
+      prompt: self ? `${prompt}\n\n${selfNote()}` : prompt,
       references,
       ...(args.aspect_ratio !== undefined ? { aspectRatio: String(args.aspect_ratio) } : {}),
       ...(args.background !== undefined ? { background: String(args.background) } : {}),

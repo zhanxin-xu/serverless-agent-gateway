@@ -1,13 +1,14 @@
 /**
  * Load-order test: `npm run test:load` (slow: one process per file).
  *
- * The modules, the settings catalog and config.ts import each other (the
- * catalog reads every module's settings; modules read config; config reads
- * the catalog), which is safe only while nothing is read during loading
- * (src/modules/index.ts). This loads each file under src/modules, src/persona,
- * src/settings and src/prompt first, in a fresh process, then reads the
- * catalog and the module list, so a file that reads another's export while
- * loading fails here rather than in whichever entry point happens to load it first.
+ * The modules, the settings catalog, config.ts and the composition import
+ * each other (the catalog reads the composed modules' settings; modules read
+ * config; config reads the catalog), which is safe only while nothing is read
+ * during loading: everything composed is read after compose()
+ * (src/composition.ts). This loads each file under src and deploy first, in a
+ * fresh process, then composes the Vercel deployment and reads the catalog and
+ * the module list, so a file that reads another's export while loading fails
+ * here rather than in whichever entry point happens to load it first.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -24,20 +25,23 @@ const walk = (dir: string) => {
     else if (p.endsWith(".ts")) files.push(p);
   }
 };
-for (const dir of ["src/modules", "src/persona", "src/settings", "src/prompt"]) walk(path.join(root, dir));
+for (const dir of ["src", "deploy"]) walk(path.join(root, dir));
+// Entry points that start a server when loaded.
+const SKIP = new Set([path.join(root, "deploy/node/server.ts")]);
 
 const work = mkdtempSync(path.join(tmpdir(), "loadtest-"));
 const probe = path.join(work, "probe.mts");
 let failed = 0;
 try {
-  for (const file of files) {
+  for (const file of files.filter((f) => !SKIP.has(f))) {
     writeFileSync(
       probe,
       [
         `await import(${JSON.stringify(file)});`,
         `const { settingDefs } = await import(${JSON.stringify(path.join(root, "src/settings/catalog.ts"))});`,
-        `const { MODULES } = await import(${JSON.stringify(path.join(root, "src/modules/registry.ts"))});`,
-        `if (!settingDefs().length || !MODULES.length) throw new Error("the catalog or the module list is empty");`,
+        `(await import(${JSON.stringify(path.join(root, "deploy/vercel/composition.ts"))})).composeVercel();`,
+        `const { allModules } = await import(${JSON.stringify(path.join(root, "src/modules/registry.ts"))});`,
+        `if (!settingDefs().length || !allModules().length) throw new Error("the catalog or the module list is empty");`,
       ].join("\n"),
     );
     try {

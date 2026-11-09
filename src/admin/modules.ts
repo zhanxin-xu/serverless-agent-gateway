@@ -4,7 +4,7 @@
  */
 import { settingValue } from "../config.js";
 import { select } from "../modules/capability.js";
-import { MODULES, moduleStatus, switchedOn, switchSetting } from "../modules/registry.js";
+import { allModules, moduleStatus, switchedOn, switchSetting } from "../modules/registry.js";
 import type { Module } from "../modules/types.js";
 
 export interface ModuleView {
@@ -82,4 +82,4 @@ export function describeModule(m: Module): ModuleView {
   };
 }
 
-export const describeModules = (): ModuleView[] => MODULES.map(describeModule);
+export const describeModules = (): ModuleView[] => allModules().map(describeModule);

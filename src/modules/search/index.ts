@@ -14,7 +14,7 @@ function guide(ctx: PromptSectionContext): string {
   }`;
 }
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function searchModule(): Module {
   return {
     id: "search",

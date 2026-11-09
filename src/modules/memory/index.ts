@@ -13,7 +13,7 @@ const GUIDE = `# 长期记忆（remember / recall / forget，全群互通，极�
 - **先查后说**：聊到某个人、有人问“我是谁/还记得吗”、或者你想精准嘲讽某人时，先 recall（query 带上昵称和 #编号）查底细，不要没查就瞎猜或说不记得。聊天记录里被压缩掉、摘要里也没有的事，也靠 recall 找。
 - **隐私底线**：recall 结果里 scene 是私聊且 same_chat 是 false 的记忆，只准心里知道，绝不在群里抖出来。`;
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function memoryModule(): Module {
   return {
     id: "memory",

@@ -1,6 +1,6 @@
 /** The workspace: a Linux box per chat with a folder that persists between runs. */
+import { providersOf } from "../capability.js";
 import type { Capability } from "../types.js";
-import { vercelSandboxProvider } from "./providers/vercel-sandbox/index.js";
 import type { Workspace } from "./workspace.js";
 
 export interface SandboxBackend {
@@ -12,9 +12,9 @@ export const sandboxCapability: Capability<SandboxBackend> = {
   id: "sandbox",
   label: "沙盒服务",
   selectionSetting: "SANDBOX_PROVIDER",
-  // Read when used, not while the files load (see src/modules/index.ts).
+  // Whatever the deployment composed for it (src/composition.ts).
   get providers() {
-    return [vercelSandboxProvider];
+    return providersOf<SandboxBackend>(this.id);
   },
   stateful: true,
 };

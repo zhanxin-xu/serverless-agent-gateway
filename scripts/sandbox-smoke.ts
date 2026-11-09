@@ -7,7 +7,7 @@
 import { existsSync } from "node:fs";
 import { runTool } from "../src/modules/registry.js";
 import type { ToolContext } from "../src/modules/tool.js";
-import { driveName } from "../src/modules/sandbox/providers/vercel-sandbox/client.js";
+import { driveName } from "../src/adapters/vercel-sandbox/client.js";
 import { closeWorkspace } from "../src/modules/sandbox/workspace.js";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");

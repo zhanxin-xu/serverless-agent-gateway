@@ -16,6 +16,8 @@ const root = document.getElementById("app");
 /** Shared by the views: the setup status, refreshed after changes. */
 const app = {
   status: null,
+  /** The composed persona's name (GET session). */
+  botName: "机器人",
   async refreshStatus() {
     app.status = await api.get("status");
     renderNav();
@@ -51,7 +53,7 @@ function renderNav() {
   const progress = setupProgress(app.status);
   fill(
     nav,
-    h("div", { class: "brand" }, h("img", { src: "/admin/logo.webp", alt: "", width: 28, height: 28 }), "大肥鱼管理端"),
+    h("div", { class: "brand" }, h("img", { src: "/admin/logo.webp", alt: "", width: 28, height: 28, onError: (e) => e.target.remove() }), `${app.botName}管理端`),
     progress.done < progress.total ? navLink("#/setup", "setup", "新手引导", `${progress.done}/${progress.total}`) : null,
     navLink("#/overview", "overview", "总览"),
     navLink("#/chats", "chats", "聊天"),
@@ -98,21 +100,16 @@ function renderShell() {
   route();
 }
 
-function renderNoPassword() {
+// The steps come from the deployment (src/composition.ts, ConsoleGuide): they depend on where it runs.
+function renderNoPassword(steps) {
   fill(
     root,
     h(
       "div",
       { class: "gate" },
       h("h1", null, "先设一个管理密码"),
-      h("p", null, "管理端用环境变量 ADMIN_PASSWORD 保护。这是唯一需要在 Vercel 里手动设置的变量："),
-      h(
-        "ol",
-        null,
-        h("li", null, "打开 Vercel 项目的 Settings → Environment Variables。"),
-        h("li", null, "添加 ADMIN_PASSWORD，值是一个足够长的密码。"),
-        h("li", null, "在 Deployments 页面对最新部署点 Redeploy，然后刷新这个页面。"),
-      ),
+      h("p", null, "管理端用环境变量 ADMIN_PASSWORD 保护，这是唯一需要在部署环境里手动设置的变量："),
+      h("ol", null, steps.map((s) => h("li", null, s))),
       h("p", { class: "muted" }, "其余配置都能在这个页面里填，改了不用重新部署。"),
     ),
   );
@@ -141,7 +138,7 @@ function renderLogin() {
         }
       },
     },
-    h("h1", null, "大肥鱼管理端"),
+    h("h1", null, `${app.botName}管理端`),
     h("div", { class: "field" }, h("label", { for: "password" }, "管理密码"), input, error),
     submit,
   );
@@ -153,7 +150,9 @@ async function start() {
   nav = main = undefined;
   stopView?.();
   const session = await api.get("session");
-  if (!session.passwordSet) return renderNoPassword();
+  app.botName = session.botName;
+  document.title = `${app.botName}管理端`;
+  if (!session.passwordSet) return renderNoPassword(session.howToSetPassword);
   if (!session.loggedIn) return renderLogin();
   await app.refreshStatus();
   renderShell();

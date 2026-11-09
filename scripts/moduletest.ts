@@ -1,6 +1,7 @@
 /**
- * Modules, capabilities and the system prompt (docs/design/modules.md 10):
- * `npm test` runs it after selftest.ts. Offline: no service is called.
+ * Modules, capabilities, the system prompt and the layers (docs/design/modules.md 10):
+ * `npm test` runs it after selftest.ts. Offline: no service is called. The
+ * gateway is composed as the Vercel deployment composes it.
  */
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -20,17 +21,21 @@ const FULL = {
 Object.assign(process.env, FULL);
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
 
-const { MODULES, OPTIONAL_MODULES, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
+(await import("../deploy/vercel/composition.js")).composeVercel();
+const { channel } = await import("../src/composition.js");
+const { allModules, optionalModules, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
+const MODULES = allModules();
+const OPTIONAL_MODULES = optionalModules();
 const { select } = await import("../src/modules/capability.js");
 const { assemble } = await import("../src/prompt/assemble.js");
 const { interpolate } = await import("../src/prompt/variables.js");
-const { PERSONA_PROMPT, EXAMPLES, persona } = await import("../src/persona/index.js");
+const { dafeiyu: persona } = await import("../src/personas/dafeiyu/index.js");
+const { prompt: PERSONA_PROMPT, examples: EXAMPLES } = persona;
 const { RULES, SCENE_RULES } = await import("../src/prompt/rules.js");
 const { settingGroups, settingDefs, settingDef } = await import("../src/settings/catalog.js");
 const { ORDER } = await import("../src/prompt/order.js");
-const { parseProfile, PROFILE_CHOICES } = await import("../src/chats/profile.js");
+const { parseProfile, profileChoices } = await import("../src/chats/profile.js");
 const { turnUsage, quotaPolicy } = await import("../src/chats/usage.js");
-const { channels } = await import("../src/channels/index.js");
 
 let failed = 0;
 async function test(name: string, fn: () => Promise<void> | void) {
@@ -56,7 +61,7 @@ async function withEnv(changes: Record<string, string | undefined>, fn: () => Pr
 
 const allToolNames = MODULES.flatMap((m) => m.tools.map((t) => t.name));
 const prompt = (chatType: "private" | "group", off: string[] = []) =>
-  assemble({ chatType, channelHint: channels.get("qq")!.promptHint, toolset: new Toolset({ disabled: new Set(off) }) });
+  assemble({ chatType, channelHint: channel("qq")!.promptHint, toolset: new Toolset({ disabled: new Set(off) }) });
 
 await test("every module is on when everything is configured", () => {
   assert.deepEqual(
@@ -148,6 +153,7 @@ await test("an optional module's switch turns it off everywhere, and what requir
 await test("choosing a provider: chosen, automatic, missing, unconfigured, none, several", async () => {
   const provider = (id: string, ok: boolean) => ({
     id,
+    capability: "t",
     config: { group: { id: `t.${id}`, label: id.toUpperCase(), help: "" }, settings: [] },
     available: () => (ok ? ({ ok: true } as const) : ({ ok: false, reason: `${id} 缺 key` } as const)),
     create: () => id,
@@ -227,11 +233,11 @@ await test("a chat's switches: disabledModules, module ids only", () => {
   assert.deepEqual(parseProfile({ title: "x" }), { title: "x" });
   assert.deepEqual(parseProfile({ disabledModules: ["nope"], title: "x" }), { title: "x" }, "an unknown module drops the switches only");
   assert.deepEqual(
-    PROFILE_CHOICES.features.map((f) => f.value),
+    profileChoices().features.map((f) => f.value),
     OPTIONAL_MODULES.map((m) => m.id),
   );
   assert.deepEqual(
-    PROFILE_CHOICES.quotas.map((q) => q.value),
+    profileChoices().quotas.map((q) => q.value),
     ["cost_usd", "searches", "images", "voices"],
   );
 });
@@ -246,6 +252,7 @@ await test("settings: each module brings its own, the catalog collects them, swi
       const g = groups.find((x) => x.id === p.config.group.id)!;
       assert.deepEqual([g.module, g.provider], [m.id, { capability: m.capability!.id, id: p.id }]);
     }
+    if (m.capability) assert.ok(m.capability.providers.length, `the composition gives ${m.capability.id} a provider`);
     if (m.capability) {
       const choice = settingDef(m.capability.selectionSetting)!;
       assert.equal(choice.kind, "enum");
@@ -259,6 +266,9 @@ await test("settings: each module brings its own, the catalog collects them, swi
   assert.equal(settingDef("OPENAI_RESPONSES_API_KEY")!.group, "llm", "the model's settings come with the model module");
   assert.equal(groups.find((g) => g.id === "llm")!.module, "model");
   assert.equal(settingDef("STICKER_BASE_URL")!.group, "chat", "the sticker CDN comes with the chat module");
+  assert.equal(groups.find((g) => g.id === "qq")!.channel, "qq", "a channel's settings come with its adapter");
+  assert.equal(settingDef("WORKER_SECRET")!.group, "vercel", "the host's settings come with the host");
+  assert.equal(settingDef("IMAGE_SELF_REFERENCE")!.default, persona.picture, "defaults about her come from the composed persona");
 });
 
 await test("a module's definition is checked when the modules load", () => {
@@ -276,9 +286,9 @@ await test("a module's definition is checked when the modules load", () => {
   for (const m of MODULES) if (m.section) assert.ok(m.section.order >= ORDER.modules.from && m.section.order <= ORDER.modules.to);
 });
 
-await test("the persona lives in src/persona: no module names her, or anything about her", () => {
+await test("the persona lives in src/personas: nothing else in the core names her, or anything about her", () => {
   const banned = [persona.name, "dafeiyu", "鲸鱼", "whale", "白饭", "小本本"];
-  for (const file of sourceFiles("src/modules")) {
+  for (const file of coreFiles()) {
     const text = readFileSync(file, "utf8");
     for (const word of banned) assert.ok(!text.includes(word), `${path.relative(process.cwd(), file)} mentions ${word}`);
   }
@@ -314,6 +324,47 @@ await test("modules reach each other only through each other's index.ts (like ds
     }
   }
 });
+
+/**
+ * The layers (src/composition.ts): the core names no adapter, persona or
+ * deployment; an adapter reaches only the core and its own folder; a persona
+ * is data; a deployment's entries go through its deploy/<target>/index.ts.
+ */
+await test("layers: core ← adapters, personas ← deploy ← api", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
+  const imports = (file: string) =>
+    [...readFileSync(file, "utf8").matchAll(/(?:from|import\() *"(\.[^"]+)"/g)].map(([, spec]) => rel(path.resolve(path.dirname(file), spec!)));
+  const layerOf = (file: string) =>
+    /^src\/adapters\//.test(file) ? "adapter" : /^src\/personas\//.test(file) ? "persona" : /^src\//.test(file) ? "core" : /^deploy\//.test(file) ? "deploy" : "other";
+  for (const file of [...sourceFiles("src"), ...sourceFiles("deploy"), ...sourceFiles("api")]) {
+    const from = rel(file);
+    for (const target of imports(file)) {
+      const to = layerOf(target);
+      if (layerOf(from) === "core") assert.equal(to, "core", `${from} imports ${target}: the core names no adapter, persona or deployment`);
+      if (layerOf(from) === "adapter") {
+        const own = from.split("/").slice(0, 3).join("/");
+        assert.ok(to === "core" || target.startsWith(`${own}/`), `${from} imports ${target}: an adapter uses the core and its own folder`);
+      }
+      if (layerOf(from) === "persona") assert.ok(target.startsWith(from.split("/").slice(0, 3).join("/") + "/") || target === "src/composition.js", `${from} imports ${target}: a persona is data`);
+      if (from.startsWith("deploy/")) {
+        const own = from.split("/").slice(0, 2).join("/");
+        assert.ok(!target.startsWith("deploy/") || target.startsWith(`${own}/`), `${from} imports ${target}: deployments don't share code`);
+      }
+      if (from.startsWith("api/")) assert.equal(target, "deploy/vercel/index.js", `${from} imports ${target}: api/ only hands over to deploy/vercel`);
+    }
+  }
+  // Only the host may know where it runs.
+  for (const file of coreFiles()) {
+    const text = readFileSync(file, "utf8");
+    assert.ok(!text.includes("@vercel/functions"), `${rel(file)} uses @vercel/functions: that's the Vercel host's (deploy/vercel/host.ts)`);
+  }
+});
+
+/** The core: src/ without adapters and personas. */
+function coreFiles(): string[] {
+  return sourceFiles("src").filter((f) => !/[\\/]src[\\/](adapters|personas)[\\/]/.test(f));
+}
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

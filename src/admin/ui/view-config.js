@@ -27,7 +27,7 @@ export async function renderConfig(main, [groupParam], app) {
       h(
         "p",
         { class: "muted" },
-        "渠道、Agent 参数和管理端自己的设置。",
+        "渠道、Agent 参数、部署环境和管理端自己的设置。",
         status.modules.filter((m) => m.settings).map((m) => m.label).join("、"),
         "在",
         h("a", { href: "#/modules" }, "模块"),
@@ -65,12 +65,12 @@ function databaseCard(status, app) {
     h(
       "p",
       null,
-      db.backend === "supabase" ? `Supabase，表结构 v${db.schemaVersion ?? "无"}（代码需要 v${db.expected}）` : "内存（只适合本地开发）",
+      db.connected ? `${db.label}，表结构 v${db.version ?? "无"}（代码需要 v${db.expected}）` : `${db.label}：没连上，数据只在内存里，重启就没了`,
       " ",
-      db.ready ? pill("ok", "已就绪") : pill("warn", "需要升级"),
+      !db.connected ? pill("warn", "未连接") : db.ready ? pill("ok", "已就绪") : pill("warn", "需要升级"),
     ),
-    db.backend === "supabase" && db.connectionVar
-      ? action("重新执行 schema.sql", async () => {
+    db.connected && db.canApply
+      ? action("重新建表（可重复执行）", async () => {
           await api.post("setup/database");
           toast("已执行");
           await app.refreshStatus();

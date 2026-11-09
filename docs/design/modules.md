@@ -496,8 +496,22 @@ P1–P6 可以一起上线，P7 至少隔一周。
 评审发现第一版还有耦合和写死的地方，参照 dsh 的插件契约（`name` / `inject` / `Config` / `apply`，组合清单 `cordis.yml`）重新定了模块的定义，见 [`docs/modules.md`](../modules.md#模块怎么定义参照-deepseek-harness-的插件)：
 
 - **新增模块从改五处变成改两处**：模块目录，加上 `src/modules/index.ts` 里一行。配置（`config`）、提示词位置（`section.order`，在 `ORDER.modules` 范围内）都由模块自己声明；`ModuleId`、`MeterKey` 两个写死的联合类型删了；开关配置项由配置目录自动生成；模块定义在加载时检查（重复、越界、依赖不存在都直接报错）。
-- **人设集中到 `src/persona/`**：名字、给图像模型的长相、形象图、声音、表情包、示例都在这里，模块里不再出现（测试保证）。示例从模块段落里移到人设，按模块过滤；语音音色名从 `dafeiyu` 改为 `self`。
+- **人设集中到 `src/persona/`**（后来搬到 `src/personas/dafeiyu/`，见下面“分层与组合”）：名字、给图像模型的长相、形象图、声音、表情包、示例都在这里，模块里不再出现（测试保证）。示例从模块段落里移到人设，按模块过滤；语音音色名从 `dafeiyu` 改为 `self`。
 - **模块之间只引用对方的 `index.ts`，并且要在 `requires` 里声明**（测试保证）。发消息共用的 `reply_to` / `quote` 参数移到 `modules/shared`；沙盒通过 `index.ts` 导出工作区接口。
 - **“模型”成为完整的模块**：它的配置从核心配置移过来，“测试”变成它的 `check`，引导页里它这一步由 `setup: "required"` 生成，不再写死分组名和专门的接口。表情包地址也归“聊天”模块。
 - **加载顺序**：配置目录收集模块的配置后，模块、配置目录和 `config.ts` 互相引用。模块定义改成函数（加载器在所有文件加载完后调用，相当于 dsh 的 `apply`），实现列表改成 getter，`npm run test:load` 逐个文件验证。
 
+
+### 分层与组合（2026-11-09）
+
+评审问能不能拆成核心包、第三方适配包、部署包。第二版拆不开：能力直接引用自己的实现，核心引用人设，渠道和 Supabase 写在核心里，`waitUntil`、函数时限、`/api/worker` 接力、Vercel 的引导文案也在核心里。这一版先不拆包，只在一个仓库里把依赖方向理顺，以后拆包只是搬目录。见 [`docs/modules.md`](../modules.md#分层与组合)：
+
+- **组合**（`src/composition.ts`）：部署调用一次 `compose()`，交给核心宿主（`Host`）、人设、模块、实现、渠道、存储（和建表的 `Database`）、模型余额（`ModelAccount`）和管理端文案（`ConsoleGuide`）。核心只从这里读，相当于 dsh 的 `cordis.yml`。模块清单 `src/modules/index.ts` 只导出模块定义，加载哪些由组合决定。
+- **适配器**搬到 `src/adapters/<服务>/`：每个实现自带 `capability` 字段，能力的实现列表从组合里按能力 id 取；渠道带自己的配置项（`ChannelAdapter.config`），QQ 的 SILK 编码搬进 `adapters/qq`；Supabase 的连接配置、`PostgresStore` 和建表搬进 `adapters/supabase`。
+- **人设**搬到 `src/personas/dafeiyu/`，导出一个 `Persona` 对象。用到人设的默认值（形象图、参考音频）、`send_sticker` 的表情清单、`{{bot_name}}`、管理端标题和头像都在组合之后读。人设没有表情包就没有 `send_sticker`。
+- **宿主**：`webhook.ts` 和管理端的悄悄话用 `host().background`，运行的截止时间用 `host().runBudgetMs()`，只有宿主有 `handoff` 时一轮才会交给别处接着做。Vercel 的 `waitUntil`、`AGENT_MAX_DURATION_SECONDS`、`/api/worker` 签名和 `WORKER_SECRET`（现在在配置页的“Vercel”分组）都在 `deploy/vercel`。`WORKER_SECRET` 不填时改由管理密码和模型 Key 派生（原来还拼了渠道密钥），什么都没有时拒绝所有 worker 请求。
+- **两个部署**：`deploy/vercel`（`api/*.ts` 只转给它）和 `deploy/node`（常驻进程，`npm run dev` / `npm start`，没有接力，每次运行最长 `AGENT_RUN_BUDGET_SECONDS`）。原来的 `scripts/dev-server.ts` 是在本地模拟 Vercel，删了。
+- **管理端跟着部署走**：没设密码时的步骤、换密码的说明、连数据库的步骤来自组合的 `guide`；数据库状态来自 `Database.status()`（不再写死 Supabase）；CDN 缓存头来自 `Host.cdnCache`。
+- **测试**：`moduletest` 加了分层检查（核心只依赖核心，适配器只依赖核心和自己，人设只依赖类型，部署之间互不依赖，`api/` 只依赖 `deploy/vercel`，核心不用 `@vercel/functions`），人设名字的检查扩大到整个核心（包括提示词和管理端）。`loadtest` 覆盖 `src` 和 `deploy` 全部 143 个文件。
+
+还没做的：本地部署收 QQ、Telegram 消息仍然要 webhook（需要公网地址或隧道）。要在没有公网地址的机器上用，需要渠道支持主动拉取（Telegram 的 `getUpdates`、QQ 的 WebSocket），那是给 `ChannelAdapter` 加一种收消息方式，和这次的解耦无关。

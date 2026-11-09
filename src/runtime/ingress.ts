@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import { messageHeader, senderLabel } from "../channels/format.js";
 import { ambientInterval, chatProfile, replyMode } from "../chats/profile.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
-import { config } from "../config.js";
+import { host } from "../composition.js";
 import type { NewEvent } from "../conversation/events.js";
 import { imagePrefix, storeChatImages } from "../media/images.js";
 import { getStore } from "../store/index.js";
@@ -70,8 +70,8 @@ export async function handleMessage(
   message: InboundMessage,
   opts: HandleOptions = {},
 ): Promise<"duplicate" | "ignored" | "recorded" | "busy" | "handled"> {
-  // The function's clock started with this request.
-  const deadline = Date.now() + config.agent.maxDurationSeconds * 1000;
+  // The host's clock for this run started with this request.
+  const deadline = Date.now() + host().runBudgetMs();
   const store = getStore();
   const chat = `${message.channel}:${message.conversationId}`;
   const direct = message.mode !== "ambient";

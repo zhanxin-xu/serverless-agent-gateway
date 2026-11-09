@@ -2,19 +2,27 @@
  * The setup guide's checks and actions: what's configured, creating the
  * database, and testing each service with the settings in effect.
  */
-import { channels } from "../../channels/index.js";
-import { config } from "../../config.js";
+import { channel, channels, database, guide, host, type DatabaseStatus } from "../../composition.js";
 import { describeModules } from "../modules.js";
 import { moduleById } from "../../modules/registry.js";
 import { saveSettings } from "../../settings/service.js";
-import { getStore, SCHEMA_VERSION, storeBackend } from "../../store/index.js";
-import { applySchema, connectionVar, readSchema } from "../database.js";
+import { getStore, SCHEMA_VERSION } from "../../store/index.js";
 import { HttpError, type Route } from "../http.js";
 
-async function databaseStatus() {
-  const backend = storeBackend();
-  const schemaVersion = backend === "supabase" ? await getStore().schemaVersion() : SCHEMA_VERSION;
-  return { backend, schemaVersion, expected: SCHEMA_VERSION, ready: schemaVersion === SCHEMA_VERSION, connectionVar: connectionVar() ?? null };
+/** The deployment's database (src/composition.ts); without one, the store keeps everything in memory. */
+async function databaseStatus(): Promise<DatabaseStatus> {
+  const db = database();
+  if (db) return db.status();
+  return {
+    label: "内存",
+    connected: false,
+    ready: true,
+    version: SCHEMA_VERSION,
+    expected: SCHEMA_VERSION,
+    canApply: false,
+    applyNote: "",
+    manualNote: "",
+  };
 }
 
 /** Run a check, timing it; a failure is a result to show, not an error. */
@@ -28,7 +36,7 @@ async function attempt(fn: () => Promise<string>): Promise<{ ok: boolean; messag
 }
 
 function adapterFor(name: string) {
-  const adapter = channels.get(name);
+  const adapter = channel(name);
   if (!adapter) throw new HttpError(404, `没有 ${name} 渠道`);
   return adapter;
 }
@@ -41,8 +49,10 @@ export const setupRoutes: Route[] = [
       const database = await databaseStatus();
       return {
         origin: req.origin,
+        host: { id: host().id, label: host().label },
+        guide: guide(),
         database,
-        channels: [...channels.values()].map((c) => ({
+        channels: channels().map((c) => ({
           name: c.name,
           label: c.label,
           configured: c.isConfigured(),
@@ -55,16 +65,27 @@ export const setupRoutes: Route[] = [
       };
     },
   },
-  { method: "GET", path: "setup/schema", handler: async () => ({ sql: await readSchema() }) },
+  {
+    method: "GET",
+    path: "setup/schema",
+    async handler() {
+      const db = database();
+      if (!db) throw new HttpError(404, "这个部署的存储不需要建表");
+      return { sql: await db.schema() };
+    },
+  },
   {
     method: "POST",
     path: "setup/database",
     async handler() {
-      if (storeBackend() !== "supabase") throw new HttpError(409, "还没有连接 Supabase：先在 Vercel 的 Storage 页面添加，再重新部署");
+      const db = database();
+      const status = await databaseStatus();
+      if (!db || !status.connected) throw new HttpError(409, `还没有连接数据库：${guide().database.intro}`);
+      if (!status.canApply) throw new HttpError(409, status.applyNote);
       try {
-        await applySchema();
+        await db.apply();
       } catch (err) {
-        throw new HttpError(502, `执行 schema.sql 失败：${err instanceof Error ? err.message : String(err)}`);
+        throw new HttpError(502, `建表失败：${err instanceof Error ? err.message : String(err)}`);
       }
       await getStore().log("schema", null, { version: SCHEMA_VERSION });
       return databaseStatus();

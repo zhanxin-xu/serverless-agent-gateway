@@ -3,9 +3,11 @@
  * defined once. Filled in when the prompt is put together; a {{name}} that
  * isn't defined here is an error, so a broken prompt never reaches the model.
  */
+import { persona } from "../composition.js";
+
 export const VARIABLES: Record<string, () => string> = {
-  /** What she calls herself, and what the chat calls her. */
-  bot_name: () => "大肥鱼",
+  /** What she calls herself, and what the chat calls her: the composed persona's name. */
+  bot_name: () => persona().name,
 };
 
 /** Fill in every {{name}}; throws on one that isn't defined. */

@@ -12,5 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["api", "src", "scripts"]
+  "include": ["api", "src", "deploy", "scripts"]
 }

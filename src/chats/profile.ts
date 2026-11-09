@@ -9,7 +9,7 @@
 import { config } from "../config.js";
 import { settingDef, type SettingOption } from "../settings/catalog.js";
 import { getStore, SchemaOutdatedError, type ProfileStore } from "../store/index.js";
-import { OPTIONAL_MODULES } from "../modules/registry.js";
+import { optionalModules } from "../modules/registry.js";
 
 /**
  *   normal:  an @ or a DM is always answered; ordinary group messages are sampled (it may chime in).
@@ -26,19 +26,17 @@ export type QuotaKey = string;
  * What a chat's settings can be, with their names for people (the console
  * shows these). The reply modes are CHAT_DEFAULT_MODE's options in the catalog.
  */
-export const PROFILE_CHOICES: { modes: SettingOption[]; features: SettingOption[]; quotas: SettingOption[] } = {
+export const profileChoices = (): { modes: SettingOption[]; features: SettingOption[]; quotas: SettingOption[] } => ({
   modes: settingDef("CHAT_DEFAULT_MODE")!.options!,
-  /** The modules a chat can turn off (src/modules). */
-  features: OPTIONAL_MODULES.map((m) => ({ value: m.id, label: m.label })),
+  /** The modules a chat can turn off (the composition's optional modules). */
+  features: optionalModules().map((m) => ({ value: m.id, label: m.label })),
   quotas: [
     { value: "cost_usd", label: "模型花费（美元）" },
-    ...OPTIONAL_MODULES.flatMap((m) => (m.meter ? [{ value: m.meter.key, label: m.meter.label }] : [])),
+    ...optionalModules().flatMap((m) => (m.meter ? [{ value: m.meter.key, label: m.meter.label }] : [])),
   ],
-};
-const REPLY_MODES = PROFILE_CHOICES.modes.map((o) => o.value) as ReplyMode[];
-const MODULE_IDS = PROFILE_CHOICES.features.map((o) => o.value);
-const QUOTA_KEYS = PROFILE_CHOICES.quotas.map((o) => o.value) as QuotaKey[];
-const isReplyMode = (value: unknown): value is ReplyMode => REPLY_MODES.includes(value as ReplyMode);
+});
+const replyModes = () => profileChoices().modes.map((o) => o.value) as ReplyMode[];
+const isReplyMode = (value: unknown): value is ReplyMode => replyModes().includes(value as ReplyMode);
 
 export interface ChatProfile {
   title?: string;
@@ -70,7 +68,7 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
     else profile.title = raw.title.trim();
   }
   if (raw.mode !== undefined && raw.mode !== null && raw.mode !== "") {
-    if (!isReplyMode(raw.mode)) errors.mode = `只能是 ${REPLY_MODES.join("、")}`;
+    if (!isReplyMode(raw.mode)) errors.mode = `只能是 ${replyModes().join("、")}`;
     else profile.mode = raw.mode;
   }
   if (raw.ambientIntervalSeconds !== undefined && raw.ambientIntervalSeconds !== null && raw.ambientIntervalSeconds !== "") {
@@ -81,8 +79,9 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
   const disabled = raw.disabledModules;
   if (disabled !== undefined && disabled !== null) {
     const list = Array.isArray(disabled) ? disabled : [];
-    if (!Array.isArray(disabled) || list.some((id) => !MODULE_IDS.includes(id as string))) {
-      errors.disabledModules = `只能是 ${MODULE_IDS.join("、")}`;
+    const moduleIds = profileChoices().features.map((o) => o.value);
+    if (!Array.isArray(disabled) || list.some((id) => !moduleIds.includes(id as string))) {
+      errors.disabledModules = `只能是 ${moduleIds.join("、")}`;
     } else if (list.length) {
       profile.disabledModules = [...new Set(list as string[])];
     }
@@ -97,7 +96,7 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
     for (const [key, value] of Object.entries(quota ?? {})) {
       if (value === null || value === "" || value === undefined) continue;
       const n = Number(value);
-      if (!QUOTA_KEYS.includes(key as QuotaKey)) errors[`quota.${key}`] = "不认识的额度";
+      if (!profileChoices().quotas.some((q) => q.value === key)) errors[`quota.${key}`] = "不认识的额度";
       else if (!Number.isFinite(n) || n < 0) errors[`quota.${key}`] = "要填不小于 0 的数字";
       else (profile.quota ??= {})[key as QuotaKey] = n;
     }

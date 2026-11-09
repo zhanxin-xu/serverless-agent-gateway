@@ -4,16 +4,16 @@
  * it. The single source of truth for defaults: config.ts reads them from here.
  *
  * Not listed, so never stored in the database: what the gateway needs before
- * it can reach the database (ADMIN_PASSWORD, SUPABASE_*, POSTGRES_*), what
- * Vercel sets (VERCEL_*), and AGENT_MAX_DURATION_SECONDS, which must match
- * vercel.json.
+ * it can reach the database (ADMIN_PASSWORD, the store's connection), and
+ * what the host itself sets.
  *
- * The core settings (channels, the agent, the console) are listed here; each
- * module declares its own and its providers' (Module.config, Provider.config),
- * collected from the module list. Collected on first use, not on import:
- * config.ts reads this, and modules read config.ts.
+ * The core settings (the agent, the console) are listed here. Everything else
+ * comes from the deployment's composition (src/composition.ts): each module's
+ * and its providers' (Module.config, Provider.config), each channel's
+ * (ChannelAdapter.config), and the host's (Host.config). Collected on first
+ * use after compose(), not on import: config.ts reads this, and modules read config.ts.
  */
-import { loadedModules } from "../modules/index.js";
+import { channels, host, modules, providers } from "../composition.js";
 import type { Module } from "../modules/types.js";
 
 export type SettingKind = "text" | "textarea" | "secret" | "url" | "int" | "number" | "json" | "enum";
@@ -50,7 +50,7 @@ export interface SettingGroup {
   help: string;
   /** The setting that turns the feature on when filled in. */
   enabledBy?: string;
-  /** The channel (ChannelAdapter.name) these are the credentials of. */
+  /** Set by the catalog: the channel (ChannelAdapter.name) these are the credentials of. */
   channel?: string;
   /** Set by the catalog: the module this group configures, its own settings or (with `provider`) one of its providers'. */
   module?: string;
@@ -61,35 +61,11 @@ export interface SettingGroup {
 }
 
 const CORE_GROUPS: SettingGroup[] = [
-  {
-    id: "qq",
-    label: "QQ",
-    help: "QQ 开放平台的机器人。把下面的回调地址填进 QQ 开放平台；大陆的 QQ 服务器访问不了 *.vercel.app，必须先绑定自定义域名。",
-    enabledBy: "QQ_APP_SECRET",
-    channel: "qq",
-  },
-  { id: "telegram", label: "Telegram", help: "@BotFather 给的 token。保存后点“设置 Webhook”。", enabledBy: "TELEGRAM_BOT_TOKEN", channel: "telegram" },
-  { id: "http", label: "HTTP", help: "通用 HTTP 接口：POST /api/webhook/http，带 Authorization: Bearer <token>。", enabledBy: "HTTP_CHANNEL_TOKEN", channel: "http" },
   { id: "agent", label: "Agent 参数", help: "步数、上下文、插话频率等。" },
   { id: "console", label: "管理", help: "管理端自己的设置。" },
 ];
 
 const CORE_SETTINGS: SettingDef[] = [
-  // ── Channels ──
-  { key: "QQ_APP_ID", group: "qq", label: "AppID", kind: "text" },
-  { key: "QQ_APP_SECRET", group: "qq", label: "AppSecret", kind: "secret" },
-  { key: "TELEGRAM_BOT_TOKEN", group: "telegram", label: "Bot Token", kind: "secret" },
-  { key: "TELEGRAM_WEBHOOK_SECRET", group: "telegram", label: "Webhook Secret", kind: "secret", help: "设置 Webhook 时自动生成。", setByConnect: true },
-  {
-    key: "TELEGRAM_BOT_USERNAME",
-    group: "telegram",
-    label: "机器人用户名",
-    kind: "text",
-    help: "不带 @。设置 Webhook 时自动填。填了以后群里只回 @ 它的消息。",
-    setByConnect: true,
-  },
-  { key: "HTTP_CHANNEL_TOKEN", group: "http", label: "Bearer Token", kind: "secret", generate: true },
-
   // ── Agent ──
   { key: "AGENT_TIMEZONE", group: "agent", label: "时区", kind: "text", default: "Asia/Shanghai", help: "每条消息前的时间用这个时区。" },
   { key: "AGENT_MAX_STEPS", group: "agent", label: "每轮最多步数", kind: "int", default: "40" },
@@ -119,7 +95,6 @@ const CORE_SETTINGS: SettingDef[] = [
     ],
     help: "第一次出现的群和私聊按这个处理，可以在聊天页里单独改。",
   },
-  { key: "WORKER_SECRET", group: "console", label: "Worker 签名密钥", kind: "secret", help: "一轮跑不完交给新函数时用来签名。留空时由其他密钥拼出来。", generate: true },
 ];
 
 /** The setting that turns an optional module on or off everywhere ("on" by default); core modules have none. */
@@ -145,14 +120,19 @@ interface Catalog {
   byKey: Map<string, SettingDef>;
 }
 
-let built: Catalog | undefined;
+let built: { from: readonly unknown[]; catalog: Catalog } | undefined;
 
-/** The core settings and every module's, in the order the console lists them: modules first, then the core groups. */
+/**
+ * Every setting, in the order the console lists them: the modules (each with
+ * its providers), the channels, the core groups, the host's. Built once per
+ * composition (compose() makes a new module list).
+ */
 function catalog(): Catalog {
-  if (built) return built;
+  const list = modules();
+  if (built?.from === list) return built.catalog;
   const groups: SettingGroup[] = [];
   const settings: SettingDef[] = [];
-  for (const m of loadedModules()) {
+  for (const m of list) {
     if (m.config) {
       groups.push({ ...m.config.group, module: m.id });
       settings.push(...m.config.settings);
@@ -162,13 +142,23 @@ function catalog(): Catalog {
       if (!m.config) throw new Error(`module ${m.id} is optional, so it needs a settings group for its switch`);
       settings.push(switchDef(toggle, m.config.group.id));
     }
-    for (const p of m.capability?.providers ?? []) {
-      groups.push({ ...p.config.group, module: m.id, provider: { capability: m.capability!.id, id: p.id } });
+    for (const p of providers().filter((x) => m.capability && x.capability === m.capability.id)) {
+      groups.push({ ...p.config.group, module: m.id, provider: { capability: p.capability, id: p.id } });
       settings.push(...p.config.settings);
     }
   }
+  for (const c of channels()) {
+    if (!c.config) continue;
+    groups.push({ ...c.config.group, channel: c.name });
+    settings.push(...c.config.settings);
+  }
   groups.push(...CORE_GROUPS);
   settings.push(...CORE_SETTINGS);
+  const own = host().config;
+  if (own) {
+    groups.push(own.group);
+    settings.push(...own.settings);
+  }
   // A provider choice lists the capability's providers; unset, the one configured is used (src/modules/capability.ts).
   const withProviders = settings.map((def): SettingDef => {
     if (!def.capability) return def;
@@ -178,11 +168,11 @@ function catalog(): Catalog {
   const byKey = new Map<string, SettingDef>();
   for (const def of withProviders) {
     if (byKey.has(def.key)) throw new Error(`setting ${def.key} is declared twice`);
-    if (!groups.some((g) => g.id === def.group)) throw new Error(`setting ${def.key} is in group ${def.group}, which no module declares`);
+    if (!groups.some((g) => g.id === def.group)) throw new Error(`setting ${def.key} is in group ${def.group}, which nothing declares`);
     byKey.set(def.key, def);
   }
-  built = { groups, settings: withProviders, byKey };
-  return built;
+  built = { from: list, catalog: { groups, settings: withProviders, byKey } };
+  return built.catalog;
 }
 
 /** Every settings group, in the console's order. */

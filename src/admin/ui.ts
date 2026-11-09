@@ -1,15 +1,16 @@
 /**
- * The console's page and its scripts (src/admin/ui, bundled via vercel.json
- * includeFiles).
+ * The console's page and its scripts (src/admin/ui; the deployment ships them).
  *
- * Served by the function, but cached: Vercel's CDN keeps each file
- * (Vercel-CDN-Cache-Control), so a page load doesn't run the function a dozen
- * times, and browsers revalidate every time against an ETag of the content,
- * so they never keep a file from an older deployment.
+ * Served by the gateway, but cached: a host with a CDN keeps each file
+ * (Host.cdnCache), so a page load doesn't run a function a dozen times, and
+ * browsers revalidate every time against an ETag of the content, so they never
+ * keep a file from an older deployment.
  */
 import crypto from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
+import { host, persona } from "../composition.js";
 
 const DIR = "src/admin/ui";
 const TYPES: Record<string, string> = {
@@ -42,10 +43,17 @@ async function withPreloads(page: Buffer): Promise<Buffer> {
 /** Files never change within a deployment: each is read and hashed once per instance. */
 const files = new Map<string, Promise<{ body: Buffer; etag: string }>>();
 
+/** The console's logo and icon: the persona's picture, small. Only a file in the deployment (not a URL: CSP keeps images on this origin). */
+async function logo(): Promise<Buffer> {
+  const picture = persona().picture;
+  if (!picture || /^https?:\/\//i.test(picture)) throw new Error("no local picture");
+  return sharp(await readFile(path.resolve(process.cwd(), picture))).resize(128, 128, { fit: "cover", position: "top" }).webp().toBuffer();
+}
+
 function load(name: string) {
   let hit = files.get(name);
   if (!hit) {
-    hit = readFile(path.resolve(process.cwd(), DIR, name))
+    hit = (name === "logo.webp" ? logo() : readFile(path.resolve(process.cwd(), DIR, name)))
       .then((body) => (name === "index.html" ? withPreloads(body) : body))
       .then((body) => ({
         body,
@@ -72,9 +80,9 @@ export async function serveUi(file: string, request: Request): Promise<Response>
   const headers = {
     "content-type": type,
     etag: found.etag,
-    // Browsers ask every time (a 304 when unchanged); the CDN answers for a day.
+    // Browsers ask every time (a 304 when unchanged); the host's CDN may answer for them.
     "cache-control": "no-cache",
-    "vercel-cdn-cache-control": "max-age=86400",
+    ...host().cdnCache,
     ...SECURITY_HEADERS,
   };
   if (request.headers.get("if-none-match") === found.etag) return new Response(null, { status: 304, headers });

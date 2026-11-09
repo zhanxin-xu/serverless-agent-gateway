@@ -25,7 +25,7 @@
 
 ## 联网
 
-搜索模块的第一个实现是 DeepSeek（[`src/modules/search/providers/deepseek/`](../src/modules/search/providers/deepseek/)）：`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
+搜索模块的第一个实现是 DeepSeek（[`src/adapters/deepseek/`](../src/adapters/deepseek/)）：`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
 
 ## 余额与额度
 
@@ -41,7 +41,7 @@
 
 ## 长期记忆
 
-记忆模块在 [`src/modules/memory/`](../src/modules/memory/)，第一个存储实现是 Upstash Vector（`providers/upstash-vector/`），开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
+记忆模块在 [`src/modules/memory/`](../src/modules/memory/)，第一个存储实现是 Upstash Vector（[`src/adapters/upstash-vector/`](../src/adapters/upstash-vector/)），开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
 
 - **所有聊天共用一个记忆库**。每条记忆是一句能独立看懂的话，比如"#3B6834 叫老王，是前端程序员"，由模型自己判断什么值得记。
 - `remember` 写入一条记忆；`recall` 按语义相似度返回最接近的几条；`forget` 按 ID 删除。
@@ -51,7 +51,7 @@
 
 ## 画图
 
-`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`src/modules/image/`](../src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 `providers/openrouter-images/`。画图模块依赖沙盒模块。
+`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`src/modules/image/`](../src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 [`src/adapters/openrouter/images/`](../src/adapters/openrouter/images/)。画图模块依赖沙盒模块。
 
 | 参数 | 说明 |
 |---|---|
@@ -71,7 +71,7 @@
 
 ## 语音
 
-`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`src/modules/voice/`](../src/modules/voice/)，实现在 `providers/openai-speech/`，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
+`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`src/modules/voice/`](../src/modules/voice/)，实现在 [`src/adapters/openai-speech/`](../src/adapters/openai-speech/)，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
 
 | 参数 | 说明 |
 |---|---|
@@ -107,7 +107,7 @@
 
 ## 沙盒工作区
 
-模块在 [`src/modules/sandbox/`](../src/modules/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`tools.ts` 是五个工具，第一个实现 Vercel Sandbox 在 `providers/vercel-sandbox/`。
+模块在 [`src/modules/sandbox/`](../src/modules/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`tools.ts` 是五个工具，第一个实现 Vercel Sandbox 在 [`src/adapters/vercel-sandbox/`](../src/adapters/vercel-sandbox/)。
 
 | 工具 | 作用 |
 |---|---|
@@ -139,7 +139,7 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 表情包
 
-`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在人设里 [`src/persona/stickers.ts`](../src/persona/stickers.ts)：
+`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在人设里 [`src/personas/dafeiyu/stickers.ts`](../src/personas/dafeiyu/stickers.ts)：
 
 - **情绪类**：28 张 Q 版动态 GIF，比如笑死、红温了、已老实、你礼貌吗、退退退、吃瓜、贴贴、晚安。
 - **梗图类**：10 张经典梗图，比如得加钱、摆烂、蹭饭、用户别走、无可奉告。

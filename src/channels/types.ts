@@ -1,4 +1,5 @@
-/** A user message normalized from any channel. */
+import type { ConfigDecl } from "../modules/types.js";
+
 /** Someone in a chat: their platform id, and their display name when known. */
 export interface Person {
   userId: string;
@@ -8,6 +9,7 @@ export interface Person {
 /** A piece of an outgoing text: plain words, or an @-mention of someone in the chat. */
 export type TextPart = string | { mention: Person };
 
+/** A user message normalized from any channel. */
 export interface InboundMessage {
   channel: string;
   /** Unique per delivery; used to drop webhook retries. */
@@ -75,6 +77,8 @@ export interface ChannelAdapter {
   readonly name: string;
   /** How people call the platform ("QQ"), for the admin console. */
   readonly label: string;
+  /** Its credentials and options, collected into the console's settings (src/settings/catalog.ts). */
+  readonly config?: ConfigDecl;
   /**
    * For people (the admin console): when the platform takes a message from
    * the bot, if it limits that (QQ only takes replies to recent messages).

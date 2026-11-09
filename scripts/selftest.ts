@@ -1,9 +1,9 @@
 /**
- * Offline end-to-end test: `npm test`.
- * Stubs global fetch (Responses API, DeepSeek tools, QQ, Telegram, Supabase,
- * Upstash Vector) and
- * Vercel's waitUntil, then drives each channel through the real webhook
- * handler, event log and agent loop.
+ * Offline end-to-end test of the Vercel deployment: `npm test`.
+ * Composes the gateway as deploy/vercel does, stubs global fetch (Responses
+ * API, DeepSeek tools, QQ, Telegram, Supabase, Upstash Vector) and Vercel's
+ * waitUntil, then drives each channel through the real webhook handler, event
+ * log and agent loop.
  */
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -300,19 +300,21 @@ function safeJson(text: string) {
   }
 }
 
+(await import("../deploy/vercel/composition.js")).composeVercel();
 const { handleWebhook } = await import("../src/webhook.js");
-const { handleWorker } = await import("../src/worker.js");
+const { handleWorker } = await import("../deploy/vercel/worker.js");
 worker = handleWorker;
 const { activeTools, runTool } = await import("../src/modules/registry.js");
 const { callBudgetMs } = await import("../src/agent/budget.js");
 const { evaluate } = await import("../src/modules/basics/tools.js");
 const { messageHeader } = await import("../src/channels/format.js");
-const { getStore, resetStore, storeBackend } = await import("../src/store/index.js");
-const qqHint = (await import("../src/channels/qq.js")).qqAdapter.promptHint!;
+const { getStore, resetStore } = await import("../src/store/index.js");
+const { PostgresStore, supabaseConfig } = await import("../src/adapters/supabase/index.js");
+const qqHint = (await import("../src/adapters/qq/index.js")).qqAdapter.promptHint!;
 const { config } = await import("../src/config.js");
 const { setWorkspaceFactory } = await import("../src/modules/sandbox/workspace.js");
 const { attachmentFileName } = await import("../src/modules/sandbox/tools.js");
-const { driveName } = await import("../src/modules/sandbox/providers/vercel-sandbox/client.js");
+const { driveName } = await import("../src/adapters/vercel-sandbox/client.js");
 (await import("../src/channels/net.js")).connectRetry.delayMs = 5;
 
 /** Tool context for calling tools directly, outside a conversation. */
@@ -588,13 +590,12 @@ await test("reply cap: 5 replies per message, the 6th is refused and the model s
   assert.equal(llmCalls, 2, "a failed send keeps the turn going after end_turn");
 });
 
-await test("stickers: CDN hotlink by default, STICKER_BASE_URL override", async () => {
-  const { STICKERS, stickerUrl, DEFAULT_STICKER_BASE_URL } = await import("../src/persona/index.js");
-  assert.ok(Object.keys(STICKERS).length >= 30);
-  assert.ok(Object.values(STICKERS).every((s) => /^(meme\/\d+\.gif|0_preview\/meme\/\d+\.webp)$/.test(s.file)));
-  assert.equal(stickerUrl(DEFAULT_STICKER_BASE_URL, "红温了"), "https://img.aigengtu.com/meme/3153.gif");
-  assert.equal(stickerUrl(DEFAULT_STICKER_BASE_URL, "得加钱"), "https://img.aigengtu.com/0_preview/meme/097.webp");
-  assert.equal(stickerUrl("https://my.cdn/s/", "得加钱"), "https://my.cdn/s/0_preview/meme/097.webp");
+await test("stickers: the persona's set, hotlinked from its CDN", async () => {
+  const { dafeiyu } = await import("../src/personas/dafeiyu/index.js");
+  const stickers = dafeiyu.stickers!;
+  assert.ok(Object.keys(stickers.set).length >= 30);
+  assert.ok(Object.values(stickers.set).every((s) => /^(meme\/\d+\.gif|0_preview\/meme\/\d+\.webp)$/.test(s.file)));
+  assert.equal(stickers.baseUrl, "https://img.aigengtu.com");
 });
 
 await test("qq: send_sticker → upload by URL, msg_type 7, then text with next msg_seq", async () => {
@@ -647,7 +648,6 @@ await test("message header: time, scene, sender, @你 (the 第N条 number is add
 });
 
 await test("postgres store: one function call per operation over /rest/v1/rpc with the secret key", async () => {
-  const { PostgresStore } = await import("../src/store/index.js");
   const store = new PostgresStore("https://db.example.supabase.co/", "sb_secret_test");
   calls.length = 0;
   const ingest = {
@@ -694,9 +694,10 @@ await test("supabase store: picked when configured; a whole conversation runs on
   const memory = getStore();
   process.env.SUPABASE_URL = "https://db.example.supabase.co";
   process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
-  resetStore();
+  // The Vercel composition picks Supabase when it's configured (deploy/vercel/composition.ts); its store is made once, so swap it in.
+  assert.ok(supabaseConfig.configured);
+  resetStore(new PostgresStore(supabaseConfig.url, supabaseConfig.key));
   try {
-    assert.equal(storeBackend(), "supabase");
     assert.equal((await httpCall("first", "pgchat")).reply, "答案是 20");
     await httpCall("second", "pgchat");
     const { session, events: stored } = (await supabaseRpc("chat_open", { p_chat: "http:pgchat", p_after_seq: -1 })) as any;
@@ -738,7 +739,7 @@ await test("qq reply window: the turn's default target is a message that can sti
 });
 
 await test("qq adapter: 5 replies per message, the 6th is refused before calling QQ", async () => {
-  const { qqAdapter } = await import("../src/channels/qq.js");
+  const { qqAdapter } = await import("../src/adapters/qq/index.js");
   const msg = {
     channel: "qq", eventId: "e", conversationId: "c2c:U", chatType: "private" as const, userId: "U", text: "x",
     replyContext: { scope: "c2c", target: "U5", msgId: "m-5", expiresAt: String(Date.now() + 60_000) } as Record<string, string>,
@@ -1303,7 +1304,7 @@ await test("worker: the webhook runs the agent itself; /api/worker is only for c
 });
 
 await test("worker: unreachable when a turn pauses → the work stays in the log and the next message's run continues it", async () => {
-  const { workerRetry } = await import("../src/runtime/handoff.js");
+  const { workerRetry } = await import("../deploy/vercel/host.js");
   const original = worker!;
   const waits = workerRetry.waitsMs;
   workerRetry.waitsMs = [1, 1];
@@ -2031,7 +2032,7 @@ const { saveChatProfile } = await import("../src/chats/profile.js");
 const { quotaPolicy, turnUsage } = await import("../src/chats/usage.js");
 const { utcDay } = await import("../src/chats/day.js");
 const { Toolset } = await import("../src/modules/registry.js");
-const { deepseekConfig } = await import("../src/modules/search/providers/deepseek/config.js");
+const { deepseekConfig } = await import("../src/adapters/deepseek/config.js");
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
@@ -2070,7 +2071,7 @@ await test("admin api: login, cookie session, same-origin JSON only; a new ADMIN
     );
   process.env.ADMIN_PASSWORD = "admin-pw";
   try {
-    assert.deepEqual(await (await req("GET", "session")).json(), { passwordSet: true, loggedIn: false });
+    assert.deepEqual(await (await req("GET", "session")).json(), { botName: "大肥鱼", passwordSet: true, loggedIn: false }, "the bot's name comes from the composed persona");
     assert.equal((await req("GET", "settings")).status, 401);
     assert.equal((await req("POST", "session", { password: "nope" })).status, 401);
     assert.equal((await req("POST", "session", { password: "admin-pw" }, { origin: "https://evil.example" })).status, 403);
@@ -2109,7 +2110,7 @@ await test("deploying before the database upgrade: on the old schema the bot run
   process.env.SUPABASE_URL = "https://olddb.example.supabase.co";
   process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
   process.env.ADMIN_PASSWORD = "admin-pw";
-  resetStore();
+  resetStore(new PostgresStore(supabaseConfig.url, supabaseConfig.key));
   try {
     await refreshSettings({ force: true });
     assert.equal(config.llm.model, "openai/gpt-6-luna");
@@ -2123,7 +2124,7 @@ await test("deploying before the database upgrade: on the old schema the bot run
     const login = await handleAdmin(new Request("https://bot.example.com/api/admin/session", { method: "POST", headers: { "content-type": "application/json" }, body: '{"password":"admin-pw"}' }));
     const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
     const status = (await (await handleAdmin(new Request("https://bot.example.com/api/admin/status", { headers: { cookie } }))).json()) as any;
-    assert.deepEqual([status.database.schemaVersion, status.database.ready], [null, false], "the console asks for the upgrade");
+    assert.deepEqual([status.database.connected, status.database.version, status.database.ready], [true, null, false], "the console asks for the upgrade");
     const chats = await handleAdmin(new Request("https://bot.example.com/api/admin/chats", { headers: { cookie } }));
     assert.equal(chats.status, 409, "pages that need the new tables say so");
   } finally {

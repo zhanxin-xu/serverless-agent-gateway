@@ -1,9 +1,8 @@
 /** Chats: the list, one chat's history and events, its settings, and acting in it. */
-import { waitUntil } from "@vercel/functions";
-import { channels } from "../../channels/index.js";
+import { channel as channelNamed, host } from "../../composition.js";
 import { daysBefore, utcDay } from "../../chats/day.js";
 import { historyAfter, historyBefore } from "../../chats/history.js";
-import { ambientInterval, parseProfile, PROFILE_CHOICES, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
+import { ambientInterval, parseProfile, profileChoices, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
 import { quotaPolicy } from "../../chats/usage.js";
 import { config } from "../../config.js";
 import { arrivedMidStep, modelSees } from "../../conversation/derive.js";
@@ -37,7 +36,7 @@ function limitParam(req: AdminRequest): number {
 function view(c: ChatSummary) {
   const profile = parseProfile(c.profile ?? {});
   const channel = c.channel ?? c.chat.split(":")[0]!;
-  const adapter = channels.get(channel);
+  const adapter = channelNamed(channel);
   const mode = replyMode(profile);
   return {
     ...c,
@@ -45,7 +44,7 @@ function view(c: ChatSummary) {
     channelLabel: adapter?.label ?? channel,
     profile,
     mode,
-    modeLabel: PROFILE_CHOICES.modes.find((o) => o.value === mode)?.label ?? mode,
+    modeLabel: profileChoices().modes.find((o) => o.value === mode)?.label ?? mode,
     ambientIntervalSeconds: ambientInterval(profile),
     canSend: Boolean(adapter?.send),
   };
@@ -93,7 +92,7 @@ export const chatRoutes: Route[] = [
         usageByDay: usage,
         replyWindow: window,
         defaults: { mode: replyMode({}), ambientIntervalSeconds: config.agent.ambientIntervalSeconds },
-        choices: PROFILE_CHOICES,
+        choices: profileChoices(),
       };
     },
   },
@@ -138,7 +137,7 @@ export const chatRoutes: Route[] = [
       const toolset = new Toolset(quotaPolicy(v.profile, summary.usage ?? {}));
       const assembly = assemble({
         chatType: summary.chatType ?? "group",
-        channelHint: channels.get(v.channel)?.promptHint,
+        channelHint: channelNamed(v.channel)?.promptHint,
         chatExtra: v.profile.prompt,
         toolset,
       });
@@ -176,7 +175,7 @@ export const chatRoutes: Route[] = [
     path: "chat/whisper",
     async handler(req) {
       const body = await req.json();
-      return whisper(field(body, "chat"), field(body, "text"), req.origin, waitUntil);
+      return whisper(field(body, "chat"), field(body, "text"), req.origin, (task) => host().background(task));
     },
   },
   {

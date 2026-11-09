@@ -11,7 +11,7 @@
  * newest message that can still take a reply, the same budget the bot uses.
  */
 import crypto from "node:crypto";
-import { channels } from "../channels/index.js";
+import { channel } from "../composition.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
 import { chatProfile, replyMode } from "../chats/profile.js";
 import { isEvent, isWhisper, type SessionEvent } from "../conversation/events.js";
@@ -40,7 +40,7 @@ async function openChat(chat: string, origin?: string): Promise<ChatContext> {
   const store = getStore();
   const { session, events } = await store.recentEvents(chat, Number.MAX_SAFE_INTEGER, RECENT_EVENTS);
   if (!session) throw new HttpError(404, "这个聊天没有进行中的会话（7 天没人说话会被清理），等有人说话再试");
-  const adapter = channels.get(session.channel);
+  const adapter = channel(session.channel);
   if (!adapter?.send) throw new HttpError(400, `${session.channel} 渠道不能主动发消息`);
   const meta: ChatMeta = { channel: session.channel, conversationId: session.conversationId, chatType: session.chatType, origin: origin ?? session.origin ?? undefined };
   const ordered = (events as SessionEvent[]).slice().reverse();

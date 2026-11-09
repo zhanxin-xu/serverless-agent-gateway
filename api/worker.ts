@@ -1,8 +1,4 @@
-import { handleWorker } from "../src/worker.js";
+import { worker } from "../deploy/vercel/index.js";
 
 // POST /api/worker — internal hand-off between runs (signed).
-export default {
-  fetch(request: Request) {
-    return handleWorker(request);
-  },
-};
+export default { fetch: worker };

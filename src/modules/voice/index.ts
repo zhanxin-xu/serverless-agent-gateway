@@ -19,7 +19,7 @@ function guide(ctx: PromptSectionContext): string {
 - **变声飙戏（\`voice: "none"\`）**：${own ? "平时默认用你自己的声音（`self`）；" : ""}群友让你模仿大叔、正太、反派配音时，设 \`voice="none"\` 并在 \`instructions\` 里描述角色声线，演完下一条换回你自己的声音。如果群友吐槽某条语音听着怪或像念经，换种音色或写法重来，别原样重发${ctx.has("remember") ? "；试出好用的组合可以用 remember 记下来" : ""}。`;
 }
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function voiceModule(): Module {
   return {
     id: "voice",

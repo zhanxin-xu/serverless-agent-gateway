@@ -17,7 +17,7 @@ function guide(ctx: PromptSectionContext): string {
 有人问你还剩多少余额/额度/token，调 get_llm_key_limit 查聊天模型这个 key（平台余额 usage 与自带 Key 的 byok_usage 分开算），查完照实报数。`;
 }
 
-/** Called once by the loader (src/modules/index.ts), after every module file has loaded. */
+/** Called once by compose() (src/composition.ts), after every file has loaded and the persona is in place. */
 export function modelModule(): Module {
   return {
     id: "model",
@@ -30,7 +30,7 @@ export function modelModule(): Module {
     config: CONFIG,
     tools: [llmKeyLimit],
     section: { order: 5100, text: guide },
-    balance: () => (config.llm.apiKey ? modelBalance() : undefined),
+    balance: modelBalance,
     async check() {
       if (!config.llm.apiKey) throw new Error("还没填 API Key");
       const response = await createResponse(

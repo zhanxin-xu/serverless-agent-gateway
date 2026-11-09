@@ -8,9 +8,9 @@
  * Bootstrap values the gateway needs before it can reach the database come
  * from the environment only (`env`).
  *
- * This holds the core: the model, chats, channels, the store. Each module's
- * provider reads its own settings (src/modules/<module>/providers/<id>/config.ts)
- * with the same readers, exported below.
+ * This holds the core: the model, chats, the agent. Every adapter (a
+ * provider, a channel, the store) and the host read their own settings
+ * (src/adapters/<x>/config.ts, deploy/<target>/) with the readers exported below.
  */
 import { settingDefault } from "./settings/catalog.js";
 import { overrideOf } from "./settings/overrides.js";
@@ -118,7 +118,7 @@ export const config = {
     },
     /**
      * Upper bound for one model call. Inside a run a call also ends when the
-     * function's time budget does (agent/budget.ts), whichever comes first.
+     * host's time budget does (agent/budget.ts), whichever comes first.
      */
     get timeoutMs() {
       return int("OPENAI_RESPONSES_TIMEOUT_MS");
@@ -144,13 +144,6 @@ export const config = {
       return int("AGENT_MAX_STEPS");
     },
     /**
-     * The function's time limit; keep in sync with maxDuration in vercel.json.
-     * Runs plan their steps and calls around it (agent/budget.ts).
-     */
-    get maxDurationSeconds() {
-      return Number.parseInt(env("AGENT_MAX_DURATION_SECONDS"), 10) || 300;
-    },
-    /**
      * The context budget in tokens. When a request's input passes 80% of it,
      * the older part of the conversation is summarized (see compaction.ts).
      */
@@ -166,55 +159,5 @@ export const config = {
       const n = Number.parseInt(raw("AGENT_AMBIENT_INTERVAL_SECONDS") ?? "", 10);
       return Number.isFinite(n) && n >= 0 ? n : Number(settingDefault("AGENT_AMBIENT_INTERVAL_SECONDS"));
     },
-  },
-
-  qq: {
-    get appId() {
-      return str("QQ_APP_ID");
-    },
-    get appSecret() {
-      return str("QQ_APP_SECRET");
-    },
-  },
-
-  telegram: {
-    get botToken() {
-      return str("TELEGRAM_BOT_TOKEN");
-    },
-    /** Must match the secret_token passed to setWebhook. */
-    get webhookSecret() {
-      return str("TELEGRAM_WEBHOOK_SECRET");
-    },
-    /** Without @. When set, group messages are answered only if they mention the bot. */
-    get botUsername() {
-      return str("TELEGRAM_BOT_USERNAME");
-    },
-  },
-
-  http: {
-    /** Bearer token for the generic HTTP channel. Channel is disabled when empty. */
-    get token() {
-      return str("HTTP_CHANNEL_TOKEN");
-    },
-  },
-
-  store: {
-    // Supabase (Postgres, see supabase/schema.sql). The Vercel Marketplace
-    // integration injects SUPABASE_URL and the server keys. Without them the
-    // store is per-instance memory (local development and tests only).
-    get supabaseUrl() {
-      return env("SUPABASE_URL").replace(/\/+$/, "");
-    },
-    get supabaseKey() {
-      return env("SUPABASE_SECRET_KEY");
-    },
-  },
-
-  /**
-   * Signs the hand-off request a run sends to /api/worker when it runs out of
-   * time with messages still waiting. Derived from the other secrets when unset.
-   */
-  get workerSecret() {
-    return str("WORKER_SECRET") || config.llm.apiKey + str("QQ_APP_SECRET") + str("TELEGRAM_BOT_TOKEN");
   },
 };

@@ -1,10 +1,11 @@
 /**
  * Which modules are on, and the tools a turn offers.
  *
- * The modules come from the list in src/modules/index.ts, checked here when
- * they load (unique ids, tools and prompt positions; known requirements;
- * meters on their own tools), so a mistake in a module's definition stops
- * the gateway from starting instead of showing up in a conversation.
+ * The modules come from the deployment's composition (src/composition.ts),
+ * checked on first use (unique ids, tools and prompt positions; known
+ * requirements; meters on their own tools), so a mistake in a module's
+ * definition stops the gateway at its first request instead of showing up in
+ * a conversation.
  *
  * A module is on when its switch is on (optional modules: MODULE_<ID>), its
  * capability has a usable provider (capability.ts), its own `ready` says so,
@@ -14,7 +15,7 @@ import { settingValue } from "../config.js";
 import { ORDER } from "../prompt/order.js";
 import { switchSetting } from "../settings/catalog.js";
 import { readiness, select } from "./capability.js";
-import { loadedModules } from "./index.js";
+import { modules as composedModules } from "../composition.js";
 import type { Tool, ToolContext, ToolRole } from "./tool.js";
 import type { Module, Readiness } from "./types.js";
 
@@ -48,14 +49,22 @@ export function checkModules(modules: readonly Module[]): void {
   for (const m of modules) for (const r of m.requires ?? []) if (!ids.has(r)) throw new Error(`module ${m.id} requires ${r}, which isn't loaded`);
 }
 
-/** The modules, in order (src/modules/index.ts), checked. */
-export const MODULES = loadedModules();
-checkModules(MODULES);
+const checked = new WeakSet<readonly Module[]>();
+
+/** The deployment's modules, in order, checked once. */
+export function allModules(): readonly Module[] {
+  const list = composedModules();
+  if (!checked.has(list)) {
+    checkModules(list);
+    checked.add(list);
+  }
+  return list;
+}
 
 /** The modules a chat can turn off. */
-export const OPTIONAL_MODULES = MODULES.filter((m) => !m.core);
+export const optionalModules = (): Module[] => allModules().filter((m) => !m.core);
 
-export const moduleById = (id: string): Module | undefined => MODULES.find((m) => m.id === id);
+export const moduleById = (id: string): Module | undefined => allModules().find((m) => m.id === id);
 
 export { switchSetting };
 
@@ -84,7 +93,7 @@ export function moduleStatus(module: Module, off: ReadonlySet<string> = new Set(
 }
 
 /** The modules that are on, given the modules a chat turned off. */
-export const activeModules = (off: ReadonlySet<string> = new Set()): Module[] => MODULES.filter((m) => moduleStatus(m, off).ok);
+export const activeModules = (off: ReadonlySet<string> = new Set()): Module[] => allModules().filter((m) => moduleStatus(m, off).ok);
 
 const toolsOf = (modules: Module[]): Tool[] => modules.flatMap((m) => m.tools.filter((t) => t.enabled?.() ?? true));
 
@@ -93,7 +102,7 @@ export const activeTools = (): Tool[] => toolsOf(activeModules());
 
 /** The module a tool belongs to. Tool names are stored in the event log, so they're never renamed. */
 export function moduleOfTool(name: string): Module | undefined {
-  return MODULES.find((m) => m.tools.some((t) => t.name === name));
+  return allModules().find((m) => m.tools.some((t) => t.name === name));
 }
 
 /**

@@ -2,7 +2,7 @@
  * What a module is (docs/modules.md), after DeepSeek Harness's plugins: a
  * module declares everything about itself — its tools, the prompt section
  * that explains them, its settings, what it needs — and the gateway collects
- * it from the list in src/modules/index.ts. Nothing outside the module names it.
+ * it from the deployment's composition (src/composition.ts). Nothing outside the module names it.
  *
  *   Module ──uses──▶ Capability ──selects one──▶ Provider
  *
@@ -88,7 +88,8 @@ export interface Capability<Impl> {
   label: string;
   /** The setting holding the chosen provider id; unset, the one that's configured is used. */
   selectionSetting: string;
-  providers: Provider<Impl>[];
+  /** The deployment's providers for it (providersOf in capability.ts). */
+  readonly providers: Provider<Impl>[];
   /** Its data lives with the provider, so switching providers loses sight of it (docs/design/modules.md 9.6). */
   stateful?: true;
 }
@@ -96,6 +97,8 @@ export interface Capability<Impl> {
 export interface Provider<Impl> {
   /** Unique within its capability; what the selection setting holds. */
   id: string;
+  /** The capability it implements (Capability.id). The deployment's composition lists it (src/composition.ts). */
+  capability: string;
   /** Its settings; the group's label and help are its name and description in the console. */
   config: ConfigDecl;
   /** Whether its settings are filled in. Settings only, no network, so choosing is fast and certain. */

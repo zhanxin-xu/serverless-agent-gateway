@@ -28,16 +28,19 @@ export async function handleWorker(request: Request): Promise<Response> {
 
   await refreshSettings();
   const store = getStore();
-  const { session } = await store.open(chatKey, Number.MAX_SAFE_INTEGER);
-  if (!session) return json({ error: "unknown chat" }, 404);
-  const adapter = channel(session.channel);
-  if (!adapter?.send) return json({ error: `channel "${session.channel}" can't run in the background` }, 400);
-
+  // The lock first: until the caller proves it holds it, nothing about the chat is read or said
+  // (an unknown chat and a wrong owner look the same).
   const lock = await takeOver(store, chatKey, lockOwner);
   // Not the lock holder: forged, already taken over, or the lease went to another run.
   if (lock === "invalid") return json({ error: "not the lock holder" }, 401);
   // A message's run took the chat in between: it carries on from the log.
   if (lock === "busy") return json({ ok: true, busy: true }, 202);
+  const { session } = await store.open(chatKey, Number.MAX_SAFE_INTEGER);
+  const adapter = session ? channel(session.channel) : undefined;
+  if (!session || !adapter?.send) {
+    await lock.release();
+    return json({ error: "this chat can't run in the background" }, 400);
+  }
 
   const meta: ChatMeta = { channel: session.channel, conversationId: session.conversationId, chatType: session.chatType, origin: publicOrigin(request) };
   console.log(`[worker] continuing ${chatKey}`);

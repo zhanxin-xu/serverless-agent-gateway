@@ -1302,6 +1302,7 @@ await test("worker: the webhook runs the agent itself; /api/worker is only for c
   const before = llmCalls;
   assert.equal((await post({ chatKey: "qq:c2c:WORKER" })).status, 400, "no lock owner, no hand-over");
   assert.equal((await post({ chatKey: "qq:c2c:WORKER", lockOwner: crypto.randomUUID() })).status, 401, "only the lock holder can hand over");
+  assert.equal((await post({ chatKey: "qq:c2c:NOSUCHCHAT", lockOwner: crypto.randomUUID() })).status, 401, "an unknown chat looks the same: nothing to probe");
   await drain();
   assert.equal(llmCalls, before, "a forged hand-over runs nothing");
 });

@@ -6,7 +6,7 @@ import { messageLabel } from "../../conversation/events.js";
 import type { ImagePart } from "../../media/images.js";
 import { QUOTE, REPLY_TO, replyTo, sendOptions } from "../shared/reply.js";
 import type { Tool, ToolContext } from "../tool.js";
-import { WORKDIR } from "./paths.js";
+import { INBOX, WORKDIR } from "./paths.js";
 import { workspaceFor } from "./workspace.js";
 
 const MAX_OUTPUT_CHARS = 8_000;
@@ -115,7 +115,6 @@ export const readFile: Tool = {
 };
 
 /** Where save_attachment puts originals. */
-const INBOX = `${WORKDIR}/inbox`;
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
@@ -234,7 +233,6 @@ export const sendFile: Tool = {
     if (data.byteLength > MAX_SEND_BYTES) {
       throw new Error(`${file} is ${data.byteLength} bytes, over the 5 MB limit; compress or split it`);
     }
-    const status = await ctx.send({ kind: "file", file: { name: path.posix.basename(file), data } }, replyTo(args), sendOptions(args));
-    return `${status}. If you're done, call end_turn (in the same step as your last message).`;
+    return ctx.send({ kind: "file", file: { name: path.posix.basename(file), data } }, replyTo(args), sendOptions(args));
   },
 };

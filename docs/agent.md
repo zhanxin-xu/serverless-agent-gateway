@@ -51,7 +51,7 @@
 | `assistant/attempt` | — | 失败的模型调用 |
 | `tool/call` | — | 工具准备执行 |
 | `tool/result` | ✅ | 工具结果 |
-| `tool/images` | ✅ | `read_file` 打开的图片 |
+| `tool/images` | ✅ | 工具返回的图片（`read_file` 打开的、`generate_image` 的预览） |
 | `compaction/summary` | ✅ | 压缩摘要，替代 `fromSeq` 之前的全部内容 |
 | `bot/sent` | — | 机器人实际发出的一条内容（文字、表情包、语音、文件、运行时的提示），管理端的聊天记录用它 |
 | `admin/message` | ✅（当作模型自己说的） | 管理员以机器人身份发的话 |

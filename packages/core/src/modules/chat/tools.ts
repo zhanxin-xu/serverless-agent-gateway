@@ -19,7 +19,7 @@ export const sendMessage: Tool = {
   async run(args, ctx) {
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("text is empty");
-    return `${await ctx.send({ kind: "text", text }, replyTo(args), sendOptions(args))}. If you're done, call end_turn (in the same step as your last message).`;
+    return ctx.send({ kind: "text", text }, replyTo(args), sendOptions(args));
   },
 };
 
@@ -45,7 +45,7 @@ export function sendSticker(who: string, stickers: NonNullable<Persona["stickers
       const sticker = Object.hasOwn(stickers.set, name) ? stickers.set[name] : undefined;
       if (!sticker) throw new Error(`unknown sticker "${name}"`);
       const base = (settingValue("STICKER_BASE_URL") || stickers.baseUrl).replace(/\/+$/, "");
-      return `${await ctx.send({ kind: "image", url: `${base}/${sticker.file}`, label: stickerLabel(name) }, replyTo(args), sendOptions(args))}. If you're done, call end_turn (in the same step as your last message).`;
+      return ctx.send({ kind: "image", url: `${base}/${sticker.file}`, label: stickerLabel(name) }, replyTo(args), sendOptions(args));
     },
   };
 }

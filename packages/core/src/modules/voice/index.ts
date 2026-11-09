@@ -24,7 +24,7 @@ export function voiceModule(): Module {
   return {
     id: "voice",
     label: "语音",
-    summary: "send_voice 用她自己的声音说话、唱歌，也能变声演别的角色。",
+    summary: "send_voice 用自己的声音说话、唱歌，也能变声演别的角色。",
     capability: speechCapability,
     config: CONFIG,
     tools: [sendVoice],

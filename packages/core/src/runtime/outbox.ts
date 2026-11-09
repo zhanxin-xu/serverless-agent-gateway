@@ -87,7 +87,7 @@ export class Outbox {
     const count = Number(replyContext.replies ?? 0);
     if (count >= this.maxReplies) {
       throw new Error(
-        `already replied to ${messageLabel(seq)} ${this.maxReplies} times, the limit; reply to another message or call end_turn`,
+        `already replied to ${messageLabel(seq)} ${this.maxReplies} times, the limit; reply to another message or end the turn`,
       );
     }
     const message: InboundMessage = {
@@ -111,7 +111,7 @@ export class Outbox {
         // Retrying or rephrasing can't help, and each try waits out another timeout.
         this.unreachable =
           `${this.adapter.name} can't be reached right now (${reason}); nothing was sent. ` +
-          "Stop for this turn: don't retry or rephrase, call end_turn. Later messages will try again.";
+          "Stop for this turn: don't retry or rephrase, end it. Later messages will try again.";
         throw new Error(this.unreachable);
       }
       throw err;
@@ -139,7 +139,7 @@ export class DeliveryRefusedError extends Error {
   ) {
     super(
       `${REPLY_WINDOW_CLOSED} for ${messageLabel(seq)}: ${reason}, so nothing was sent. ` +
-        "Don't retry on another old message: reply_to a newer one if it's still open, otherwise call end_turn. " +
+        "Don't retry on another old message: reply_to a newer one if it's still open, otherwise end the turn. " +
         "You'll be reminded of what you wanted to say next turn, when someone writes again.",
     );
   }

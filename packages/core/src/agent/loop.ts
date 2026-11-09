@@ -120,6 +120,9 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
   const say = toolset.say();
   const talks = toolset.names("say", "talk");
   const hangups = toolset.names("hangup");
+  // After each message sent: how to end the turn, so no talking tool has to name the hangup tool.
+  const [hangup] = hangups;
+  const doneHint = hangup ? `. If you're done, call ${hangup} (in the same step as your last message).` : "";
   const usage = { input: 0, cached: 0, reasoning: 0 };
   let handledUpTo = o.pending.at(-1)!.seq;
 
@@ -232,14 +235,16 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     for (const call of calls) {
       if (hangups.has(call.name)) continue;
       // Tools keep to the time budget themselves; this catches the step that used it all up.
-      const output = callBudgetMs(ctx.deadline) < MIN_CALL_MS ? NO_TIME_FOR_TOOL : await toolset.run(call.name, call.arguments, ctx);
+      let output = callBudgetMs(ctx.deadline) < MIN_CALL_MS ? NO_TIME_FOR_TOOL : await toolset.run(call.name, call.arguments, ctx);
       console.log(`[agent] tool ${call.name}(${call.arguments}) -> ${output.slice(0, 200)}`);
-      sendFailed ||= talks.has(call.name) && output.startsWith("Error:");
+      const failed = output.startsWith("Error:");
+      sendFailed ||= talks.has(call.name) && failed;
+      if (talks.has(call.name) && !failed) output += doneHint;
       results.push({ type: "tool/result", data: { turn, step, callId: call.call_id, output } });
     }
     const unreachable = sendFailed && (o.unreachable?.() ?? false);
     const done = lastStep || unreachable || (hangingUp && !sendFailed);
-    // Images a tool opened (read_file) are stored and shown after the step's tool results.
+    // Images a tool returned (read_file, generate_image…) are stored and shown after the step's tool results.
     const images = ctx.images.splice(0);
     const imageKeys = images.length
       ? await session.storeToolImages(`t${turn}s${step}`, images)

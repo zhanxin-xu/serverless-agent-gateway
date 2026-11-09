@@ -1973,6 +1973,10 @@ await test("end_turn: wherever it sits, every call in the step still runs, in or
   assert.equal(llmRequests().length, 1);
   const results = (await events("http:c-order")).filter((e) => e.type === "tool/result").map((e) => e.data.callId);
   assert.deepEqual(results, ["call_1", "call_c", "call_2", "call_e"], "every call has its result in the log");
+  // The loop, not each talking tool, says how to end the turn: after a message sent, never after other tools.
+  const output = async (id: string) => (await events("http:c-order")).find((e) => e.type === "tool/result" && e.data.callId === id)!.data.output;
+  assert.match(await output("call_1"), /If you're done, call end_turn \(in the same step as your last message\)\.$/);
+  assert.doesNotMatch(await output("call_c"), /end_turn/);
 });
 
 await test("step limit: the last step gets a wrap-up note and must send", async () => {

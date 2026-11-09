@@ -94,7 +94,7 @@ export async function deriveInput(events: SessionEvent[], loadImage: Loader): Pr
       case "tool/images": {
         const parts = await imageParts(e.data.images, loadImage, "auto");
         if (parts.length) {
-          input.push({ role: "user", content: [{ type: "input_text", text: "（系统提示）read_file 打开的图片：" }, ...parts] });
+          input.push({ role: "user", content: [{ type: "input_text", text: "（系统提示）工具返回的图片：" }, ...parts] });
         }
         break;
       }

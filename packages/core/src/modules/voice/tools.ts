@@ -91,6 +91,6 @@ export const sendVoice: Tool = {
     const seconds = (pcm.byteLength / 2 / sampleRate).toFixed(1);
     const status = await ctx.send({ kind: "voice", voice: { pcm, sampleRate, text } }, replyTo(args), sendOptions(args));
     const how = [mode === "sing" ? "sung" : "spoken", `model=${model}`, `voice=${voice}`, ...(speed !== undefined ? [`speed=${speed}`] : []), `${seconds}s`];
-    return `${status} (voice message: ${how.join(", ")}). If you're done, call end_turn (in the same step as your last message).`;
+    return `${status} (voice message: ${how.join(", ")})`;
   },
 };

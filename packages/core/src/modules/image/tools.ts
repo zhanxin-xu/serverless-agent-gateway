@@ -15,7 +15,7 @@ import { bundledDataUrl } from "../../media/assets.js";
 import { persona } from "../../composition.js";
 import type { ImagePart } from "../../media/images.js";
 import { select, use } from "../capability.js";
-import { WORKDIR, workspaceFor } from "../sandbox/index.js";
+import { WORKDIR, saveAttachment, sendFile, workspaceFor } from "../sandbox/index.js";
 import type { Tool, ToolContext } from "../tool.js";
 import { imageCapability } from "./capability.js";
 import { imageConfig } from "./config.js";
@@ -87,8 +87,8 @@ export const generateImage: Tool = {
   get description() {
     return (
       "Generate or edit images with an image model. With input_references (images in your workspace, e.g. a photo saved with " +
-      "save_attachment) it edits / restyles them; without, it draws from the prompt alone. Results are saved under " +
-      `${OUTDIR}/ and shown to you; check them, then send with send_file. Each call costs money: make one good prompt ` +
+      `${saveAttachment.name}) it edits / restyles them; without, it draws from the prompt alone. Results are saved under ` +
+      `${OUTDIR}/ and shown to you; check them, then send with ${sendFile.name}. Each call costs money: make one good prompt ` +
       "(describe subject, style, lighting, composition; say what to keep when editing) rather than many tries." +
       (imageConfig.selfImage
         ? " Whenever you are in the picture (a selfie, you doing something, you with someone), set include_self: your own " +
@@ -160,7 +160,7 @@ export const generateImage: Tool = {
     const cost = result.cost !== undefined ? `, cost $${result.cost}` : "";
     return (
       `generated ${result.images.length} image(s)${cost}; saved and shown to you right after this:\n${lines.join("\n")}\n` +
-      "If one looks right, send it with send_file."
+      `If one looks right, send it with ${sendFile.name}.`
     );
   },
 };

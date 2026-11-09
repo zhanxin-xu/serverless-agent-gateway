@@ -2,7 +2,7 @@
  * The setup guide's checks and actions: what's configured, creating the
  * database, and testing each service with the settings in effect.
  */
-import { channel, channels, database, guide, host, type DatabaseStatus } from "../../composition.js";
+import { channel, channels, database, guide, type DatabaseStatus } from "../../composition.js";
 import { describeModules } from "../modules.js";
 import { moduleById } from "../../modules/registry.js";
 import { saveSettings } from "../../settings/service.js";
@@ -49,7 +49,6 @@ export const setupRoutes: Route[] = [
       const database = await databaseStatus();
       return {
         origin: req.origin,
-        host: { id: host().id, label: host().label },
         guide: guide(),
         database,
         channels: channels().map((c) => ({

@@ -33,7 +33,6 @@ export function composeVercel(): void {
     store: () => (supabaseConfig.configured ? new PostgresStore(supabaseConfig.url, supabaseConfig.key) : new MemoryStore()),
     database: supabaseDatabase,
     guide: {
-      label: "Vercel",
       password: [
         "打开 Vercel 项目的 Settings → Environment Variables。",
         "添加 ADMIN_PASSWORD，值是一个足够长的密码。",

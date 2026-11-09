@@ -287,8 +287,6 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 h1 .pill { font-size: 12px; }
 
 .banner { border-radius: var(--radius); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border: 1px solid transparent; font-size: 13px; }
-.banner-info { background: var(--accent-soft); border-color: var(--accent-line); color: var(--fg); }
-.banner-warn { background: var(--warn-soft); }
 .banner-bad { background: var(--bad-soft); color: var(--bad); }
 
 .toast {

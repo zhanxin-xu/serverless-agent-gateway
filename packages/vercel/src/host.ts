@@ -53,7 +53,6 @@ export async function startWorker(origin: string, request: HandoffRequest): Prom
 
 export const vercelHost: Host = {
   id: "vercel",
-  label: "Vercel",
   background: (task) => waitUntil(task),
   runBudgetMs: maxDurationMs,
   handoff: startWorker,

@@ -167,6 +167,3 @@ export class Toolset {
   }
 }
 
-/** Every active tool, no chat policy: for health checks, scripts and tests. */
-export const runTool = (name: string, rawArgs: string, ctx: ToolContext) => new Toolset().run(name, rawArgs, ctx);
-

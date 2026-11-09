@@ -398,7 +398,7 @@ await test("compose() refuses a provider no loaded module uses, or two with one 
   const { deepseekProvider } = await import("../packages/adapters/src/deepseek/index.js");
   const { upstashVectorProvider } = await import("../packages/adapters/src/upstash-vector/index.js");
   const { MemoryStore } = await import("../packages/core/src/store/index.js");
-  const base = { baseDir: "/", host: { id: "t", label: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { label: "", password: [], changePassword: "", database: { intro: "", steps: [] } } };
+  const base = { baseDir: "/", host: { id: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { password: [], changePassword: "", database: { intro: "", steps: [] } } };
   assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, upstashVectorProvider] }), /upstash-vector implements vector-memory, which no loaded module uses/);
   assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, deepseekProvider] }), /two search providers are called deepseek/);
 });

@@ -13,14 +13,13 @@
  * doesn't matter.
  */
 import type { ChannelAdapter } from "./channels/types.js";
-import type { Balance, ConfigDecl, Module, Provider } from "./modules/types.js";
+import type { Balance, Module, Provider } from "./modules/types.js";
 import type { Store } from "./store/types.js";
 
 /** Where the gateway runs: what it can do beyond answering a request. */
 export interface Host {
-  /** "vercel", "node"… */
+  /** "vercel", "node"…: what /api/health reports. */
   id: string;
-  label: string;
   /** Keep working on `task` after the response is sent (Vercel: waitUntil). */
   background(task: Promise<unknown>): void;
   /**
@@ -38,8 +37,6 @@ export interface Host {
    * came from the run: no shared secret is needed.
    */
   handoff?(origin: string, request: HandoffRequest): Promise<boolean>;
-  /** Its own settings, collected into the catalog. */
-  config?: ConfigDecl;
   /** Response headers that let its CDN keep a static file (the console's page and scripts). */
   cdnCache?: Record<string, string>;
 }
@@ -106,8 +103,6 @@ export interface ModelAccount {
 
 /** What the admin console says that depends on where it's deployed. */
 export interface ConsoleGuide {
-  /** Where it runs, in words ("Vercel"). */
-  label: string;
   /** How to set ADMIN_PASSWORD here, shown before anyone can sign in: steps. */
   password: string[];
   /** How to change it later, one line. */

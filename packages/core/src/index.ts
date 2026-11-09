@@ -42,7 +42,7 @@ export type { SpeechBackend, VoiceChoice } from "./modules/voice/capability.js";
 
 // ── Helpers adapters share ──
 export { getJson } from "./modules/shared/http.js";
-export { bundledDataUrl, deploymentFile } from "./media/assets.js";
+export { bundledDataUrl } from "./media/assets.js";
 
 // ── Channels: what a channel adapter implements ──
 export { chunkText, json } from "./channels/types.js";
@@ -69,7 +69,7 @@ export type {
 } from "./store/types.js";
 
 // ── Handlers: what a host routes requests to ──
-export { channelFromUrl, handleWebhook, processInbound, publicOrigin } from "./webhook.js";
+export { channelFromUrl, handleWebhook, publicOrigin } from "./webhook.js";
 export { handleAdmin } from "./admin/handler.js";
 export { healthReport } from "./health.js";
 export { refreshSettings } from "./settings/service.js";

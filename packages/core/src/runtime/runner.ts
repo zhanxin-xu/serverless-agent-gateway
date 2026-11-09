@@ -25,7 +25,7 @@ import { host } from "../composition.js";
 import { LAST_STEP_MIN_MS, NEW_STEP_MIN_MS, timeLeftMs } from "../agent/budget.js";
 import { runTurn, type TurnResult } from "../agent/loop.js";
 import { OutOfCreditError } from "../agent/model.js";
-import { ambientInterval, chatProfile, type ChatProfile } from "../chats/profile.js";
+import { ambientInterval, chatProfile } from "../chats/profile.js";
 import { beijingTime, nextDayStart } from "../chats/day.js";
 import { costQuotaUsed, quotaPolicy, recordUsage, turnUsage, usageToday } from "../chats/usage.js";
 import type { SessionEvent } from "../conversation/events.js";

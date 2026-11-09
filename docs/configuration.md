@@ -2,7 +2,7 @@
 
 下面的配置都可以在[管理端](admin.md)（`/admin`）里填写，存进数据库，改完 30 秒内生效，不用重新部署。每一项按这个顺序取值：**管理端 → 同名环境变量 → 默认值**，所以也可以照旧只用环境变量。直接改环境变量时，需要**重新部署**才会生效。
 
-只能用环境变量设置的有：`ADMIN_PASSWORD`（管理端密码）、数据库连接（`SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`POSTGRES_URL_NON_POOLING`），以及宿主的时间：Vercel 部署的 `AGENT_MAX_DURATION_SECONDS`、本地 Node 部署的 `AGENT_RUN_BUDGET_SECONDS`。
+只能用环境变量设置的有：`ADMIN_PASSWORD`（管理端密码）、数据库连接（`SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`POSTGRES_URL_NON_POOLING`），以及函数的时间上限 `AGENT_MAX_DURATION_SECONDS`。
 
 本地开发时把变量写进 `.env.local`，模板见 [`.env.example`](../.env.example)。
 
@@ -40,7 +40,6 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `AGENT_TIMEZONE` | `Asia/Shanghai` | 消息头里时间使用的时区 |
 | `AGENT_MAX_STEPS` | `40` | 一轮最多调用模型的次数（旁观轮次也一样；不插话时只用 1 次） |
 | `AGENT_MAX_DURATION_SECONDS` | `300` | Vercel 部署：函数的时间上限，要和 `packages/vercel/vercel.json` 的 `maxDuration` 保持一致。剩余不到 100 秒时不开新的一步，交给新的 worker 接着做，见[步数与时间](agent.md#步数与时间)。只能用环境变量 |
-| `AGENT_RUN_BUDGET_SECONDS` | `1800` | 本地 Node 部署：一次运行最长多久（常驻进程没有函数时限，也不接力，到点前最后一步必须回复）。只能用环境变量 |
 | `AGENT_CONTEXT_TOKENS` | `200000` | 上下文预算（token）。请求输入超过它的 80% 时，较早的对话会被压缩成摘要，见[上下文压缩](agent.md#上下文压缩) |
 | `AGENT_AMBIENT_INTERVAL_SECONDS` | `10` | 群里没 @ 的消息，每个群每隔多少秒最多唤起一次 agent；`0` 表示只记录、不唤起 |
 

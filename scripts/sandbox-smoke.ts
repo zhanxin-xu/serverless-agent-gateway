@@ -1,17 +1,19 @@
 /**
  * Live check of the per-chat workspace against real Vercel Sandbox + Drive:
- *   npx vercel env pull && npx tsx scripts/sandbox-smoke.ts
+ *   npx vercel env pull && npx tsx --conditions=source scripts/sandbox-smoke.ts
  * Needs VERCEL_OIDC_TOKEN (read from .env.local if present). Uses, then
  * deletes, the drive for the chat key "smoke:test".
  */
 import { existsSync } from "node:fs";
-import { runTool } from "../packages/core/src/modules/registry.js";
+import { Toolset } from "../packages/core/src/modules/registry.js";
 import type { ToolContext } from "../packages/core/src/modules/tool.js";
 import { driveName } from "../packages/adapters/src/vercel-sandbox/sandbox/client.js";
 import { closeWorkspace } from "../packages/core/src/modules/sandbox/workspace.js";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 process.env.SANDBOX_ENABLED = "1";
+// The tools come from the deployment's composition, as in production.
+(await import("../packages/vercel/src/composition.js")).composeVercel();
 const chat = { key: "smoke:test", scene: "私聊" as const, sender: "#SMOKE" };
 const newCtx = (): ToolContext => ({
   sent: [],
@@ -28,7 +30,7 @@ const newCtx = (): ToolContext => ({
 });
 const step = async (ctx: ToolContext, name: string, args: unknown) => {
   const t = Date.now();
-  const out = await runTool(name, JSON.stringify(args), ctx);
+  const out = await new Toolset().run(name, JSON.stringify(args), ctx);
   console.log(`\n▶ ${name} ${JSON.stringify(args).slice(0, 100)} (${Date.now() - t}ms)\n${out.slice(0, 600)}`);
   return out;
 };

@@ -536,3 +536,7 @@ P1–P6 可以一起上线，P7 至少隔一周。
 - **测试**：分层测试改成按包检查：core 不引用任何 `@gateway/*`；adapters 只引用 `@gateway/core`，厂商之间不互相引用；vercel 只用两个包的公开入口；人设只是数据；每个文件用到的 npm 包必须写在自己包的 `package.json` 里。
 
 **事故（2026-11-09 19:17–19:24）**：第一次推送拆包后线上全部 500。Vercel 对只有 `api/` 函数、没有框架的项目不认 `vercel.json` 顶层的 `installCommand`，只在包目录里跑了默认的 `npm install`，core 和 adapters 没有编译，函数加载 `@gateway/core` 时找不到 `dist/`。本地的 `vercel build` 没发现，是因为那份副本里还留着上一次构建的 `dist/`。处理：回滚到 `6633cb4` 的部署；安装命令移到 `functions["api/**/*.ts"].installCommand`；验证改成在没有 `node_modules`、没有 `dist/` 的干净副本里 `vercel build`，再把每个函数连同要上传的文件拷到源码目录之外单独运行。
+
+### 清理（2026-11-09）
+
+去掉了没人用的东西：`Host.config`（宿主自带配置项；删掉 `WORKER_SECRET` 后没有宿主再用它）、`Host.label`、`ConsoleGuide.label`、`/api/admin/status` 里的 `host`；core 公开入口里的 `processInbound`、`deploymentFile`（只在 core 内部用）；管理端 CSS 的 `.banner-info`、`.banner-warn`；文档里已删除的本地 Node 部署的 `AGENT_RUN_BUDGET_SECONDS`。只给测试用的 `runTool` 挪进测试脚本。`scripts/sandbox-smoke.ts` 从“分层与组合”那次起就没有组合网关，跑不起来，现在开头按 Vercel 部署组合一次。

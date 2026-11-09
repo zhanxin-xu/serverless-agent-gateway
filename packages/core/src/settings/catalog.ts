@@ -9,11 +9,11 @@
  *
  * The core settings (the agent, the console) are listed here. Everything else
  * comes from the deployment's composition (src/composition.ts): each module's
- * and its providers' (Module.config, Provider.config), each channel's
- * (ChannelAdapter.config), and the host's (Host.config). Collected on first
+ * and its providers' (Module.config, Provider.config), and each channel's
+ * (ChannelAdapter.config). Collected on first
  * use after compose(), not on import: config.ts reads this, and modules read config.ts.
  */
-import { channels, host, modules, providers } from "../composition.js";
+import { channels, modules, providers } from "../composition.js";
 import type { Module } from "../modules/types.js";
 
 export type SettingKind = "text" | "textarea" | "secret" | "url" | "int" | "number" | "json" | "enum";
@@ -124,7 +124,7 @@ let built: { from: readonly unknown[]; catalog: Catalog } | undefined;
 
 /**
  * Every setting, in the order the console lists them: the modules (each with
- * its providers), the channels, the core groups, the host's. Built once per
+ * its providers), the channels, the core groups. Built once per
  * composition (compose() makes a new module list).
  */
 function catalog(): Catalog {
@@ -154,11 +154,6 @@ function catalog(): Catalog {
   }
   groups.push(...CORE_GROUPS);
   settings.push(...CORE_SETTINGS);
-  const own = host().config;
-  if (own) {
-    groups.push(own.group);
-    settings.push(...own.settings);
-  }
   // A provider choice lists the capability's providers; unset, the one configured is used (src/modules/capability.ts).
   const withProviders = settings.map((def): SettingDef => {
     if (!def.capability) return def;

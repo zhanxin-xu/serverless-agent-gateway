@@ -303,7 +303,10 @@ function safeJson(text: string) {
 const { handleWebhook } = await import("../packages/core/src/webhook.js");
 const { handleWorker } = await import("../packages/vercel/src/worker.js");
 worker = handleWorker;
-const { activeTools, runTool } = await import("../packages/core/src/modules/registry.js");
+const registry = await import("../packages/core/src/modules/registry.js");
+const { activeTools } = registry;
+/** Run one tool the way a turn would, with every active tool and no chat policy. */
+const runTool = (name: string, rawArgs: string, ctx: import("../packages/core/src/modules/tool.js").ToolContext) => new registry.Toolset().run(name, rawArgs, ctx);
 const { callBudgetMs } = await import("../packages/core/src/agent/budget.js");
 const { evaluate } = await import("../packages/core/src/modules/basics/tools.js");
 const { messageHeader } = await import("../packages/core/src/channels/format.js");

@@ -132,7 +132,7 @@
 
 ```bash
 npx vercel env pull              # 把 VERCEL_OIDC_TOKEN 写进 .env.local（会覆盖原文件）
-npx tsx scripts/sandbox-smoke.ts
+npx tsx --conditions=source scripts/sandbox-smoke.ts
 ```
 
 它会创建一块临时盘、跑几条命令、读写文件，最后把盘删掉。

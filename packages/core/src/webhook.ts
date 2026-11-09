@@ -12,7 +12,7 @@ import { handleMessage } from "./runtime/ingress.js";
 import { json, type ChannelAdapter, type InboundMessage } from "./channels/types.js";
 import { refreshSettings } from "./settings/service.js";
 
-export async function processInbound(adapter: ChannelAdapter, message: InboundMessage, origin: string): Promise<void> {
+async function processInbound(adapter: ChannelAdapter, message: InboundMessage, origin: string): Promise<void> {
   try {
     if (message.mode !== "ambient") await adapter.typing?.(message).catch(() => {});
     await handleMessage(adapter, message, { origin });

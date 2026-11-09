@@ -19,7 +19,7 @@
 | 组合里的 | 是什么 | Vercel 部署包 |
 |---|---|---|
 | `baseDir` | 部署包自己的目录：配置里写的文件路径（形象图、参考音频）相对它 | `packages/vercel/` |
-| `host` | 宿主：后台任务、一次运行能跑多久、跑不完时怎么接力、自己的配置项、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` 接着做 |
+| `host` | 宿主：后台任务、一次运行能跑多久、跑不完时怎么接力、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` 接着做 |
 | `persona` | 人设 | 大肥鱼 |
 | `modules` | 加载哪些模块、什么顺序 | 全部 8 个 |
 | `providers` | 各能力的实现 | DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 |
@@ -28,7 +28,7 @@
 | `store` / `database` | 存储，以及管理端怎么给它建表 | 配了 Supabase 用 Supabase，否则内存 |
 | `guide` | 管理端里随部署变的文案：怎么设管理密码、怎么连数据库 | Vercel 控制台的步骤 |
 
-管理端跟着部署走：配置页列出的是组合里的模块、实现、渠道和宿主的配置项（Vercel 部署才有“Vercel”分组），引导页的密码和数据库步骤来自 `guide`，数据库状态来自 `database`，标题和头像来自人设。
+管理端跟着部署走：配置页列出的是组合里的模块、实现和渠道的配置项，引导页的密码和数据库步骤来自 `guide`，数据库状态来自 `database`，标题和头像来自人设。
 
 组合里的东西都在 `compose()` 之后才读，所以文件加载的先后无所谓。新增一种部署（比如常驻的 Node 服务）：新建一个部署包 `packages/<名字>/`，写一个 `Host`、一个组合和入口，依赖 `@gateway/core` 和 `@gateway/adapters`。
 

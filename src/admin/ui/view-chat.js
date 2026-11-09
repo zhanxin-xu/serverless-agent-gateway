@@ -267,24 +267,38 @@ function inModelOrder(events) {
 }
 
 /**
- * One group per turn, closed where the turn ended (end_turn, or an error,
- * a pause…), newest first. A group lists only what the model read or wrote,
- * the messages that were waiting for that turn included; the log's own
- * markers (turn/start, steps, tool-call markers…) only set the header.
+ * One group per turn as the model saw it, oldest first: a group closes with
+ * the turn's end (end_turn, or an error, a pause…). Messages read after the
+ * turn's last step (they came in while it ran) were read after its end_turn,
+ * so they open the next group, as the messages that turn handles. Only what
+ * the model read or wrote is listed; the log's own markers (turn/start,
+ * steps, tool-call markers…) only set the header.
  */
 function turnsAsRead(ordered) {
   const groups = [];
   let group = { lines: [], log: [] };
+  // Messages read after a step ended: they belong to this turn if another step follows, else to the next.
+  let held = [];
   for (const e of ordered) {
-    group.log.push(e);
-    if (e.modelSees) group.lines.push(e);
-    if (e.type === "turn/end") {
-      groups.push(group);
-      group = { lines: [], log: [] };
+    if (e.type === "step/start") {
+      group.lines.push(...held);
+      held = [];
     }
+    if (e.type === "turn/end") {
+      group.log.push(e);
+      groups.push(group);
+      group = { lines: held, log: [] };
+      held = [];
+      continue;
+    }
+    group.log.push(e);
+    const arrived = e.type === "user/message" || e.type === "admin/message";
+    if (e.modelSees && arrived && group.log.some((x) => x.type === "step/end")) held.push(e);
+    else if (e.modelSees) group.lines.push(e);
   }
+  group.lines.push(...held);
   if (group.lines.length) groups.push(group);
-  return groups.reverse();
+  return groups;
 }
 
 function turnHeader(group) {
@@ -326,7 +340,7 @@ function eventRow(e) {
       "span",
       { class: "what" },
       summarize(e),
-      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 上一步运行时收到") : null,
+      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 处理中途收到") : null,
     ),
   );
   const toggle = () => {
@@ -341,11 +355,16 @@ function eventRow(e) {
 function renderEvents(body, chat, info) {
   const events = new Map();
   let session = null;
-  const list = h("div", { class: "events" });
+  // Oldest at the top, newest at the bottom, like a chat: scroll up for earlier turns.
+  const list = h("div", { class: "events events-log" });
+  const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 80;
   const meta = h("span", { class: "muted" });
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
 
-  const draw = () => {
+  /** Redraw; `keep`: "bottom" to follow new events, "top-anchor" to keep the view when older ones are added above. */
+  const draw = (keep = nearBottom() ? "bottom" : "stay") => {
+    const fromBottom = list.scrollHeight - list.scrollTop;
+    const top = list.scrollTop;
     const groups = turnsAsRead(inModelOrder(events.values()));
     meta.textContent = !session ? "" : session.minSeq > 0 ? `共 ${session.nextSeq} 条事件，第 ${session.minSeq} 条之前的已压缩成摘要` : `共 ${session.nextSeq} 条事件`;
     more.hidden = !events.size || Math.min(...events.keys()) <= (session?.minSeq ?? 0);
@@ -355,6 +374,9 @@ function renderEvents(body, chat, info) {
         ? groups.map((g) => (g.lines.length ? h("section", { class: "turn" }, turnHeader(g), g.lines.map(eventRow)) : null))
         : h("p", { class: "muted" }, "没有事件。"),
     );
+    if (keep === "bottom") list.scrollTop = list.scrollHeight;
+    else if (keep === "top-anchor") list.scrollTop = list.scrollHeight - fromBottom;
+    else list.scrollTop = top;
   };
   const load = async (params) => {
     const page = await api.get("chat/events", { chat, limit: 150, ...params });
@@ -376,7 +398,7 @@ function renderEvents(body, chat, info) {
   more.addEventListener("click", async () => {
     const oldest = Math.min(...events.keys());
     if (!(await load({ before: oldest }))) more.hidden = true;
-    draw();
+    draw("top-anchor");
   });
 
   fill(
@@ -401,11 +423,11 @@ function renderEvents(body, chat, info) {
         }),
       ),
     ),
-    h("p", { class: "help" }, "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组，最新的在上面。点一行看原始 JSON，每 3 秒刷新。"),
-    list,
+    h("p", { class: "help" }, "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组。最新的在下面，往上翻看更早的。点一行看原始 JSON，每 3 秒刷新。"),
     h("div", { class: "row" }, more),
+    list,
   );
-  load().then(draw);
+  load().then(() => draw("bottom"));
   return every(3000, async () => {
     if ((await load({ after: pollFrom() })) > 0) draw();
   });

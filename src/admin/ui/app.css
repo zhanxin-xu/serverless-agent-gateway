@@ -197,6 +197,7 @@ tr.clickable:hover { background: var(--soft); }
 .composer textarea { max-width: none; }
 .window { font-size: 13px; }
 .events { display: flex; flex-direction: column; gap: 12px; }
+.events-log { max-height: 72vh; overflow-y: auto; padding-right: 4px; }
 .turn { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
 .turn-head { background: var(--soft); padding: 7px 12px; font-size: 13px; }
 .ev { display: grid; grid-template-columns: 52px 70px 150px minmax(0, 1fr); gap: 10px; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 13px; cursor: pointer; align-items: baseline; }

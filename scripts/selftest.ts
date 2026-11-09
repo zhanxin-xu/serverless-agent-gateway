@@ -129,9 +129,12 @@ async function fakeResponses(body: any) {
       assert.equal(body.tool_choice, "none");
       return respond(body, [textMessage("摘要：大家聊过天气和算术。")]);
     }
-    // Only this turn's tool results count (the log keeps earlier turns' too).
-    const turnStart = body.input.findLastIndex((i: any) => i.role === "developer" && /轮开始/.test(i.content));
-    const toolOutput = body.input.slice(turnStart).findLast((i: any) => i.type === "function_call_output");
+    // Only this turn's tool results count (the log keeps earlier turns' too): a turn starts after
+    // the last one ended, with end_turn ("turn ended") or a plain-text answer.
+    const turnStart = body.input.findLastIndex(
+      (i: any) => (i.type === "function_call_output" && i.output === "turn ended") || (i.type === "message" && i.role === "assistant"),
+    );
+    const toolOutput = body.input.slice(turnStart + 1).findLast((i: any) => i.type === "function_call_output");
     const lastUser = body.input.findLast((i: any) => i.role === "user" && !textOf(i).startsWith("（系统提示）"));
     const userText = textOf(lastUser).split("\n").slice(1).join("\n");
     if (userText.startsWith("慢") && gate) await gate;
@@ -372,6 +375,7 @@ const httpCall = (text: string, conversationId = "c1") =>
   ).then((r) => r.json() as Promise<{ reply: string | null; messages: string[]; queued?: true }>);
 
 const llmRequests = () => calls.filter((c) => c.url.endsWith("/responses"));
+const userLines = (req: Call) => req.body.input.filter((i: any) => i.role === "user").map(textOf);
 const sentTo = (path: string) => calls.filter((c) => c.url.endsWith(path)).map((c) => c.body);
 
 let passed = 0;
@@ -516,15 +520,14 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   assert.ok(first!.body.instructions.startsWith("# 身份"), "built-in persona prompt");
   assert.ok(first!.body.instructions.endsWith(qqHint), "channel hint appended");
   assert.equal(first!.body.tool_choice, "required");
-  const [message, note] = first!.body.input;
+  const [message, ...rest] = first!.body.input;
   assert.match(message.content, /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
-  assert.deepEqual(note, { role: "developer", content: note.content });
-  assert.match(note.content, /^（系统提示）第1轮开始。待处理的消息：第0条（#USER1，@你）。默认回复第0条。$/);
+  assert.deepEqual(rest, [], "an ordinary turn starts with the messages alone: no note");
 
   // Stateless replay of the log: reasoning (encrypted_content kept) + function_call, then the output.
-  assert.deepEqual(second!.body.input.slice(2).map((i: any) => i.type), ["reasoning", "function_call", "function_call_output"]);
-  assert.equal(second!.body.input[2].encrypted_content, "enc");
-  assert.deepEqual(second!.body.input[4], { type: "function_call_output", call_id: "call_1", output: "20" });
+  assert.deepEqual(second!.body.input.slice(1).map((i: any) => i.type), ["reasoning", "function_call", "function_call_output"]);
+  assert.equal(second!.body.input[1].encrypted_content, "enc");
+  assert.deepEqual(second!.body.input[3], { type: "function_call_output", call_id: "call_1", output: "20" });
 
   const sent = calls.find((c) => c.url.includes("/v2/users/USER1/messages"))!;
   assert.equal(sent.headers.get("authorization"), "QQBot qq-token");
@@ -536,7 +539,6 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
     [
       "user/message",
       "turn/start",
-      "developer/message",
       "step/start",
       "assistant/message",
       "tool/call",
@@ -560,10 +562,10 @@ await test("event log: the next turn replays the last request verbatim (cache pr
   const firstOfTurn2 = llmRequests()[turn1]!.body.input;
   // Turn 2's request starts with turn 1's last request plus turn 1's final output: a strict extension.
   assert.deepEqual(firstOfTurn2.slice(0, lastOfTurn1.length), lastOfTurn1);
-  assert.equal(firstOfTurn2[2].type, "reasoning");
-  assert.deepEqual(firstOfTurn2[2].summary, [{ type: "summary_text", text: "先算一下" }]);
-  assert.equal(firstOfTurn2[2].encrypted_content, "enc");
-  assert.match(firstOfTurn2.at(-1).content, /^（系统提示）第2轮开始。待处理的消息：第\d+条/);
+  assert.equal(firstOfTurn2[1].type, "reasoning");
+  assert.deepEqual(firstOfTurn2[1].summary, [{ type: "summary_text", text: "先算一下" }]);
+  assert.equal(firstOfTurn2[1].encrypted_content, "enc");
+  assert.match(textOf(firstOfTurn2.at(-1)), /\]\nsecond$/, "turn 2 ends with its message, no note");
 });
 
 await test("qq: send_message twice + end_turn in one step → two passive replies, one model call", async () => {
@@ -820,7 +822,7 @@ await test("concurrency: messages during a turn are seen at the next step; one m
   assert.equal(maxInFlight, 1, "never two model calls for one chat at once");
   const step2 = llmRequests()[1]!.body.input;
   assert.match(textOf(step2.findLast((i: any) => i.role === "user")), /\]\n顺便问个事$/);
-  assert.match(step2.at(-1).content, /^（系统提示）第1轮：处理期间新来了 第\d+条（#CONC，@你）。回复它们要用 reply_to 指定。$/);
+  assert.ok(!step2.some((i: any) => i.role === "developer"), "no note: the new message is in the log where the model reads it");
   assert.equal(llmCalls, 2, "handled inside the same turn, no second run");
 });
 
@@ -849,9 +851,8 @@ await test("concurrency: two @ at once in a group → one run answers both", asy
   await drain();
   assert.equal(maxInFlight, 1);
   const turnStarts = (await events("qq:group:GPAIR")).filter((e) => e.type === "turn/start");
-  const notes = llmRequests().map((r) => r.body.input.find((i: any) => i.role === "developer")?.content ?? "");
   assert.equal(turnStarts.length, 1, "both arrived before the run read the log: one turn");
-  assert.ok(notes.some((n: string) => /待处理的消息：第0条（#MA，@你）、第1条（#MB，@你）/.test(n)));
+  assert.deepEqual(userLines(llmRequests()[0]!).map((l: string) => l.split("\n")[1]), ["问题一", "问题二"], "the model reads both");
 });
 
 // ── Full group messages (GROUP_MESSAGE_CREATE) ──
@@ -859,14 +860,13 @@ const groupMsg = (group: string, id: string, content: string, author: Record<str
   qqRequest({ op: 0, t: "GROUP_MESSAGE_CREATE", d: { id, content, group_openid: group, author } });
 const groupAt = (group: string, id: string, content: string, author: Record<string, unknown> = { member_openid: "MB" }) =>
   qqRequest({ op: 0, t: "GROUP_AT_MESSAGE_CREATE", d: { id, content, group_openid: group, author } });
-const userLines = (req: Call) => req.body.input.filter((i: any) => i.role === "user").map(textOf);
 
 await test("qq group: ordinary messages logged; ≤1 ambient wake per window; ambient text not auto-sent; @ sees it all", async () => {
   await handleWebhook(groupMsg("GROUP3", "a1", "今天吃啥"), "qq");
   await drain();
   assert.equal(llmCalls, 2, "first ordinary message wakes an ambient turn");
   const ambient = llmRequests()[0]!.body.input;
-  assert.match(ambient.at(-1).content, /^（系统提示）第1轮开始。待处理的消息：第0条（老王 #MA）。默认回复第0条。这些消息都没有 @ 你，不一定要回应；不发言就直接调用 end_turn。$/);
+  assert.ok(!ambient.some((i: any) => i.role === "developer"), "no note: the header shows there's no @");
   assert.match(ambient[0].content, /｜群聊｜发送人 老王 #MA\]\n今天吃啥$/, "no @你 marker, nickname shown");
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 0, "ambient turn's plain text is not auto-sent");
 
@@ -880,7 +880,7 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   const lines = userLines(direct);
   assert.deepEqual(lines.map((l: string) => l.split("\n")[1]), ["今天吃啥", "火锅吧", "你觉得呢"]);
   assert.match(lines[2]!, /｜@你\]\n你觉得呢$/);
-  assert.match(direct.body.input.at(-1).content, /待处理的消息：第\d+条（老王 #MA）、第\d+条（#MB，@你）。默认回复第\d+条/);
+  assert.match(textOf(direct.body.input.at(-1)), /｜@你\]\n你觉得呢$/);
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 1, "the @ is answered");
 });
 
@@ -1340,7 +1340,7 @@ await test("worker: unreachable when a turn pauses → the work stays in the log
   await handleWebhook(c2c("run-w4", "在吗", "NOWORKER"), "qq");
   await drain();
   assert.deepEqual(await turnEnds("qq:c2c:NOWORKER"), ["paused", "completed"]);
-  assert.match(llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content, /^（系统提示）第2轮：接着第1轮继续/);
+  assert.match(llmRequests()[0]!.body.input.findLast((i: any) => i.role === "developer").content, /^（系统提示）这一轮接着上一段继续/);
 });
 
 await test("pause: not enough time for the next step → the turn ends paused and a fresh worker continues it", async () => {
@@ -1354,7 +1354,7 @@ await test("pause: not enough time for the next step → the turn ends paused an
   assert.deepEqual(await turnEnds("qq:c2c:PAUSE"), ["paused", "completed"]);
   assert.equal(llmCalls, 2, "no forced wrap-up step: the calculation's result is answered in the fresh function");
   const resumed = llmRequests()[1]!.body.input.findLast((i: any) => i.role === "developer").content;
-  assert.match(resumed, /^（系统提示）第2轮：接着第1轮继续。上一段在这个函数里的时间用完了；/);
+  assert.match(resumed, /^（系统提示）这一轮接着上一段继续：上一段在这个函数里的时间用完了，/);
   assert.deepEqual(sentTo("/v2/users/PAUSE/messages").map((b) => b.content), ["答案是 20"], "one answer, no progress report");
 });
 
@@ -1979,7 +1979,7 @@ await test("step limit: the last step gets a wrap-up note and must send", async 
     const last = reqs[2]!.body;
     assert.deepEqual(last.tool_choice, { type: "function", name: "send_message" });
     assert.equal(reqs[1]!.body.tool_choice, "required");
-    assert.match(last.input.at(-1).content, /^（系统提示）第\d+轮：步数用完了，这是最后一步：必须现在用 send_message 发一条消息/);
+    assert.match(last.input.at(-1).content, /^（系统提示）步数用完了，这是这一轮的最后一步：必须现在用 send_message 发一条消息/);
     assert.ok(!reqs[1]!.body.input.some((i: any) => i.role === "developer" && /最后一步/.test(i.content)));
     assert.equal((await events("http:c-steps")).at(-1)!.data.reason, "max-steps");
   } finally {
@@ -2003,7 +2003,7 @@ await test("time limit: close to the function's deadline, the next step is the l
       globalThis.fetch = original;
     }
     assert.equal(llmRequests().length, 2);
-    assert.match(llmRequests()[1]!.body.input.at(-1).content, /^（系统提示）第\d+轮：时间快用完了/);
+    assert.match(llmRequests()[1]!.body.input.at(-1).content, /^（系统提示）时间快用完了/);
   } finally {
     delete process.env.AGENT_MAX_DURATION_SECONDS;
     clockOffset = 0;
@@ -2168,7 +2168,8 @@ await test("chat profiles: block drops, record keeps quiet context, mention neve
   const req = llmRequests()[0]!;
   assert.match(req.body.instructions, /# 这个聊天的额外设定\n\n这个群说话要学术一点$/);
   assert.deepEqual(userLines(req).map((l: string) => l.split("\n")[1]), ["记住这个", "/reset", "现在呢"], "the quiet messages are context");
-  assert.match(req.body.input.at(-1).content, /待处理的消息：第2条（#MB，@你）。/, "but not work");
+  const { session: grec } = await getStore().open("qq:group:GREC", Number.MAX_SAFE_INTEGER);
+  assert.equal(grec!.cursor, 2, "but not work: the turn handled only the new @");
 
   const { replyMode } = await import("../src/chats/profile.js");
   process.env.CHAT_DEFAULT_MODE = "mute";

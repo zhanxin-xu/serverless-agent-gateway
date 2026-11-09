@@ -32,7 +32,7 @@
  * reasoning, max_output_tokens, …) can be set from config without code changes.
  */
 import { config } from "../config.js";
-import { messageLabel, type NewEvent, type OutputItem, type SessionEvent, type TurnEndReason } from "../conversation/events.js";
+import type { NewEvent, OutputItem, SessionEvent, TurnEndReason } from "../conversation/events.js";
 import type { UnfinishedTurn } from "../conversation/recovery.js";
 import type { Session } from "../conversation/session.js";
 import { undelivered } from "../conversation/undelivered.js";
@@ -50,8 +50,13 @@ const isFunctionCall = (item: OutputItem): item is FunctionCall => item.type ===
 const NO_TIME_FOR_TOOL =
   "Error: not run, this function is out of time. The turn continues in a fresh function in a moment; call it again there.";
 
-const describe = (m: SessionEvent<"user/message">) =>
-  `${messageLabel(m.seq)}（${m.data.sender}${m.data.mentioned ? "，@你" : ""}）`;
+/**
+ * Notes ("（系统提示）…") only when there's something the log doesn't show:
+ * the turn continues one that was cut off, messages didn't get through, or
+ * it's the last step. What to handle and where replies go follow one rule,
+ * in the system prompt: the messages since the last turn, and by default the
+ * newest of them that @-mentions the bot (else the newest).
+ */
 
 /** Undelivered messages quoted in a turn's opening note: the newest few, each cut short. */
 const MAX_UNDELIVERED_SHOWN = 3;
@@ -66,17 +71,10 @@ function undeliveredNote(missed: string[]): string {
   return `之前有 ${missed.length} 条消息没能发出去：${quoted}。还用得上的话，这一轮补上。`;
 }
 
-function listMessages(messages: SessionEvent<"user/message">[]): string {
-  const shown = messages.slice(-10).map(describe).join("、");
-  return messages.length > 10 ? `……${shown}（共 ${messages.length} 条）` : shown;
+function resumeNote(resume: UnfinishedTurn): string {
+  const why = resume.interruptions ? "上一段的最后一步被打断了，那一步没有结果" : "上一段在这个函数里的时间用完了";
+  return `这一轮接着上一段继续：${why}，现在换了一个新的函数接着跑。先看上面已经做了什么、发了什么，从停下的地方接着做，不要重复已经发过的消息。`;
 }
-
-/**
- * The per-turn notes only say how this turn works (what to handle, where
- * replies go, whether anyone called the bot); how to behave is the persona's,
- * in the system prompt, so these stay the same whoever the bot is.
- */
-const ambientNote = (hangup: string) => `这些消息都没有 @ 你，不一定要回应；不发言就直接调用 ${hangup}。`;
 
 export interface TurnOptions {
   session: Session;
@@ -88,10 +86,10 @@ export interface TurnOptions {
   trigger: "direct" | "ambient";
   /** The messages this turn starts with (not yet handled), oldest first. */
   pending: SessionEvent<"user/message">[];
-  /** The message replies go to by default. */
-  main: SessionEvent<"user/message">;
-  /** Whether the main message can still take a reply (QQ: 5 per message). */
+  /** Whether the message replies go to by default can still take one (QQ: 5 per message). */
   canReply(): Promise<boolean>;
+  /** Messages that arrived during the turn, before a step that will show them (the default reply target may move to one). */
+  arrived?(messages: SessionEvent<"user/message">[]): Promise<void>;
   /** The platform couldn't be reached this run: the turn ends after the step instead of letting the model retry. */
   unreachable?(): boolean;
   /**
@@ -125,18 +123,11 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
   const usage = { input: 0, cached: 0, reasoning: 0 };
   let handledUpTo = o.pending.at(-1)!.seq;
 
-  const replyNote = `默认回复${messageLabel(o.main.seq)}。` + undeliveredNote(undelivered(session.events, (tool) => talks.has(tool)));
-  const start = o.resume
-    ? `（系统提示）第${turn}轮：接着第${o.resume.turn}轮继续。` +
-      (o.resume.interruptions ? "上一段的最后一步被打断了，那一步没有结果；" : "上一段在这个函数里的时间用完了；") +
-      `现在换了一个新的函数接着跑。待处理的消息：${listMessages(o.pending)}。` +
-      `先看上面已经做了什么、发了什么，从停下的地方接着做，不要重复已经发过的消息。${replyNote}`
-    : `（系统提示）第${turn}轮开始。待处理的消息：${listMessages(o.pending)}。${replyNote}` +
-      (o.trigger === "ambient" ? ambientNote([...hangups].join(" / ")) : "");
+  const start = [o.resume ? resumeNote(o.resume) : "", undeliveredNote(undelivered(session.events, (tool) => talks.has(tool)))].join("");
   // Events are written in a few batches per step (each batch is one store call).
   let opening: NewEvent[] = [
     { type: "turn/start", data: { turn, trigger: o.trigger } },
-    { type: "developer/message", data: { turn, text: start } },
+    ...(start ? [{ type: "developer/message" as const, data: { turn, text: `（系统提示）${start}` } }] : []),
   ];
   const turnEnd = (reason: TurnEndReason, error?: string): NewEvent => ({
     type: "turn/end",
@@ -146,12 +137,12 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
 
   for (let step = 1; ; step++) {
     const notes: string[] = [];
-    // Messages that arrived since the last step are already in the log; point them out.
-    // (The run read the log just before starting the turn.)
+    // Messages that arrived since the last step are in the log, where the model reads them;
+    // the default reply target follows them. (The run read the log just before starting the turn.)
     if (step > 1) await session.refresh();
     const arrived = session.messagesAfter(handledUpTo);
     if (arrived.length) {
-      notes.push(`（系统提示）第${turn}轮：处理期间新来了 ${listMessages(arrived)}。回复它们要用 reply_to 指定。`);
+      await o.arrived?.(arrived);
       handledUpTo = arrived.at(-1)!.seq;
     }
 
@@ -170,7 +161,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
         return result(step - 1, reason);
       }
       notes.push(
-        `（系统提示）第${turn}轮：${outOfTime ? "时间快用完了" : "步数用完了"}，这是最后一步：必须现在用 ${say} 发一条消息，发完这一轮就结束。` +
+        `（系统提示）${outOfTime ? "时间快用完了" : "步数用完了"}，这是这一轮的最后一步：必须现在用 ${say} 发一条消息，发完这一轮就结束。` +
           "说出已经得到的结果；没做完就说做到哪了、卡在哪、接下来怎么办。",
       );
     }

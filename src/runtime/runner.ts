@@ -192,15 +192,22 @@ async function drain(
         await session.setCursor(pending.at(-1)!.seq);
         continue;
       }
-      // Replies go by default to the newest @ (else newest) message that can still take one:
-      // a real reply where the window is open, else a push (QQ, where the chat allows it).
-      const mentioned = pending.filter((m) => m.data.mentioned);
-      const main =
-        (await findLastAsync(mentioned, (m) => outbox.canReply(m.seq, { inWindow: true }))) ??
-        (await findLastAsync(pending, (m) => outbox.canReply(m.seq, { inWindow: true }))) ??
-        (await findLastAsync(mentioned, (m) => outbox.canReply(m.seq))) ??
-        (await findLastAsync(pending, (m) => outbox.canReply(m.seq))) ??
-        pending.at(-1)!;
+      // The rule the system prompt states: replies go by default to the newest message
+      // that @-mentions the bot, else the newest (among those that can still take one:
+      // a real reply where the window is open, else a push, where the chat allows it).
+      // Messages that arrive during the turn count too.
+      const handling = [...pending];
+      const defaultTarget = async () => {
+        const mentioned = handling.filter((m) => m.data.mentioned);
+        return (
+          (await findLastAsync(mentioned, (m) => outbox.canReply(m.seq, { inWindow: true }))) ??
+          (await findLastAsync(handling, (m) => outbox.canReply(m.seq, { inWindow: true }))) ??
+          (await findLastAsync(mentioned, (m) => outbox.canReply(m.seq))) ??
+          (await findLastAsync(handling, (m) => outbox.canReply(m.seq))) ??
+          handling.at(-1)!
+        );
+      };
+      const main = await defaultTarget();
       turnState.main = main.seq;
       ctx.sent = [];
       ctx.chat.sender = main.data.sender;
@@ -217,8 +224,11 @@ async function drain(
           turn,
           trigger,
           pending,
-          main,
-          canReply: () => outbox.canReply(main.seq),
+          canReply: () => outbox.canReply(turnState.main),
+          async arrived(messages) {
+            handling.push(...messages);
+            turnState.main = (await defaultTarget()).seq;
+          },
           unreachable: () => Boolean(outbox.unreachable),
           continuable,
           resume,

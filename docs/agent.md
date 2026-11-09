@@ -17,13 +17,13 @@
 
 交给 worker 时，运行者**不释放锁**：它停止续租、再续一次租约，然后把锁的持有者 ID（一个随机 UUID，只有这次运行和数据库知道）放进请求发给 `/api/worker`。worker 用这个 ID 释放锁（只有持有者对得上才成功，所以同一张“票”只能用一次），再以新的持有者抢锁接着跑。这个请求不需要签名或密钥：拿不出当前持有者 ID 的请求一律拒绝（401），而能拿出它的只有正在交接的那次运行。worker 释放和抢锁之间如果被另一条消息的入口抢先，就由那边接着跑，结果一样都是从事件流继续。worker 联系不上时，运行者自己释放锁。任何时刻都不会有两个函数同时以为自己持有锁。
 
-实现见 [`src/runtime/`](../src/runtime/)：入口 `ingress.ts`、采样器 `sampler.ts`、运行者 `runner.ts`、锁和交接 `lock.ts`；交给 worker 是宿主的事，Vercel 的在 [`deploy/vercel/`](../deploy/vercel/)。
+实现见 [`packages/core/src/runtime/`](../packages/core/src/runtime/)：入口 `ingress.ts`、采样器 `sampler.ts`、运行者 `runner.ts`、锁和交接 `lock.ts`；交给 worker 是宿主的事，Vercel 的在 [`packages/vercel/src/`](../packages/vercel/src/)。
 
 ## 一轮对话
 
 一轮从"待处理的消息"开始：游标（处理到哪条了）之后的所有消息。
 
-1. 追加 `turn/start`。普通的一轮不加系统提示：系统提示词里写着规则，上一次 end_turn 之后新来的消息就是这一轮要处理的；群聊里消息头带「@你」的是在叫它，没带的它觉得跟自己有关也可以接话。私聊和群聊各用一段规则（`src/prompt/rules.ts` 的 `SCENE_RULES`），按聊天类型拼在人设和业务规则后面。系统提示由人设、业务规则、场景、渠道格式、每个开启的模块的段落、这个聊天的额外设定拼成，见[模块 · 系统提示怎么拼](modules.md#系统提示怎么拼)。
+1. 追加 `turn/start`。普通的一轮不加系统提示：系统提示词里写着规则，上一次 end_turn 之后新来的消息就是这一轮要处理的；群聊里消息头带「@你」的是在叫它，没带的它觉得跟自己有关也可以接话。私聊和群聊各用一段规则（`packages/core/src/prompt/rules.ts` 的 `SCENE_RULES`），按聊天类型拼在人设和业务规则后面。系统提示由人设、业务规则、场景、渠道格式、每个开启的模块的段落、这个聊天的额外设定拼成，见[模块 · 系统提示怎么拼](modules.md#系统提示怎么拼)。
    发出的消息挂在哪条用户消息上（QQ 被动回复要带它的 `msg_id`）是平台的事，模型不用管：不填 `reply_to` 时，运行时挂到这一轮最新一条 @ 它的消息上，没有就挂到最新一条，都要还能回复。模型只在想显示引用框时，用 `reply_to` 加 `quote: true` 指定引用哪条。只有事件流本身看不出来的情况才加系统提示：这一轮接着上一段继续、之前有消息没能发出去。
 2. 每一步：
    - 读取事件流的新事件。这期间来的新消息模型在这一步之后就能读到（见推导规则），挂靠的消息按同样的方式跟着更新，不另加提示。
@@ -33,7 +33,7 @@
 3. 模型调用 `end_turn` 挂断，或者到了最后一步，这一轮就结束，追加 `turn/end`，游标推进到这一轮看到过的最新消息。
 4. 这个函数的时间不够了，这一轮会以 `paused` 或 `interrupted` 结束，**游标不动**，由新的函数接着这一轮继续，见[步数与时间](#步数与时间)。
 
-实现见 [`src/agent/loop.ts`](../src/agent/loop.ts)。
+实现见 [`packages/core/src/agent/loop.ts`](../packages/core/src/agent/loop.ts)。
 
 ## 事件格式
 
@@ -56,7 +56,7 @@
 | `bot/sent` | — | 机器人实际发出的一条内容（文字、表情包、语音、文件、运行时的提示），管理端的聊天记录用它 |
 | `admin/message` | ✅（当作模型自己说的） | 管理员以机器人身份发的话 |
 
-**推导规则**：从最近一次 `/reset` 之后、最近一条摘要开始，按顺序转换：摘要和用户消息变成 `user` 消息，系统提示变成 `developer` 消息，管理员代发的话变成 `assistant` 消息，模型输出原样展开，工具结果变成 `function_call_output`，其余事件跳过。系统提示词放在 `instructions` 里，不入库，每次请求时由 `src/prompt/assemble.ts` 按这个聊天开启的模块现拼。
+**推导规则**：从最近一次 `/reset` 之后、最近一条摘要开始，按顺序转换：摘要和用户消息变成 `user` 消息，系统提示变成 `developer` 消息，管理员代发的话变成 `assistant` 消息，模型输出原样展开，工具结果变成 `function_call_output`，其余事件跳过。系统提示词放在 `instructions` 里，不入库，每次请求时由 `packages/core/src/prompt/assemble.ts` 按这个聊天开启的模块现拼。
 
 两处特殊处理，都只影响推导结果，不改事件流：
 - 一步执行期间到达的消息，推导时放在这一步的工具结果之后，保证每个工具调用后面紧跟着它的结果。
@@ -66,11 +66,11 @@
 
 **图片**：入库时下载，缩到模型实际看到的大小（聊天图片最长边 512px，`read_file` 的图片 1024px），转成 JPEG，单独存在 `gateway.images` 表里，事件里只记图片的键名。每次重放的都是同一份数据，所以以前的图片模型也能再看到。
 
-实现见 [`src/conversation/`](../src/conversation/)：格式 `events.ts`、推导 `derive.ts`、恢复 `recovery.ts`、内存视图 `session.ts`。
+实现见 [`packages/core/src/conversation/`](../packages/core/src/conversation/)：格式 `events.ts`、推导 `derive.ts`、恢复 `recovery.ts`、内存视图 `session.ts`。
 
 ## 请求
 
-[`model.ts`](../src/agent/model.ts) 直接 `fetch` 调用 `POST {OPENAI_RESPONSES_BASE_URL}/responses`，不依赖 SDK，这样自定义参数可以原样透传。任何兼容 OpenAI Responses API 的服务都能用，默认是 OpenRouter。请求体为：
+[`model.ts`](../packages/core/src/agent/model.ts) 直接 `fetch` 调用 `POST {OPENAI_RESPONSES_BASE_URL}/responses`，不依赖 SDK，这样自定义参数可以原样透传。任何兼容 OpenAI Responses API 的服务都能用，默认是 OpenRouter。请求体为：
 
 ```
 { model, ...OPENAI_RESPONSES_EXTRA_BODY, instructions, input, tools, tool_choice }
@@ -87,7 +87,7 @@
 - **按角色区分工具**：循环不认工具名，只看工具声明的 `role`：`say`（`send_message`，最后一步强制调用它）、`talk`（`send_sticker`、`send_voice`、`send_file`，和 `say` 一样算发消息，发送失败就不挂断）、`hangup`（`end_turn`，由循环处理，不真正执行）。新增一个发消息的工具，只要声明 `role: "talk"`，不用改循环。
 - **同一步的执行顺序**：一步里的所有调用都按模型给出的顺序执行，`end_turn` 放在什么位置都一样，整步执行完才结束这一轮。
 - **发送失败先不挂断**：挂断的那一步里如果有消息发送失败，这一轮就先不结束，让模型看到错误再决定怎么办（比如回复窗口过期、回复次数用满时换一条消息回复）。
-- **平台连不上就停**：连接 QQ / Telegram 接口时如果连不上（连接超时、DNS 失败等），先等 1 秒自动重试一次；连接没建立说明请求没到平台，重试不会发出重复消息。还是不行，或者平台返回 5xx，这次运行就不再发送：后面的发送直接报错，模型看到“连不上，别重试，调用 end_turn”，这一轮在这一步后结束（`turn/end` 的原因是 `unreachable`），也不再接着处理新消息，留给下一次运行重试。实现见 [`src/channels/net.ts`](../src/channels/net.ts) 和 [`src/runtime/outbox.ts`](../src/runtime/outbox.ts)。
+- **平台连不上就停**：连接 QQ / Telegram 接口时如果连不上（连接超时、DNS 失败等），先等 1 秒自动重试一次；连接没建立说明请求没到平台，重试不会发出重复消息。还是不行，或者平台返回 5xx，这次运行就不再发送：后面的发送直接报错，模型看到“连不上，别重试，调用 end_turn”，这一轮在这一步后结束（`turn/end` 的原因是 `unreachable`），也不再接着处理新消息，留给下一次运行重试。实现见 [`packages/core/src/channels/net.ts`](../packages/core/src/channels/net.ts) 和 [`packages/core/src/runtime/outbox.ts`](../packages/core/src/runtime/outbox.ts)。
 - **兜底**：如果服务商没有遵守 `required`、模型直接输出了文字，私聊或被 @ 时会把这段文字发出去。
 
 | 可选的 `tool_choice` | 含义 |
@@ -101,7 +101,7 @@
 
 - **步数**：一轮最多 40 步，旁观轮次也一样（不插话时只调用 `end_turn`，1 步就结束）。
 - **步数用完，最后一步必须发消息**：追加一条系统提示，告诉模型步数用完了；同时把 `tool_choice` 设为必须调用 `send_message`（角色为 `say` 的工具），让它说出目前的结果，没做完就说做到哪了。如果默认消息已经回复满 5 次，就直接结束。
-- **时间**：函数最长运行 300 秒（`AGENT_MAX_DURATION_SECONDS`），所有规则写在 [`src/agent/budget.ts`](../src/agent/budget.ts)：
+- **时间**：函数最长运行 300 秒（`AGENT_MAX_DURATION_SECONDS`），所有规则写在 [`packages/core/src/agent/budget.ts`](../packages/core/src/agent/budget.ts)：
   - **剩余不到 100 秒，不开新的一步**：这一轮以 `paused` 结束，游标不动，交给一个新的 worker。中间不会强行收尾，也不会多发一句"还没做完"。
   - **每次调用都要在截止前 20 秒结束**：模型请求的超时是"剩余时间减 20 秒"（同时不超过 `OPENAI_RESPONSES_TIMEOUT_MS`，默认 280 秒）；`bash`、画图、语音、联网搜索等工具的超时也按这个缩短；剩不到 5 秒时工具直接不执行，告诉模型"换个函数再调"。这 20 秒用来写库和交接，函数就不会在调用中途被平台杀掉。
   - **模型请求超时或临时出错**（超时、断网、429、5xx）：这一轮以 `interrupted` 结束，游标不动，交给新的 worker 重试这一步。其他错误（比如 4xx）照旧算失败，回一句"出错了"。
@@ -110,7 +110,7 @@
   - **连续中断就放弃**：同一件事连续 2 轮都是 `interrupted`（每一轮都已经有一个完整的函数），说明它在一个函数里做不完，就放弃：游标推进，直接回复的消息会收到"这件事每次做到一半都超时了……"。中间有 `paused` 说明有进展，会重新计数。
   - **同步渠道**（HTTP）没法换函数，保留原来的做法：剩余不到 90 秒时下一步就是最后一步，必须发消息；剩余不到 120 秒就不开新的一轮，剩下的消息等下一个请求。
 - **交给 worker 失败**：重试两次（间隔 1 秒、3 秒）后还连不上，运行者释放锁，这一轮留在事件流里，下一条消息的运行会接着做。
-- **发不出去**（QQ 群消息 5 分钟后不能再回复，改发的主动消息又被拒收）：做得久的一轮，结果可能发不出去。错误里告诉模型别再挑旧消息重试、挂断这一轮；之后每一轮开头都会提醒它"之前有 N 条消息没能发出去：「……」"，直到它成功发出一条消息为止，所以下次群里有人说话时，它会把结果补上。实现见 [`src/conversation/undelivered.ts`](../src/conversation/undelivered.ts)。
+- **发不出去**（QQ 群消息 5 分钟后不能再回复，改发的主动消息又被拒收）：做得久的一轮，结果可能发不出去。错误里告诉模型别再挑旧消息重试、挂断这一轮；之后每一轮开头都会提醒它"之前有 N 条消息没能发出去：「……」"，直到它成功发出一条消息为止，所以下次群里有人说话时，它会把结果补上。实现见 [`packages/core/src/conversation/undelivered.ts`](../packages/core/src/conversation/undelivered.ts)。
 
 ## 上下文压缩
 
@@ -121,7 +121,7 @@
 - **摘要调用照顾缓存**：原样重放刚才那次请求的前缀（同样的系统提示词、工具和开头的输入），在末尾追加一条"请压缩上面的对话"，所以能命中服务商已经缓存的内容。
 - **结果**：追加一条 `compaction/summary`，然后从存储里删掉被替代的事件和它们引用的图片。dsh 的日志存本地、永不删除；我们的免费数据库空间有限，所以要删。
 
-实现见 [`src/agent/compaction.ts`](../src/agent/compaction.ts)。
+实现见 [`packages/core/src/agent/compaction.ts`](../packages/core/src/agent/compaction.ts)。
 
 ## 崩溃恢复
 
@@ -147,7 +147,7 @@
 
 ## 存储结构
 
-参照 dsh：会话头（这是谁的会话、在哪个渠道）放在日志之外，日志本身只追加。表在私有 schema `gateway` 里，见 [`supabase/schema.sql`](../supabase/schema.sql)：
+参照 dsh：会话头（这是谁的会话、在哪个渠道）放在日志之外，日志本身只追加。表在私有 schema `gateway` 里，见 [`packages/adapters/src/supabase/schema.sql`](../packages/adapters/src/supabase/schema.sql)：
 
 | 表 | 内容 |
 |---|---|
@@ -157,7 +157,7 @@
 | `images` | 图片（data URL），键名形如 `ev:img:{聊天}:{消息}:{n}` |
 | `inbound` | 已经收到过的平台事件 ID，用来识别平台重推，保留 1 小时 |
 
-`events`、`replies` 对 `sessions` 有外键并级联删除，删掉一个会话就删掉它的全部数据。代码通过 `public` 里的函数访问这些表（[`src/adapters/supabase/store/store.ts`](../src/adapters/supabase/store/store.ts)），每个操作一次请求：
+`events`、`replies` 对 `sessions` 有外键并级联删除，删掉一个会话就删掉它的全部数据。代码通过 `public` 里的函数访问这些表（[`packages/adapters/src/supabase/store/store.ts`](../packages/adapters/src/supabase/store/store.ts)），每个操作一次请求：
 
 | 函数 | 作用 |
 |---|---|
@@ -187,7 +187,7 @@
 - 系统提示后面会加上这个聊天的额外设定。
 - 关掉的工具不提供给模型。
 - 当天的花费额度用完时不开新的一轮。
-- 一轮结束后，用量从这一轮的事件里累加，见 [`src/chats/usage.ts`](../src/chats/usage.ts)。
+- 一轮结束后，用量从这一轮的事件里累加，见 [`packages/core/src/chats/usage.ts`](../packages/core/src/chats/usage.ts)。
 
 “只记录”模式下收到的消息带 `quiet` 标记，模型以后能看到它们，但它们不算待处理的消息。
 

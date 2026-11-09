@@ -1,0 +1,67 @@
+{
+  "name": "@gateway/adapters",
+  "version": "0.1.0",
+  "description": "Outside services for @gateway/core: one folder per vendor, inside it one per interface it implements.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./deepseek": {
+      "source": "./src/deepseek/index.ts",
+      "types": "./dist/deepseek/index.d.ts",
+      "default": "./dist/deepseek/index.js"
+    },
+    "./upstash-vector": {
+      "source": "./src/upstash-vector/index.ts",
+      "types": "./dist/upstash-vector/index.d.ts",
+      "default": "./dist/upstash-vector/index.js"
+    },
+    "./vercel-sandbox": {
+      "source": "./src/vercel-sandbox/index.ts",
+      "types": "./dist/vercel-sandbox/index.d.ts",
+      "default": "./dist/vercel-sandbox/index.js"
+    },
+    "./openrouter": {
+      "source": "./src/openrouter/index.ts",
+      "types": "./dist/openrouter/index.d.ts",
+      "default": "./dist/openrouter/index.js"
+    },
+    "./openai-speech": {
+      "source": "./src/openai-speech/index.ts",
+      "types": "./dist/openai-speech/index.d.ts",
+      "default": "./dist/openai-speech/index.js"
+    },
+    "./supabase": {
+      "source": "./src/supabase/index.ts",
+      "types": "./dist/supabase/index.d.ts",
+      "default": "./dist/supabase/index.js"
+    },
+    "./qq": {
+      "source": "./src/qq/index.ts",
+      "types": "./dist/qq/index.d.ts",
+      "default": "./dist/qq/index.js"
+    },
+    "./telegram": {
+      "source": "./src/telegram/index.ts",
+      "types": "./dist/telegram/index.d.ts",
+      "default": "./dist/telegram/index.js"
+    },
+    "./http": {
+      "source": "./src/http/index.ts",
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/supabase/schema.sql dist/supabase/schema.sql"
+  },
+  "dependencies": {
+    "@gateway/core": "*",
+    "@vercel/sandbox": "^3.9.1",
+    "pg": "^8.23.1",
+    "silk-wasm": "^3.7.1"
+  }
+}

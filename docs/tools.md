@@ -1,6 +1,6 @@
 # 工具
 
-工具按**模块**组织（[模块](modules.md)）：每个模块在 [`src/modules/<模块>/`](../src/modules/) 里，带着自己的工具、告诉模型怎么用它们的提示词段落，以及背后服务的实现。模块开启时，它的工具才会给模型；`/api/health` 的 `tools` 字段列出当前给了哪些工具，`modules` 字段写出每个模块开没开、没开的原因。
+工具按**模块**组织（[模块](modules.md)）：每个模块在 [`packages/core/src/modules/<模块>/`](../packages/core/src/modules/) 里，带着自己的工具、告诉模型怎么用它们的提示词段落，以及背后服务的实现。模块开启时，它的工具才会给模型；`/api/health` 的 `tools` 字段列出当前给了哪些工具，`modules` 字段写出每个模块开没开、没开的原因。
 
 | 模块 | 工具 | 作用 | 开启条件 |
 |---|---|---|---|
@@ -25,7 +25,7 @@
 
 ## 联网
 
-搜索模块的第一个实现是 DeepSeek（[`src/adapters/deepseek/search/`](../src/adapters/deepseek/search/)）：`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
+搜索模块的第一个实现是 DeepSeek（[`packages/adapters/src/deepseek/search/`](../packages/adapters/src/deepseek/search/)）：`web_search` 和 `web_fetch` 调用 DeepSeek 的工具接口（`POST /v1/tools/search`、`POST /v1/tools/fetch`），和使用哪个模型无关。搜索支持 `site:`、`lang:`、`after:` 等语法；抓取以 Markdown 返回网页正文，超过 12k 字符会截断。DeepSeek 按每 1000 次成功请求 5 元计费。
 
 ## 余额与额度
 
@@ -41,7 +41,7 @@
 
 ## 长期记忆
 
-记忆模块在 [`src/modules/memory/`](../src/modules/memory/)，第一个存储实现是 Upstash Vector（[`src/adapters/upstash-vector/memory/`](../src/adapters/upstash-vector/memory/)），开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
+记忆模块在 [`packages/core/src/modules/memory/`](../packages/core/src/modules/memory/)，第一个存储实现是 Upstash Vector（[`packages/adapters/src/upstash-vector/memory/`](../packages/adapters/src/upstash-vector/memory/)），开通方法见[部署文档](deployment.md#upstash-vector长期记忆可选)。
 
 - **所有聊天共用一个记忆库**。每条记忆是一句能独立看懂的话，比如"#3B6834 叫老王，是前端程序员"，由模型自己判断什么值得记。
 - `remember` 写入一条记忆；`recall` 按语义相似度返回最接近的几条；`forget` 按 ID 删除。
@@ -51,7 +51,7 @@
 
 ## 画图
 
-`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`src/modules/image/`](../src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 [`src/adapters/openrouter/image/`](../src/adapters/openrouter/image/)。画图模块依赖沙盒模块。
+`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`packages/core/src/modules/image/`](../packages/core/src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 [`packages/adapters/src/openrouter/image/`](../packages/adapters/src/openrouter/image/)。画图模块依赖沙盒模块。
 
 | 参数 | 说明 |
 |---|---|
@@ -66,12 +66,12 @@
 
 - **结果**：存到 `/workspace/images/{时间}-{序号}.png`。超过 1920×1080（横竖都算）的会先缩小再保存。同时把一张 1024px 的预览给模型看，确认没问题后再用 `send_file` 发到聊天。
 - **修别人发的照片**：先用 `save_attachment` 把原图存进 `/workspace/inbox/`，再把这个路径填进 `input_references`。
-- **自拍长得一样**：仓库里有一张大肥鱼的形象图 [`assets/persona/dafeiyu.webp`](../assets/persona/dafeiyu.webp)（768px，约 90 KB）。`include_self` 时它排在参考图第一张，提示词末尾再加一句英文，告诉图像模型"第一张参考图就是她本人，保持脸、浅蓝长发和呆毛、鲸鱼鳍耳朵、鲸鱼发夹、蓝眼睛，姿势、场景、衣服按要求画"。人设里写了她的长相；画图模块的段落告诉模型画自己时要打开 `include_self`，别凭空描述长相。换形象就替换这张图，或者用 `IMAGE_SELF_REFERENCE` 指向别的文件或链接。
+- **自拍长得一样**：仓库里有一张大肥鱼的形象图 [`packages/vercel/assets/persona/dafeiyu.webp`](../packages/vercel/assets/persona/dafeiyu.webp)（768px，约 90 KB）。`include_self` 时它排在参考图第一张，提示词末尾再加一句英文，告诉图像模型"第一张参考图就是她本人，保持脸、浅蓝长发和呆毛、鲸鱼鳍耳朵、鲸鱼发夹、蓝眼睛，姿势、场景、衣服按要求画"。人设里写了她的长相；画图模块的段落告诉模型画自己时要打开 `include_self`，别凭空描述长相。换形象就替换这张图，或者用 `IMAGE_SELF_REFERENCE` 指向别的文件或链接。
 - **费用**：每次调用都按图收费，工具结果里会带上接口返回的 `cost`。和余额工具一样，群里任何人都能让机器人画图，介意的话不要配置 `IMAGE_API_KEY`。
 
 ## 语音
 
-`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`src/modules/voice/`](../src/modules/voice/)，实现在 [`src/adapters/openai-speech/voice/`](../src/adapters/openai-speech/voice/)，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
+`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`packages/core/src/modules/voice/`](../packages/core/src/modules/voice/)，实现在 [`packages/adapters/src/openai-speech/voice/`](../packages/adapters/src/openai-speech/voice/)，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
 
 | 参数 | 说明 |
 |---|---|
@@ -94,7 +94,7 @@
 
 - **唱歌**（`mode: "sing"`）：两个模型都没有专门的唱歌模式，工具按模型套上唱歌提示：Fish 在歌词前加 `[唱歌]`、末尾加 `♪`；两者都在 `instructions` 里加"按旋律唱、长音拖住、不要念白"，再加风格（不给就用默认的儿歌风）。效果是清唱，旋律由模型自己编，没有伴奏，适合唱几句。描述让模型只唱原创或对方写的词。
 
-- **固定音色**：每次请求都带上仓库里的参考音频 [`assets/voice/dafeiyu.mp3`](../assets/voice/dafeiyu.mp3)（约 10 秒，32 kbps）和它的文字稿，通过接口的 `input_references` 克隆这个声音，所以每条语音都是同一个声音，不需要在 Fish 那边建音色。参考音频要尽量小：同一段声音用 170 KB 的原文件时每次约 $0.002，压到 43 KB 后和不带参考一样（约 $0.00006 一条短句）。
+- **固定音色**：每次请求都带上仓库里的参考音频 [`packages/vercel/assets/voice/dafeiyu.mp3`](../packages/vercel/assets/voice/dafeiyu.mp3)（约 10 秒，32 kbps）和它的文字稿，通过接口的 `input_references` 克隆这个声音，所以每条语音都是同一个声音，不需要在 Fish 那边建音色。参考音频要尽量小：同一段声音用 170 KB 的原文件时每次约 $0.002，压到 43 KB 后和不带参考一样（约 $0.00006 一条短句）。
 - **各渠道怎么发**：接口返回 PCM（采样率和声道数从响应头读取，Drama 3 是 44.1 kHz 单声道，Seed 是 24 kHz 双声道，多声道会先混成单声道）。QQ 在函数里用 [silk-wasm](https://github.com/idranme/silk-wasm) 编成 SILK，以 `file_type: 3` 上传，收到的是能直接点开播放的语音条；Telegram 收到一个 `voice.wav` 文件；HTTP 等同步渠道收到 `[语音] 文字`。
 - **语气写法**（Drama 3 的语法，工具描述里也教了模型）：
   - `[方括号]` 写在要说的话前面，用大白话描述语气，中英文都行：`[得意地] 本鱼早就算到了！`、`[小声嘀咕] 才不是因为想你呢。`，一直生效到下一个指令。
@@ -107,7 +107,7 @@
 
 ## 沙盒工作区
 
-模块在 [`src/modules/sandbox/`](../src/modules/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`tools.ts` 是五个工具，第一个实现 Vercel Sandbox 在 [`src/adapters/vercel-sandbox/sandbox/`](../src/adapters/vercel-sandbox/sandbox/)。
+模块在 [`packages/core/src/modules/sandbox/`](../packages/core/src/modules/sandbox/)：`workspace.ts` 是工作区接口和生命周期（每次运行一个），`tools.ts` 是五个工具，第一个实现 Vercel Sandbox 在 [`packages/adapters/src/vercel-sandbox/sandbox/`](../packages/adapters/src/vercel-sandbox/sandbox/)。
 
 | 工具 | 作用 |
 |---|---|
@@ -139,7 +139,7 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 表情包
 
-`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在人设里 [`src/personas/dafeiyu/stickers.ts`](../src/personas/dafeiyu/stickers.ts)：
+`send_sticker` 的 `name` 是一个枚举，可选的表情和各自的使用场景定义在人设里 [`packages/vercel/src/personas/dafeiyu/stickers.ts`](../packages/vercel/src/personas/dafeiyu/stickers.ts)：
 
 - **情绪类**：28 张 Q 版动态 GIF，比如笑死、红温了、已老实、你礼貌吗、退退退、吃瓜、贴贴、晚安。
 - **梗图类**：10 张经典梗图，比如得加钱、摆烂、蹭饭、用户别走、无可奉告。
@@ -161,7 +161,7 @@ npx tsx scripts/sandbox-smoke.ts
 
 ## 新增工具
 
-工具属于模块：在已有模块的 `tools.ts` 里加，或者新建一个模块，见[模块 · 新增一个模块](modules.md#新增一个模块)。工具本身的写法（`src/modules/tool.ts`）：
+工具属于模块：在已有模块的 `tools.ts` 里加，或者新建一个模块，见[模块 · 新增一个模块](modules.md#新增一个模块)。工具本身的写法（`packages/core/src/modules/tool.ts`）：
 
 ```ts
 import type { Tool } from "../tool.js";

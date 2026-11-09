@@ -1,7 +1,7 @@
 {
   "name": "serverless-agent-gateway",
   "version": "0.1.0",
-  "description": "Multi-channel AI chatbot gateway on Vercel Functions: QQ / Telegram / HTTP webhooks -> tool-calling agent loop -> reply",
+  "description": "Multi-channel AI chatbot gateway: QQ / Telegram / HTTP webhooks -> tool-calling agent loop -> reply. Core, adapters and a Vercel deployment as npm workspaces.",
   "keywords": [
     "vercel",
     "serverless",
@@ -21,21 +21,21 @@
   "bugs": {
     "url": "https://github.com/zhanxin-xu/serverless-agent-gateway/issues"
   },
-  "scripts": {
-    "dev": "tsx watch deploy/node/server.ts",
-    "start": "tsx deploy/node/server.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/selftest.ts && tsx scripts/moduletest.ts",
-    "test:store": "tsx scripts/storetest.ts",
-    "test:load": "tsx scripts/loadtest.ts"
-  },
   "license": "MIT",
-  "dependencies": {
-    "@vercel/functions": "^3.10.6",
-    "@vercel/sandbox": "^3.9.1",
-    "pg": "^8.23.1",
-    "sharp": "^0.35.5",
-    "silk-wasm": "^3.7.1"
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/adapters",
+    "packages/vercel"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @gateway/vercel",
+    "build": "npm run build -w @gateway/core && npm run build -w @gateway/adapters",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=source scripts/selftest.ts && tsx --conditions=source scripts/moduletest.ts",
+    "test:store": "tsx --conditions=source scripts/storetest.ts",
+    "test:load": "tsx --conditions=source scripts/loadtest.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -43,8 +43,6 @@
     "tsx": "^4.23.15",
     "typescript": "5.9"
   },
-  "private": true,
-  "type": "module",
   "engines": {
     "node": "24.x"
   },

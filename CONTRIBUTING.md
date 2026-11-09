@@ -15,7 +15,7 @@
 ```bash
 npm install
 cp .env.example .env.local   # 只填你要调试的部分
-npm run dev                  # 本地 Node 部署（deploy/node）：http://localhost:3000/admin
+npm run dev                  # 本地跑 Vercel 部署包：http://localhost:3000/admin
 ```
 
 不需要任何真实凭据也能跑测试：
@@ -26,7 +26,7 @@ npm run test:store   # 存储契约测试
 npm run typecheck
 ```
 
-改了 `supabase/schema.sql` 或存储层时，请用一个可以随便清空的本地 Postgres 跑一遍真实的 SQL（测试会重建其中的 `gateway` schema）：
+改了 `packages/adapters/src/supabase/schema.sql` 或存储层时，请用一个可以随便清空的本地 Postgres 跑一遍真实的 SQL（测试会重建其中的 `gateway` schema）：
 
 ```bash
 createdb gateway_test
@@ -48,14 +48,14 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm test
 
 - **和周围的代码保持一致**：命名、注释密度、写法都参照同一文件里已有的代码。
 - **外部接口直接用 `fetch`**：模型、QQ、Telegram、Supabase、Upstash Vector 都是直接调用 HTTP 接口，不引入 SDK，方便透传参数，也让测试能统一 mock。Vercel Sandbox 是例外，它需要 SDK 处理认证。
-- **配置项跟着它的主人**：核心配置（渠道、Agent、管理）在 `src/settings/catalog.ts`；模块和实现的配置在各自目录的 `settings.ts`，由模块定义带上，配置目录自动收集。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
+- **配置项跟着它的主人**：核心配置（渠道、Agent、管理）在 `packages/core/src/settings/catalog.ts`；模块和实现的配置在各自目录的 `settings.ts`，由模块定义带上，配置目录自动收集。读取用 getter 实时读，取值顺序是管理端 → 环境变量 → 默认值。新增配置写进 `docs/configuration.md` 和 `.env.example`。
 - **加载时不读别的文件的导出值**：模块、配置目录和 `config.ts` 互相引用，模块定义是函数、实现列表是 getter。改了模块结构后跑一下 `npm run test:load`。
 - **注释解释"为什么"**：平台限制、踩过的坑、看起来奇怪但必须这样写的地方，都值得写一句注释。
 - **不要提交密钥**：`.env*` 已经在 `.gitignore` 里。仓库是公开的，提交前请检查一遍 diff。
 
 ## 常见改动
 
-- **改人设**：编辑 `src/personas/dafeiyu/`（换一个人设：新建 `src/personas/<名字>/`，在部署的组合里换掉）。人设里不要写工具名，工具怎么用写在它所在模块的说明里；模块里也不要写人设（测试都会检查）。
+- **改人设**：编辑 `packages/vercel/src/personas/dafeiyu/`（换一个人设：新建 `packages/vercel/src/personas/<名字>/`，在部署的组合里换掉）。人设里不要写工具名，工具怎么用写在它所在模块的说明里；模块里也不要写人设（测试都会检查）。
 - **新增工具、模块，或给一种能力加一家服务**：见[模块](docs/modules.md)。
 - **新增渠道**：见[渠道接入](docs/channels.md#新增渠道)。
 

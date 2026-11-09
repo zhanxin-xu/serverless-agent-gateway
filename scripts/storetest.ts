@@ -2,11 +2,11 @@
  * Store contract test: `npm run test:store`.
  * The same cases against MemoryStore and, when TEST_DATABASE_URL points at a
  * Postgres you can throw away, against PostgresStore running the real
- * functions of supabase/schema.sql (it recreates the `gateway` schema there).
+ * functions of the Supabase adapter's schema.sql (it recreates the `gateway` schema there).
  */
 import assert from "node:assert/strict";
-import { PostgresStore } from "../src/adapters/supabase/index.js";
-import { MemoryStore, SCHEMA_VERSION, type IngestInput, type Store } from "../src/store/index.js";
+import { PostgresStore } from "../packages/adapters/src/supabase/index.js";
+import { MemoryStore, SCHEMA_VERSION, type IngestInput, type Store } from "../packages/core/src/store/index.js";
 import { postgresRpc, rpcResponse } from "./rpc-shim.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

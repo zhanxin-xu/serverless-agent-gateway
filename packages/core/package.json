@@ -1,0 +1,24 @@
+{
+  "name": "@gateway/core",
+  "version": "0.1.0",
+  "description": "The gateway's core: composition, runtime, agent loop, prompt, modules, store interface, admin console.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -R src/admin/ui dist/admin/ui"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  }
+}

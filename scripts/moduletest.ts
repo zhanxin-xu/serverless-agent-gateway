@@ -4,7 +4,7 @@
  * gateway is composed as the Vercel deployment composes it.
  */
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,21 +21,21 @@ const FULL = {
 Object.assign(process.env, FULL);
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
 
-(await import("../deploy/vercel/composition.js")).composeVercel();
-const { channel, providers } = await import("../src/composition.js");
-const { allModules, optionalModules, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../src/modules/registry.js");
+(await import("../packages/vercel/src/composition.js")).composeVercel();
+const { channel, providers } = await import("../packages/core/src/composition.js");
+const { allModules, optionalModules, Toolset, checkModules, moduleOfTool, moduleStatus, activeModules } = await import("../packages/core/src/modules/registry.js");
 const MODULES = allModules();
 const OPTIONAL_MODULES = optionalModules();
-const { select } = await import("../src/modules/capability.js");
-const { assemble } = await import("../src/prompt/assemble.js");
-const { interpolate } = await import("../src/prompt/variables.js");
-const { dafeiyu: persona } = await import("../src/personas/dafeiyu/index.js");
+const { select } = await import("../packages/core/src/modules/capability.js");
+const { assemble } = await import("../packages/core/src/prompt/assemble.js");
+const { interpolate } = await import("../packages/core/src/prompt/variables.js");
+const { dafeiyu: persona } = await import("../packages/vercel/src/personas/dafeiyu/index.js");
 const { prompt: PERSONA_PROMPT, examples: EXAMPLES } = persona;
-const { RULES, SCENE_RULES } = await import("../src/prompt/rules.js");
-const { settingGroups, settingDefs, settingDef } = await import("../src/settings/catalog.js");
-const { ORDER } = await import("../src/prompt/order.js");
-const { parseProfile, profileChoices } = await import("../src/chats/profile.js");
-const { turnUsage, quotaPolicy } = await import("../src/chats/usage.js");
+const { RULES, SCENE_RULES } = await import("../packages/core/src/prompt/rules.js");
+const { settingGroups, settingDefs, settingDef } = await import("../packages/core/src/settings/catalog.js");
+const { ORDER } = await import("../packages/core/src/prompt/order.js");
+const { parseProfile, profileChoices } = await import("../packages/core/src/chats/profile.js");
+const { turnUsage, quotaPolicy } = await import("../packages/core/src/chats/usage.js");
 
 let failed = 0;
 async function test(name: string, fn: () => Promise<void> | void) {
@@ -292,9 +292,9 @@ await test("a module's definition is checked when the modules load", () => {
   for (const m of MODULES) if (m.section) assert.ok(m.section.order >= ORDER.modules.from && m.section.order <= ORDER.modules.to);
 });
 
-await test("the persona lives in src/personas: nothing else in the core names her, or anything about her", () => {
+await test("the persona lives in the deployment: nothing in the core or the adapters names her, or anything about her", () => {
   const banned = [persona.name, "dafeiyu", "鲸鱼", "whale", "白饭", "小本本"];
-  for (const file of coreFiles()) {
+  for (const file of [...sourceFiles("packages/core/src"), ...sourceFiles("packages/adapters/src")]) {
     const text = readFileSync(file, "utf8");
     for (const word of banned) assert.ok(!text.includes(word), `${path.relative(process.cwd(), file)} mentions ${word}`);
   }
@@ -311,9 +311,9 @@ await test("the persona's examples follow the modules: an example shows only whi
 });
 
 await test("modules reach each other only through each other's index.ts (like dsh's injected services)", () => {
-  const root = fileURLToPath(new URL("../src/modules", import.meta.url));
+  const root = fileURLToPath(new URL("../packages/core/src/modules", import.meta.url));
   const modules = new Set(MODULES.map((m) => m.id));
-  for (const file of sourceFiles("src/modules")) {
+  for (const file of sourceFiles("packages/core/src/modules")) {
     const own = path.relative(root, file).split(path.sep)[0]!;
     if (!modules.has(own)) continue;
     for (const [, spec] of readFileSync(file, "utf8").matchAll(/from "(\.[^"]+)"/g)) {
@@ -332,47 +332,50 @@ await test("modules reach each other only through each other's index.ts (like ds
 });
 
 /**
- * The layers (src/composition.ts): the core names no adapter, persona or
- * deployment; an adapter reaches only the core and its own folder; a persona
- * is data; a deployment's entries go through its deploy/<target>/index.ts.
+ * The packages (Composition in packages/core/src/composition.ts):
+ *   core       names no adapter, persona or deployment; nothing outside its own src/
+ *   adapters   use the core's public entry only; a vendor's folder reaches no other vendor's
+ *   vercel     uses the core's public entry and the adapters' vendor entries; its persona is data
+ * And every npm package a file imports is declared by its own package, so each
+ * one installs and builds on its own.
  */
-await test("layers: core ← adapters, personas ← deploy ← api", () => {
+await test("packages: core ← adapters ← vercel, each through public entries, each with its own dependencies", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const rel = (file: string) => path.relative(root, file).split(path.sep).join("/");
-  const imports = (file: string) =>
-    [...readFileSync(file, "utf8").matchAll(/(?:from|import\() *"(\.[^"]+)"/g)].map(([, spec]) => rel(path.resolve(path.dirname(file), spec!)));
-  const layerOf = (file: string) =>
-    /^src\/adapters\//.test(file) ? "adapter" : /^src\/personas\//.test(file) ? "persona" : /^src\//.test(file) ? "core" : /^deploy\//.test(file) ? "deploy" : "other";
-  for (const file of [...sourceFiles("src"), ...sourceFiles("deploy"), ...sourceFiles("api")]) {
-    const from = rel(file);
-    for (const target of imports(file)) {
-      const to = layerOf(target);
-      if (layerOf(from) === "core") assert.equal(to, "core", `${from} imports ${target}: the core names no adapter, persona or deployment`);
-      if (layerOf(from) === "adapter") {
-        const own = from.split("/").slice(0, 3).join("/");
-        assert.ok(to === "core" || target.startsWith(`${own}/`), `${from} imports ${target}: an adapter uses the core and its own folder`);
+  const specs = (file: string) => [...readFileSync(file, "utf8").matchAll(/(?:from|import\() *"([^"]+)"/g)].map(([, spec]) => spec!);
+  const manifest = (pkg: string) => JSON.parse(readFileSync(path.join(root, "packages", pkg, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
+  const npmName = (spec: string) => (spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]!);
+  for (const pkg of ["core", "adapters", "vercel"]) {
+    const deps = new Set(Object.keys(manifest(pkg).dependencies ?? {}));
+    const dirs = pkg === "vercel" ? ["src", "api", "scripts"] : ["src"];
+    for (const file of dirs.flatMap((d) => sourceFiles(`packages/${pkg}/${d}`))) {
+      const from = rel(file);
+      for (const spec of specs(file)) {
+        if (spec.startsWith(".")) {
+          const target = rel(path.resolve(path.dirname(file), spec));
+          assert.ok(target.startsWith(`packages/${pkg}/`), `${from} imports ${target}: another package is reached by its name, not a path`);
+          if (pkg === "adapters") {
+            const vendor = from.split("/").slice(0, 4).join("/");
+            assert.ok(target.startsWith(`${vendor}/`), `${from} imports ${target}: a vendor's folder reaches no other vendor's`);
+          }
+          if (/^packages\/vercel\/src\/personas\//.test(from)) {
+            assert.ok(target.startsWith(from.split("/").slice(0, 5).join("/") + "/"), `${from} imports ${target}: a persona is data`);
+          }
+          if (/^packages\/vercel\/api\//.test(from)) assert.equal(target, "packages/vercel/src/index.js", `${from}: api/ only hands over to src/index.ts`);
+          continue;
+        }
+        if (spec.startsWith("node:")) continue;
+        if (pkg === "core") assert.ok(!spec.startsWith("@gateway/"), `${from} imports ${spec}: the core names no adapter or deployment`);
+        if (pkg === "adapters") assert.ok(!spec.startsWith("@gateway/") || spec === "@gateway/core", `${from} imports ${spec}`);
+        assert.ok(deps.has(npmName(spec)), `${from} imports ${spec}, which packages/${pkg}/package.json doesn't declare`);
       }
-      if (layerOf(from) === "persona") assert.ok(target.startsWith(from.split("/").slice(0, 3).join("/") + "/") || target === "src/composition.js", `${from} imports ${target}: a persona is data`);
-      if (from.startsWith("deploy/")) {
-        const own = from.split("/").slice(0, 2).join("/");
-        assert.ok(!target.startsWith("deploy/") || target.startsWith(`${own}/`), `${from} imports ${target}: deployments don't share code`);
-        // A vendor's adapters are inside its folder, by the interface they implement (search/, image/…); its index.ts is its face.
-        assert.ok(to !== "adapter" || /^src\/adapters\/[a-z0-9-]+\/index\.js$/.test(target), `${from} imports ${target}: use the vendor's index.ts`);
-      }
-      if (from.startsWith("api/")) assert.equal(target, "deploy/vercel/index.js", `${from} imports ${target}: api/ only hands over to deploy/vercel`);
     }
   }
   // Only the host may know where it runs.
-  for (const file of coreFiles()) {
-    const text = readFileSync(file, "utf8");
-    assert.ok(!text.includes("@vercel/functions"), `${rel(file)} uses @vercel/functions: that's the Vercel host's (deploy/vercel/host.ts)`);
+  for (const file of sourceFiles("packages/core/src")) {
+    assert.ok(!readFileSync(file, "utf8").includes("@vercel/functions"), `${rel(file)} uses @vercel/functions: that's the Vercel host's`);
   }
 });
-
-/** The core: src/ without adapters and personas. */
-function coreFiles(): string[] {
-  return sourceFiles("src").filter((f) => !/[\\/]src[\\/](adapters|personas)[\\/]/.test(f));
-}
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -383,18 +386,19 @@ function sourceFiles(dir: string): string[] {
       else if (p.endsWith(".ts")) out.push(p);
     }
   };
-  walk(fileURLToPath(new URL(`../${dir}`, import.meta.url)));
+  const start = fileURLToPath(new URL(`../${dir}`, import.meta.url));
+  if (existsSync(start)) walk(start);
   return out;
 }
 
 // Last: it replaces the composition the tests above use.
 await test("compose() refuses a provider no loaded module uses, or two with one id", async () => {
-  const { compose } = await import("../src/composition.js");
-  const { searchModule } = await import("../src/modules/index.js");
-  const { deepseekProvider } = await import("../src/adapters/deepseek/index.js");
-  const { upstashVectorProvider } = await import("../src/adapters/upstash-vector/index.js");
-  const { MemoryStore } = await import("../src/store/index.js");
-  const base = { host: { id: "t", label: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { label: "", password: [], changePassword: "", database: { intro: "", steps: [] } } };
+  const { compose } = await import("../packages/core/src/composition.js");
+  const { searchModule } = await import("../packages/core/src/modules/index.js");
+  const { deepseekProvider } = await import("../packages/adapters/src/deepseek/index.js");
+  const { upstashVectorProvider } = await import("../packages/adapters/src/upstash-vector/index.js");
+  const { MemoryStore } = await import("../packages/core/src/store/index.js");
+  const base = { baseDir: "/", host: { id: "t", label: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { label: "", password: [], changePassword: "", database: { intro: "", steps: [] } } };
   assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, upstashVectorProvider] }), /upstash-vector implements vector-memory, which no loaded module uses/);
   assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, deepseekProvider] }), /two search providers are called deepseek/);
 });

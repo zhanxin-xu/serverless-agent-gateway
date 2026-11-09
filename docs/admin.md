@@ -25,7 +25,7 @@
 1. **管理密码**：已经设置好了。
 2. **数据库**：
    - 还没连 Supabase 时，页面给出 Vercel Storage 页面里的操作步骤。
-   - 连上以后点“建表”，会执行 [`supabase/schema.sql`](../supabase/schema.sql)。
+   - 连上以后点“建表”，会执行 [`packages/adapters/src/supabase/schema.sql`](../packages/adapters/src/supabase/schema.sql)。
    - 以后代码需要新的表结构时，这里会显示“升级到 vN”。
 3. **模型**：填写服务地址、Key 和模型。点“测试”会先保存，再真的发一次请求。
 4. **接入渠道**：至少接一个。
@@ -39,7 +39,7 @@
 
 ## 密钥
 
-- key 和其他配置一样，以明文存在 `gateway.settings` 里。哪些配置算密钥由配置目录（`src/settings/catalog.ts`）决定。
+- key 和其他配置一样，以明文存在 `gateway.settings` 里。哪些配置算密钥由配置目录（`packages/core/src/settings/catalog.ts`）决定。
 - 这张表在私有 schema 里，开了行级安全（RLS），只有服务端密钥能调用读写它的函数，外部通过 Supabase 的接口读不到。
 - 管理端页面只显示 key 的前几位和后四位，接口从不返回原文，操作记录里也只记 key 的名字。
 - 能打开 Supabase 控制台表格编辑器的人能看到原文，所以请像保管 Vercel 账号一样保管 Supabase 账号。
@@ -132,7 +132,7 @@ Telegram 没有这个限制。HTTP 渠道没法主动推送，所以不能代发
 
 | 位置 | 内容 |
 |---|---|
-| `src/settings/` | 配置目录（每项的默认值和校验）、从数据库加载和保存 |
-| `src/chats/` | 每个聊天的设置、用量与额度、从事件流渲染聊天记录 |
-| `src/admin/` | 管理接口（`routes/`）、登录、代发，以及页面（`ui/`，原生 JS，没有构建步骤） |
-| `api/admin.ts` | 函数入口；`vercel.json` 把 `/admin` 和 `/api/admin/*` 都改写到这里 |
+| `packages/core/src/settings/` | 配置目录（每项的默认值和校验）、从数据库加载和保存 |
+| `packages/core/src/chats/` | 每个聊天的设置、用量与额度、从事件流渲染聊天记录 |
+| `packages/core/src/admin/` | 管理接口（`routes/`）、登录、代发，以及页面（`ui/`，原生 JS，没有构建步骤） |
+| `packages/vercel/api/admin.ts` | 函数入口；`packages/vercel/vercel.json` 把 `/admin` 和 `/api/admin/*` 都改写到这里 |

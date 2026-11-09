@@ -1,6 +1,6 @@
 /**
  * Offline end-to-end test of the Vercel deployment: `npm test`.
- * Composes the gateway as deploy/vercel does, stubs global fetch (Responses
+ * Composes the gateway as packages/vercel does, stubs global fetch (Responses
  * API, DeepSeek tools, QQ, Telegram, Supabase, Upstash Vector) and Vercel's
  * waitUntil, then drives each channel through the real webhook handler, event
  * log and agent loop.
@@ -76,10 +76,10 @@ const fnCall = (callId: string, name: string, args: unknown) => ({
 const sendCall = (callId: string, text: string, extra: Record<string, unknown> = {}) => fnCall(callId, "send_message", { text, ...extra });
 
 /**
- * Supabase's Data API: the real functions of supabase/schema.sql in a local
+ * Supabase's Data API: the real functions of the Supabase adapter's schema.sql in a local
  * Postgres when TEST_DATABASE_URL is set, else a MemoryStore behind the same URLs.
  */
-const { MemoryStore } = await import("../src/store/index.js");
+const { MemoryStore } = await import("../packages/core/src/store/index.js");
 const { memoryRpc, postgresRpc, rpcResponse } = await import("./rpc-shim.js");
 const pgBackend = process.env.TEST_DATABASE_URL ? await postgresRpc(process.env.TEST_DATABASE_URL) : undefined;
 const supabaseRpc = pgBackend?.rpc ?? memoryRpc(new MemoryStore());
@@ -299,22 +299,22 @@ function safeJson(text: string) {
   }
 }
 
-(await import("../deploy/vercel/composition.js")).composeVercel();
-const { handleWebhook } = await import("../src/webhook.js");
-const { handleWorker } = await import("../deploy/vercel/worker.js");
+(await import("../packages/vercel/src/composition.js")).composeVercel();
+const { handleWebhook } = await import("../packages/core/src/webhook.js");
+const { handleWorker } = await import("../packages/vercel/src/worker.js");
 worker = handleWorker;
-const { activeTools, runTool } = await import("../src/modules/registry.js");
-const { callBudgetMs } = await import("../src/agent/budget.js");
-const { evaluate } = await import("../src/modules/basics/tools.js");
-const { messageHeader } = await import("../src/channels/format.js");
-const { getStore, resetStore } = await import("../src/store/index.js");
-const { PostgresStore, supabaseConfig } = await import("../src/adapters/supabase/index.js");
-const qqHint = (await import("../src/adapters/qq/index.js")).qqAdapter.promptHint!;
-const { config } = await import("../src/config.js");
-const { setWorkspaceFactory } = await import("../src/modules/sandbox/workspace.js");
-const { attachmentFileName } = await import("../src/modules/sandbox/tools.js");
-const { driveName } = await import("../src/adapters/vercel-sandbox/sandbox/client.js");
-(await import("../src/channels/net.js")).connectRetry.delayMs = 5;
+const { activeTools, runTool } = await import("../packages/core/src/modules/registry.js");
+const { callBudgetMs } = await import("../packages/core/src/agent/budget.js");
+const { evaluate } = await import("../packages/core/src/modules/basics/tools.js");
+const { messageHeader } = await import("../packages/core/src/channels/format.js");
+const { getStore, resetStore } = await import("../packages/core/src/store/index.js");
+const { PostgresStore, supabaseConfig } = await import("../packages/adapters/src/supabase/index.js");
+const qqHint = (await import("../packages/adapters/src/qq/index.js")).qqAdapter.promptHint!;
+const { config } = await import("../packages/core/src/config.js");
+const { setWorkspaceFactory } = await import("../packages/core/src/modules/sandbox/workspace.js");
+const { attachmentFileName } = await import("../packages/core/src/modules/sandbox/tools.js");
+const { driveName } = await import("../packages/adapters/src/vercel-sandbox/sandbox/client.js");
+(await import("../packages/core/src/channels/net.js")).connectRetry.delayMs = 5;
 
 /** Tool context for calling tools directly, outside a conversation. */
 const testChat = { key: "http:c0", scene: "私聊" as const, sender: "#USER01" };
@@ -590,7 +590,7 @@ await test("reply cap: 5 replies per message, the 6th is refused and the model s
 });
 
 await test("stickers: the persona's set, hotlinked from its CDN", async () => {
-  const { dafeiyu } = await import("../src/personas/dafeiyu/index.js");
+  const { dafeiyu } = await import("../packages/vercel/src/personas/dafeiyu/index.js");
   const stickers = dafeiyu.stickers!;
   assert.ok(Object.keys(stickers.set).length >= 30);
   assert.ok(Object.values(stickers.set).every((s) => /^(meme\/\d+\.gif|0_preview\/meme\/\d+\.webp)$/.test(s.file)));
@@ -693,7 +693,7 @@ await test("supabase store: picked when configured; a whole conversation runs on
   const memory = getStore();
   process.env.SUPABASE_URL = "https://db.example.supabase.co";
   process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
-  // The Vercel composition picks Supabase when it's configured (deploy/vercel/composition.ts); its store is made once, so swap it in.
+  // The Vercel composition picks Supabase when it's configured (packages/vercel/src/composition.ts); its store is made once, so swap it in.
   assert.ok(supabaseConfig.configured);
   resetStore(new PostgresStore(supabaseConfig.url, supabaseConfig.key));
   try {
@@ -738,7 +738,7 @@ await test("qq reply window: the turn's default target is a message that can sti
 });
 
 await test("qq adapter: 5 replies per message, the 6th is refused before calling QQ", async () => {
-  const { qqAdapter } = await import("../src/adapters/qq/index.js");
+  const { qqAdapter } = await import("../packages/adapters/src/qq/index.js");
   const msg = {
     channel: "qq", eventId: "e", conversationId: "c2c:U", chatType: "private" as const, userId: "U", text: "x",
     replyContext: { scope: "c2c", target: "U5", msgId: "m-5", expiresAt: String(Date.now() + 60_000) } as Record<string, string>,
@@ -1133,7 +1133,7 @@ await test("quote: the model can make a reply quote the message it answers; QQ r
 });
 
 await test("chat roster: senders logged before ids were kept still count, by #ID and nickname", async () => {
-  const { chatPeople, mentionParts } = await import("../src/conversation/people.js");
+  const { chatPeople, mentionParts } = await import("../packages/core/src/conversation/people.js");
   const msg = (seq: number, time: number, data: Record<string, unknown>) => ({ seq, time, type: "user/message", data: { eventId: `e${seq}`, header: "", text: "", mentioned: false, reply: {}, ...data } }) as any;
   const people = chatPeople([
     msg(1, 1000, { sender: "姨姨 #29CF3F" }), // logged before userId was stored
@@ -1308,7 +1308,7 @@ await test("worker: the webhook runs the agent itself; /api/worker is only for c
 });
 
 await test("worker: unreachable when a turn pauses → the work stays in the log and the next message's run continues it", async () => {
-  const { workerRetry } = await import("../deploy/vercel/host.js");
+  const { workerRetry } = await import("../packages/vercel/src/host.js");
   const original = worker!;
   const waits = workerRetry.waitsMs;
   workerRetry.waitsMs = [1, 1];
@@ -1671,7 +1671,7 @@ await test("generate_image: workspace references become data URLs; results cappe
     const big = await sharp({ create: { width: 2400, height: 1600, channels: 3, background: "#336699" } }).png().toBuffer();
     imageResponse = () => Response.json({ created: 1, data: [{ b64_json: big.toString("base64"), media_type: "image/png" }], usage: { cost: 0.011 } });
     assert.ok(activeTools().some((t) => t.name === "generate_image"));
-    const ctx = { ...noCtx, images: [] as import("../src/media/images.js").ImagePart[] };
+    const ctx = { ...noCtx, images: [] as import("../packages/core/src/media/images.js").ImagePart[] };
     const out = await runTool(
       "generate_image",
       JSON.stringify({ prompt: "暖金胶片氛围", input_references: ["inbox/5-photo.jpg", "https://example.com/style.png"], aspect_ratio: "3:2" }),
@@ -1704,7 +1704,7 @@ await test("generate_image: workspace references become data URLs; results cappe
     assert.match(tool.description, /set include_self/);
     await runTool("generate_image", JSON.stringify({ prompt: "在海边自拍，比个耶", include_self: true, input_references: ["https://example.com/beach.png"] }), ctx);
     let body = calls.find((c) => c.url.endsWith("/images"))!.body;
-    const picture = await (await import("node:fs/promises")).readFile("assets/persona/dafeiyu.webp");
+    const picture = await (await import("node:fs/promises")).readFile("packages/vercel/assets/persona/dafeiyu.webp");
     assert.equal(body.input_references[0].image_url.url, `data:image/webp;base64,${picture.toString("base64")}`, "the bundled picture, as is");
     assert.deepEqual(body.input_references[1], { type: "image_url", image_url: { url: "https://example.com/beach.png" } });
     assert.match(body.prompt, /^在海边自拍，比个耶\n\nThe first reference image is the character herself/);
@@ -1763,7 +1763,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     const [audio, transcript] = req.body.input_references;
     assert.equal(audio.type, "input_audio");
     assert.match(audio.input_audio.data, /^data:audio\/mpeg;base64,/);
-    const clip = await (await import("node:fs/promises")).readFile("assets/voice/dafeiyu.mp3");
+    const clip = await (await import("node:fs/promises")).readFile("packages/vercel/assets/voice/dafeiyu.mp3");
     assert.ok(Buffer.from(audio.input_audio.data.split(",")[1], "base64").equals(clip), "the bundled clip, as is");
     assert.equal(transcript.type, "text");
     assert.match(transcript.text, /^嘿嘿，本鱼来啦/);
@@ -2038,17 +2038,17 @@ await test("out of credit: an @ or a DM is told, an ordinary group message is sk
   } finally {
     globalThis.fetch = original;
   }
-  const { outOfCreditText } = await import("../src/runtime/runner.js");
+  const { outOfCreditText } = await import("../packages/core/src/runtime/runner.js");
   assert.equal(outOfCreditText(), "没余额了，暂时回不了消息。", "a 402 says no reset time");
 });
 
 // ── Admin console ──
-const { saveSettings, refreshSettings, describeSettings } = await import("../src/settings/service.js");
-const { saveChatProfile } = await import("../src/chats/profile.js");
-const { quotaPolicy, turnUsage } = await import("../src/chats/usage.js");
-const { utcDay } = await import("../src/chats/day.js");
-const { Toolset } = await import("../src/modules/registry.js");
-const { deepseekConfig } = await import("../src/adapters/deepseek/search/config.js");
+const { saveSettings, refreshSettings, describeSettings } = await import("../packages/core/src/settings/service.js");
+const { saveChatProfile } = await import("../packages/core/src/chats/profile.js");
+const { quotaPolicy, turnUsage } = await import("../packages/core/src/chats/usage.js");
+const { utcDay } = await import("../packages/core/src/chats/day.js");
+const { Toolset } = await import("../packages/core/src/modules/registry.js");
+const { deepseekConfig } = await import("../packages/adapters/src/deepseek/search/config.js");
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
@@ -2076,7 +2076,7 @@ await test("settings: the console's values win over the environment; secrets onl
 });
 
 await test("admin api: login, cookie session, same-origin JSON only; a new ADMIN_PASSWORD ends sessions; the page has a CSP", async () => {
-  const { handleAdmin } = await import("../src/admin/handler.js");
+  const { handleAdmin } = await import("../packages/core/src/admin/handler.js");
   const req = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
     handleAdmin(
       new Request(`https://bot.example.com/api/admin/${path}`, {
@@ -2136,7 +2136,7 @@ await test("deploying before the database upgrade: on the old schema the bot run
     assert.equal(sentTo("/v2/groups/GOLD/messages").length, 1, "a group @ is answered");
     const { session } = (await supabaseRpc("chat_open", { p_chat: "http:oldschema", p_after_seq: -1 })) as any;
     assert.equal(session.turn, 1);
-    const { handleAdmin } = await import("../src/admin/handler.js");
+    const { handleAdmin } = await import("../packages/core/src/admin/handler.js");
     const login = await handleAdmin(new Request("https://bot.example.com/api/admin/session", { method: "POST", headers: { "content-type": "application/json" }, body: '{"password":"admin-pw"}' }));
     const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
     const status = (await (await handleAdmin(new Request("https://bot.example.com/api/admin/status", { headers: { cookie } }))).json()) as any;
@@ -2163,7 +2163,7 @@ await test("chat profiles: block drops, record keeps quiet context, mention neve
   await drain();
   assert.equal(llmCalls, 0, "record only: never answered");
   assert.deepEqual((await events("qq:group:GREC")).map((e) => e.type), ["user/message", "user/message"], "not even /reset: it's logged like the rest");
-  const { whisper } = await import("../src/admin/chat-actions.js");
+  const { whisper } = await import("../packages/core/src/admin/chat-actions.js");
   await assert.rejects(whisper("qq:group:GREC", "说点什么", "https://bot.example.com", () => {}), /只记录或屏蔽/, "no one would answer a whisper");
   await saveChatProfile("qq:group:GREC", { prompt: "这个群说话要学术一点" });
   await handleWebhook(groupAt("GREC", "r2", " 现在呢"), "qq");
@@ -2174,7 +2174,7 @@ await test("chat profiles: block drops, record keeps quiet context, mention neve
   const { session: grec } = await getStore().open("qq:group:GREC", Number.MAX_SAFE_INTEGER);
   assert.equal(grec!.cursor, 2, "but not work: the turn handled only the new @");
 
-  const { replyMode } = await import("../src/chats/profile.js");
+  const { replyMode } = await import("../packages/core/src/chats/profile.js");
   process.env.CHAT_DEFAULT_MODE = "mute";
   assert.equal(replyMode({}), "normal", "a default that isn't a mode counts as normal");
   delete process.env.CHAT_DEFAULT_MODE;
@@ -2226,7 +2226,7 @@ await test("usage and quotas: tool calls are counted from the log; a used-up too
 });
 
 await test("model order: what arrived while a step ran is read after that step; the console shows it the same way", async () => {
-  const { arrivedMidStep, modelOrder, modelSees } = await import("../src/conversation/derive.js");
+  const { arrivedMidStep, modelOrder, modelSees } = await import("../packages/core/src/conversation/derive.js");
   const ev = (seq: number, type: string) => ({ seq, type, time: seq, data: {} }) as any;
   const log = [
     ev(0, "turn/start"),
@@ -2245,7 +2245,7 @@ await test("model order: what arrived while a step ran is read after that step; 
 });
 
 await test("history from the log: what people, the bot and admins said; not the model's tool calls", async () => {
-  const { historyFromEvents } = await import("../src/chats/history.js");
+  const { historyFromEvents } = await import("../packages/core/src/chats/history.js");
   const ev = (seq: number, type: string, data: unknown) => ({ seq, type, time: seq * 1000, data }) as any;
   const call = (id: string, name: string, args: unknown) => ({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });
   const lines = historyFromEvents([
@@ -2272,7 +2272,7 @@ await test("history from the log: what people, the bot and admins said; not the 
 });
 
 await test("admin: say speaks in the bot's name on the newest open message, and the model reads it as its own; whisper makes it answer", async () => {
-  const { say, whisper, replyWindow } = await import("../src/admin/chat-actions.js");
+  const { say, whisper, replyWindow } = await import("../packages/core/src/admin/chat-actions.js");
   await handleWebhook(groupMsg("GADMIN", "s1", "有人吗"), "qq");
   await drain();
   const window = await replyWindow("qq:group:GADMIN");
@@ -2297,7 +2297,7 @@ await test("admin: say speaks in the bot's name on the newest open message, and 
   assert.ok(all.every((b) => b.msg_id === "s1"), "through the same platform message");
   assert.equal(new Set(all.map((b) => b.msg_seq)).size, all.length, "with its msg_seq counting on");
 
-  const { historyAfter, historyBefore } = await import("../src/chats/history.js");
+  const { historyAfter, historyBefore } = await import("../packages/core/src/chats/history.js");
   const page = await historyBefore(getStore(), "qq:group:GADMIN", Number.MAX_SAFE_INTEGER, 100);
   assert.deepEqual([...new Set(page.lines.map((l) => l.role))].sort(), ["admin", "bot", "hint", "user"], "the console's history is rendered from the log");
   assert.deepEqual(page.lines.slice(0, 2).map((l) => [l.role, l.text]), [["user", "有人吗"], ["admin", "管理员替我说的"]]);

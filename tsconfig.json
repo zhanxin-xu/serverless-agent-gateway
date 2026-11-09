@@ -1,16 +1,17 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2023"],
-    "types": ["node"],
-    "strict": true,
     "noEmit": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true
+    "customConditions": [
+      "source"
+    ]
   },
-  "include": ["api", "src", "deploy", "scripts"]
+  "include": [
+    "packages/core/src",
+    "packages/adapters/src",
+    "packages/vercel/src",
+    "packages/vercel/api",
+    "packages/vercel/scripts",
+    "scripts"
+  ]
 }

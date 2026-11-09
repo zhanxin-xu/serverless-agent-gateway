@@ -152,7 +152,7 @@ curl -X POST https://<域名>/api/webhook/http \
 
 ## 新增渠道
 
-在 `src/adapters/<渠道>/` 里实现 [`src/channels/types.ts`](../src/channels/types.ts) 的 `ChannelAdapter`（凭据声明在它的 `config` 里，管理端自动生成配置页），然后加进部署的组合（`deploy/<部署>/composition.ts` 的 `channels`），路由会自动生成 `/api/webhook/<name>`。
+在 `packages/adapters/src/<渠道>/` 里实现 [`packages/core/src/channels/types.ts`](../packages/core/src/channels/types.ts) 的 `ChannelAdapter`（凭据声明在它的 `config` 里，管理端自动生成配置页），然后加进部署的组合（`packages/<部署>/src/composition.ts` 的 `channels`），路由会自动生成 `/api/webhook/<name>`。
 
 | 成员 | 必需 | 作用 |
 |---|---|---|
@@ -171,6 +171,6 @@ curl -X POST https://<域名>/api/webhook/http \
 | `verify()` | 否 | 管理端的“检查”：验证凭据能用（比如取一次 token） |
 | `connect(origin)` | 否 | 管理端的“设置 Webhook”：向平台登记回调地址，返回要顺便保存的设置 |
 
-渠道的凭据写在配置目录 [`src/settings/catalog.ts`](../src/settings/catalog.ts) 里：加一个 `channel` 指向渠道名的设置组，管理端的引导页和配置页就会显示它。`connect` 会自动填的项标 `setByConnect`，可以由管理端随机生成的密钥标 `generate`。
+渠道的凭据写在配置目录 [`packages/core/src/settings/catalog.ts`](../packages/core/src/settings/catalog.ts) 里：加一个 `channel` 指向渠道名的设置组，管理端的引导页和配置页就会显示它。`connect` 会自动填的项标 `setByConnect`，可以由管理端随机生成的密钥标 `generate`。
 
 `InboundMessage.replyContext` 用来保存回复时需要的平台信息（比如 QQ 的 `msg_id` 和 `msg_seq` 计数），在同一轮的多次发送之间共享。

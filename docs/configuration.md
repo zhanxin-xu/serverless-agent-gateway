@@ -39,7 +39,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 |---|---|---|
 | `AGENT_TIMEZONE` | `Asia/Shanghai` | 消息头里时间使用的时区 |
 | `AGENT_MAX_STEPS` | `40` | 一轮最多调用模型的次数（旁观轮次也一样；不插话时只用 1 次） |
-| `AGENT_MAX_DURATION_SECONDS` | `300` | Vercel 部署：函数的时间上限，要和 `vercel.json` 的 `maxDuration` 保持一致。剩余不到 100 秒时不开新的一步，交给新的 worker 接着做，见[步数与时间](agent.md#步数与时间)。只能用环境变量 |
+| `AGENT_MAX_DURATION_SECONDS` | `300` | Vercel 部署：函数的时间上限，要和 `packages/vercel/vercel.json` 的 `maxDuration` 保持一致。剩余不到 100 秒时不开新的一步，交给新的 worker 接着做，见[步数与时间](agent.md#步数与时间)。只能用环境变量 |
 | `AGENT_RUN_BUDGET_SECONDS` | `1800` | 本地 Node 部署：一次运行最长多久（常驻进程没有函数时限，也不接力，到点前最后一步必须回复）。只能用环境变量 |
 | `AGENT_CONTEXT_TOKENS` | `200000` | 上下文预算（token）。请求输入超过它的 80% 时，较早的对话会被压缩成摘要，见[上下文压缩](agent.md#上下文压缩) |
 | `AGENT_AMBIENT_INTERVAL_SECONDS` | `10` | 群里没 @ 的消息，每个群每隔多少秒最多唤起一次 agent；`0` 表示只记录、不唤起 |
@@ -74,7 +74,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `SUPABASE_SECRET_KEY` | 空 | 服务端密钥（`sb_secret_…`），集成会自动注入 |
 | `UPSTASH_VECTOR_REST_URL` / `UPSTASH_VECTOR_REST_TOKEN` | 空 | Upstash Vector，用于长期记忆；为空时记忆工具不启用 |
 
-没配置 Supabase 时退化为内存存储：单实例能用，但多实例之间历史不共享，锁、去重和采样也会失效。Supabase 需要先执行 [`supabase/schema.sql`](../supabase/schema.sql)，见[部署文档](deployment.md#存储supabase)。聊天数据保留多久见[数据保留](deployment.md#存储supabase)。
+没配置 Supabase 时退化为内存存储：单实例能用，但多实例之间历史不共享，锁、去重和采样也会失效。Supabase 需要先执行 [`packages/adapters/src/supabase/schema.sql`](../packages/adapters/src/supabase/schema.sql)，见[部署文档](deployment.md#存储supabase)。聊天数据保留多久见[数据保留](deployment.md#存储supabase)。
 
 ## 模块开关
 
@@ -124,7 +124,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `IMAGE_RESOLUTION` | 空（不发） | 对应接口的 `resolution`：`512`、`768`、`1K`、`1.5K`、`2K`、`4K`，只对支持它的模型有用（看 OpenRouter `GET /api/v1/images/models` 里模型的 `supported_parameters`）。默认的 gpt-image 系列**不支持**，发了也会被忽略，按画幅出约 1024px 的图（1024×1024、1024×1536、1536×1024）。结果都会再缩到 1920×1080 以内（横竖都算）再保存 |
 | `IMAGE_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"provider":{"options":{"openai":{"moderation":"low"}}}}` |
 | `IMAGE_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒），临近函数时限时会自动缩短 |
-| `IMAGE_SELF_REFERENCE` | `assets/persona/dafeiyu.webp` | 大肥鱼的形象图：部署里的文件路径或 https 链接，画她自己时作为参考图（`include_self`）。填 `none` 关闭。放进仓库的新文件要在 `vercel.json` 的 `includeFiles` 里能匹配到（现在整个 `assets/` 都会打包），体积尽量小 |
+| `IMAGE_SELF_REFERENCE` | `assets/persona/dafeiyu.webp` | 大肥鱼的形象图：部署包里的文件路径（相对 `packages/vercel/`）或 https 链接，画她自己时作为参考图（`include_self`）。填 `none` 关闭。新文件要放进 `packages/vercel/assets/`（`vercel.json` 会整个打包），体积尽量小 |
 
 ## 语音
 
@@ -136,7 +136,7 @@ OPENAI_RESPONSES_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":fa
 | `TTS_BASE_URL` | `https://openrouter.ai/api/v1` | 请求发到 `{TTS_BASE_URL}/audio/speech` |
 | `TTS_MODEL` | `fish-audio/drama-3` | 语音模型，模型调用工具时不能改。已适配 `fish-audio/drama-3` 和 `bytedance-seed/seed-audio-1-0`（工具描述会教对应的写法）；换别的模型要确认它支持 `pcm` 输出，克隆声音还要支持 `input_references` |
 | `TTS_VOICE` | 空 | 对应接口的 `voice`，填服务商的音色 ID。只在不克隆（模型选了音色 `none`，或没有参考音频）时发送 |
-| `TTS_REFERENCE_AUDIO` | `assets/voice/dafeiyu.mp3` | 要克隆的声音：部署里的文件路径（相对项目根目录），或 https 链接；填 `none` 不克隆。放进仓库的新文件要在 `vercel.json` 的 `includeFiles` 里能匹配到，体积尽量小（单声道、32 kbps 左右的 mp3 就够） |
+| `TTS_REFERENCE_AUDIO` | `assets/voice/dafeiyu.mp3` | 要克隆的声音：部署包里的文件路径（相对 `packages/vercel/`），或 https 链接；填 `none` 不克隆。新文件要放进 `packages/vercel/assets/`，体积尽量小（单声道、32 kbps 左右的 mp3 就够） |
 | `TTS_REFERENCE_TEXT` | 内置参考音频的文字稿 | 参考音频说的话，有助于克隆。换了参考音频要一起改，不填就不发 |
 | `TTS_SING_REFERENCE_AUDIO` | 空 | 可选：同一个声音**唱歌**的参考音频（文件或 https 链接）。设置后模型多一个音色 `self_sing` 可选 |
 | `TTS_SING_REFERENCE_TEXT` | 空 | 唱歌参考音频里唱的词 |

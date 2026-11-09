@@ -5,7 +5,7 @@
  * each other (the catalog reads the composed modules' settings; modules read
  * config; config reads the catalog), which is safe only while nothing is read
  * during loading: everything composed is read after compose()
- * (src/composition.ts). This loads each file under src and deploy first, in a
+ * (Composition in @gateway/core). This loads each file of the packages first, in a
  * fresh process, then composes the Vercel deployment and reads the catalog and
  * the module list, so a file that reads another's export while loading fails
  * here rather than in whichever entry point happens to load it first.
@@ -25,9 +25,8 @@ const walk = (dir: string) => {
     else if (p.endsWith(".ts")) files.push(p);
   }
 };
-for (const dir of ["src", "deploy"]) walk(path.join(root, dir));
-// Entry points that start a server when loaded.
-const SKIP = new Set([path.join(root, "deploy/node/server.ts")]);
+for (const dir of ["packages/core/src", "packages/adapters/src", "packages/vercel/src", "packages/vercel/api"]) walk(path.join(root, dir));
+const SKIP = new Set<string>();
 
 const work = mkdtempSync(path.join(tmpdir(), "loadtest-"));
 const probe = path.join(work, "probe.mts");
@@ -38,14 +37,14 @@ try {
       probe,
       [
         `await import(${JSON.stringify(file)});`,
-        `const { settingDefs } = await import(${JSON.stringify(path.join(root, "src/settings/catalog.ts"))});`,
-        `(await import(${JSON.stringify(path.join(root, "deploy/vercel/composition.ts"))})).composeVercel();`,
-        `const { allModules } = await import(${JSON.stringify(path.join(root, "src/modules/registry.ts"))});`,
+        `const { settingDefs } = await import(${JSON.stringify(path.join(root, "packages/core/src/settings/catalog.ts"))});`,
+        `(await import(${JSON.stringify(path.join(root, "packages/vercel/src/composition.ts"))})).composeVercel();`,
+        `const { allModules } = await import(${JSON.stringify(path.join(root, "packages/core/src/modules/registry.ts"))});`,
         `if (!settingDefs().length || !allModules().length) throw new Error("the catalog or the module list is empty");`,
       ].join("\n"),
     );
     try {
-      execFileSync("npx", ["tsx", probe], { cwd: root, stdio: "pipe", env: { PATH: process.env.PATH, HOME: process.env.HOME } });
+      execFileSync("npx", ["tsx", "--conditions=source", probe], { cwd: root, stdio: "pipe", env: { PATH: process.env.PATH, HOME: process.env.HOME } });
     } catch (err) {
       failed++;
       const line = String((err as { stderr?: Buffer }).stderr ?? err).split("\n").find((l) => /Error/.test(l));

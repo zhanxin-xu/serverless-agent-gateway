@@ -20,7 +20,7 @@
 
 - **凭据只放在环境变量里**。AppSecret、Bot Token、API Key 都不要写进代码或提交到仓库。泄露后请立即在对应平台重置。
 - **沙盒可以执行任意命令**。启用沙盒工作区后，群里任何人都能让机器人在 Vercel Sandbox 里执行命令，沙盒默认可以访问外网。沙盒里不注入任何密钥，消耗受 Vercel 免费额度的硬上限保护，但它仍可能被滥用（比如用来访问第三方网站）。不需要时请设置 `SANDBOX_ENABLED=0`。
-- **账户信息工具**。`get_search_balance` 和 `get_llm_key_limit` 会把余额、额度告诉任何提问的人，介意的话请在 `src/agent/tools.ts` 里移除。
+- **账户信息工具**。`get_search_balance` 和 `get_llm_key_limit` 会把余额、额度告诉任何提问的人，介意的话请在 `packages/core/src/agent/tools.ts` 里移除。
 - **记忆是共享的**。长期记忆在所有聊天之间共享。系统提示词要求模型不要在群里透露私聊里记下的内容，但这只是提示，不是访问控制。不要让机器人记住真正敏感的信息。
 - **提示词注入**。网页、文件、聊天消息里都可能藏着想操纵模型的指令。工具结果会原样交给模型，请把机器人能执行的操作控制在你能接受的范围内。
 - **Webhook 鉴权**。QQ 使用 Ed25519 签名，Telegram 使用 Secret Token 请求头，HTTP 渠道使用 Bearer Token。请为 `TELEGRAM_WEBHOOK_SECRET` 和 `HTTP_CHANNEL_TOKEN` 使用足够长的随机字符串。

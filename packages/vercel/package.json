@@ -1,0 +1,19 @@
+{
+  "name": "@gateway/vercel",
+  "version": "0.1.0",
+  "description": "The gateway on Vercel Functions: host, worker, composition, persona. The Vercel project's Root Directory.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --conditions=source scripts/dev.ts"
+  },
+  "dependencies": {
+    "@gateway/adapters": "*",
+    "@gateway/core": "*",
+    "@vercel/functions": "^3.10.6"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}

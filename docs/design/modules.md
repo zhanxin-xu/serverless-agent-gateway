@@ -518,3 +518,18 @@ P1–P6 可以一起上线，P7 至少隔一周。
 - **适配器目录按厂商分、厂商内按接口分**（`deepseek/search/`、`openrouter/image/`、`supabase/store/`…）：一家厂商常常服务几个模块（OpenRouter 管画图和模型余额），按厂商放共用代码才有地方；按模块找实现靠每个实现声明的 `capability`，`compose()` 拒绝不属于任何已加载模块的实现。部署只能从厂商的 `index.ts` 引用（测试检查）。
 
 还没做的：本地部署收 QQ、Telegram 消息仍然要 webhook（需要公网地址或隧道）。要在没有公网地址的机器上用，需要渠道支持主动拉取（Telegram 的 `getUpdates`、QQ 的 WebSocket），那是给 `ChannelAdapter` 加一种收消息方式，和这次的解耦无关。
+
+### 拆成三个包（2026-11-09）
+
+按“核心一个、各种服务和渠道的实现一个、启动包按部署方式各一个”拆成 npm workspaces，仍在一个仓库里：
+
+- **`@gateway/core`**（`packages/core/`）：原来 `src/` 里除了适配器和人设的全部。对外只有 `src/index.ts`：组合接口、配置读取、模块与能力接口、渠道和存储接口、给宿主用的处理函数（webhook、管理端、健康检查、运行与交接）。
+- **`@gateway/adapters`**（`packages/adapters/`）：原来的 `src/adapters/`，服务和渠道合在一个包里（两者性质相同，现在只有一个部署，拆开只会多一份版本要维护）；目录按厂商、厂商内按接口分。对外是每家厂商的 `index.ts`（`@gateway/adapters/<厂商>`）。`schema.sql` 跟着 Supabase 适配器搬到 `src/supabase/`。
+- **`@gateway/vercel`**（`packages/vercel/`）：宿主、worker、组合、人设、`assets/`、`api/`、`vercel.json`。Vercel 项目的 Root Directory 改成它。`deploy/node` 去掉了，换成这个包里的本地开发服务器 `scripts/dev.ts`；以后要常驻部署再加一个部署包。
+
+为了能拆开，改了这些：
+
+- **不再按当前目录找文件**：管理端页面按 core 自己的位置找（`src/admin/ui` 或构建后的 `dist/admin/ui`），`schema.sql` 按 adapters 自己的位置找；人设的形象图和声音这类“部署里的文件”相对组合新增的 `baseDir`（部署包的目录）。配置里存的路径还是 `assets/…`，线上已有的值不用改。
+- **构建**：Vercel 自己编译 `api/` 和部署包里的 TypeScript，但不支持 project references，所以 core 和 adapters 先用 `tsc` 编译到 `dist/`（带类型声明）。包的 `exports` 有三个条件：`source`（源码，开发、测试和类型检查用 `--conditions=source` / `customConditions`，不用先构建）、`types`、`default`（`dist/`，Vercel 上用）。构建放在 `vercel.json` 的 `installCommand` 里（`cd ../.. && npm ci && npm run build`），因为设了 Build Command 而没有框架时，Vercel 会要求一个静态输出目录。
+- **打包**：在本地用 `vercel build`（Root Directory 设为 `packages/vercel`）检查过每个函数带上了 core 和 adapters 的 `dist/`、管理端页面、`schema.sql`、`pg`、`@vercel/sandbox`、人设素材；`silk.wasm` 不会被自动追踪，`includeFiles` 里写成 `../../node_modules/silk-wasm/lib/silk.wasm`。
+- **测试**：分层测试改成按包检查：core 不引用任何 `@gateway/*`；adapters 只引用 `@gateway/core`，厂商之间不互相引用；vercel 只用两个包的公开入口；人设只是数据；每个文件用到的 npm 包必须写在自己包的 `package.json` 里。

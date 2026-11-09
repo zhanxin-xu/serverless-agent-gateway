@@ -1,13 +1,13 @@
 /**
  * Test doubles for Supabase's Data API (POST /rest/v1/rpc/<fn>), so
  * PostgresStore can run without Supabase:
- *   - postgresRpc: calls the real functions of supabase/schema.sql in a
+ *   - postgresRpc: calls the real functions of the Supabase adapter's schema.sql in a
  *     local Postgres (TEST_DATABASE_URL), the way PostgREST would;
  *   - memoryRpc: answers from a MemoryStore, for fully offline runs.
  */
 import fs from "node:fs";
 import pg from "pg";
-import type { MemoryStore } from "../src/store/index.js";
+import type { MemoryStore } from "../packages/core/src/store/index.js";
 
 export type Rpc = (fn: string, args: Record<string, any>) => Promise<unknown>;
 
@@ -23,7 +23,7 @@ export async function postgresRpc(url: string): Promise<{ rpc: Rpc; client: pg.C
   await client.connect();
   await client.query("set client_min_messages = warning");
   await client.query("drop schema if exists gateway cascade");
-  await client.query(fs.readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8"));
+  await client.query(fs.readFileSync(new URL("../packages/adapters/src/supabase/schema.sql", import.meta.url), "utf8"));
   const rpc: Rpc = async (fn, args) => {
     if (!/^[a-z_]+$/.test(fn)) throw new Error(`bad function name ${fn}`);
     const names = Object.keys(args);

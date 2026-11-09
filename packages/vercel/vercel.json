@@ -1,0 +1,35 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "sin1"
+  ],
+  "installCommand": "cd ../.. && npm ci && npm run build",
+  "functions": {
+    "api/webhook/[channel].ts": {
+      "maxDuration": 300,
+      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
+    },
+    "api/worker.ts": {
+      "maxDuration": 300,
+      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
+    },
+    "api/admin.ts": {
+      "maxDuration": 300,
+      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/api/admin?__ui="
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/api/admin?__ui=$1"
+    },
+    {
+      "source": "/api/admin/(.*)",
+      "destination": "/api/admin?__api=$1"
+    }
+  ]
+}

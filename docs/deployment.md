@@ -1,6 +1,6 @@
 # 部署
 
-本项目是一个标准的 Vercel 项目：`api/` 目录下的文件就是 Vercel Functions，不需要构建配置。
+Vercel 部署的是部署包 `packages/vercel/`：它的 `api/` 目录下的文件就是 Vercel Functions。仓库是 npm workspaces（`packages/core`、`packages/adapters`、`packages/vercel`），所以 Vercel 项目要做两项设置，见下面第 1 步。
 
 ## 准备
 
@@ -10,7 +10,7 @@
 
 ## 部署到 Vercel
 
-1. 在 Vercel 导入本仓库，或者在本地运行 `npx vercel`。
+1. 在 Vercel 导入本仓库，在项目的 **Settings → Build and Deployment → Root Directory** 填 `packages/vercel`，并打开 **Include files outside the root directory in the Build Step**（2020 年之后建的项目默认是开着的）。安装命令和构建由 `packages/vercel/vercel.json` 决定：在仓库根目录 `npm ci`，再把 core 和 adapters 编译到 `dist/`；Framework Preset、Build Command、Output Directory 都保持默认（空）。
 2. 在项目的 **Settings → Environment Variables** 里添加 `ADMIN_PASSWORD`，在 **Storage** 页面连接 Supabase（见下文），然后重新部署。
 3. 打开 `https://<域名>/admin` 登录，按[新手引导](admin.md#新手引导)一步步配置：建表、模型、渠道。已经用环境变量配置好的老部署不用迁移：数据库里没有的配置项照常读环境变量，以后想在管理端改哪项，就在那里填一次。其余配置都在管理端里填，不用再改环境变量，完整列表见[配置参考](configuration.md)。
 4. 也可以访问 `https://<域名>/api/health` 检查状态：
@@ -21,7 +21,7 @@
    | `extraBody` | `OPENAI_RESPONSES_EXTRA_BODY` 的解析结果 |
    | `modules` | 每个模块开没开；没开时写原因，见[模块](modules.md) |
    | `tools` | 当前启用的工具 |
-   | `store` | `supabase` 或 `memory` |
+   | `store` | 存储的名字（`Supabase`）；部署没有数据库设置时是 `memory` |
    | `memory` / `sandbox` | 长期记忆和沙盒是否启用 |
    | `channels` | 各渠道是否已配置凭据 |
    | `admin` | 是否设置了 `ADMIN_PASSWORD`（管理端能否登录） |
@@ -32,13 +32,13 @@
 
 ## 函数区域
 
-`vercel.json` 的 `regions` 把函数放在新加坡（`sin1`），和 Supabase 在同一个区。每个请求要访问数据库好几次，函数和数据库离得近，接口才快；离中国大陆的用户和 QQ 服务器也近。Vercel 默认的 `iad1` 在美国东部，每次访问数据库都要横跨太平洋。Hobby 套餐只能选一个区域。
+`packages/vercel/vercel.json` 的 `regions` 把函数放在新加坡（`sin1`），和 Supabase 在同一个区。每个请求要访问数据库好几次，函数和数据库离得近，接口才快；离中国大陆的用户和 QQ 服务器也近。Vercel 默认的 `iad1` 在美国东部，每次访问数据库都要横跨太平洋。Hobby 套餐只能选一个区域。
 
 沙盒的区域另外由 `SANDBOX_REGION` 决定（默认 `iad1`）。函数在 `sin1` 时，沙盒里每条命令都要跨一次太平洋，所以会慢一点。
 
 ## 函数时长
 
-`vercel.json` 把 Webhook 函数和 `/api/worker` 的 `maxDuration` 都设为 300 秒，这是 Hobby 套餐的上限。平台要求很快拿到回执，所以 Webhook 先返回回执，再用 `waitUntil` 在后台写库、运行 agent，后台处理同样受 300 秒限制；一轮做不完时交给 `/api/worker`，由新的函数接着做。
+`packages/vercel/vercel.json` 把 Webhook 函数和 `/api/worker` 的 `maxDuration` 都设为 300 秒，这是 Hobby 套餐的上限。平台要求很快拿到回执，所以 Webhook 先返回回执，再用 `waitUntil` 在后台写库、运行 agent，后台处理同样受 300 秒限制；一轮做不完时交给 `/api/worker`，由新的函数接着做。
 
 如果你修改了 `maxDuration`，记得同步修改 `AGENT_MAX_DURATION_SECONDS`，agent 会根据它安排时间：剩余不到 100 秒时不开新的一步，把这一轮交给一个新的 `/api/worker` 接着做，详见[步数与时间](agent.md#步数与时间)。
 
@@ -49,8 +49,8 @@ Supabase（Postgres）保存每个聊天的会话、事件流、回复状态、�
 免费版 API 请求不限次数，只按数据量和流量限制，适合消息多的群。
 
 1. 在项目的 **Storage** 页面添加 Supabase：Free 套餐，区域选 Singapore（和函数所在的 `sin1` 同区）。连接项目后会自动注入 `SUPABASE_URL`、`SUPABASE_SECRET_KEY` 等变量。
-2. 在管理端的引导里点“建表”（用 Supabase 集成注入的 `POSTGRES_URL_NON_POOLING` 直接执行）；或者打开 Supabase 控制台的 **SQL Editor**，执行 [`supabase/schema.sql`](../supabase/schema.sql)。它会在私有 schema `gateway` 里建表（开启 RLS），在 `public` 里建一组只有服务端密钥能调用的函数，并用 pg_cron 每天清理过期数据。重复执行是安全的。
-3. 重新部署，`/api/health` 的 `store` 应显示 `supabase`。
+2. 在管理端的引导里点“建表”（用 Supabase 集成注入的 `POSTGRES_URL_NON_POOLING` 直接执行）；或者打开 Supabase 控制台的 **SQL Editor**，执行 [`packages/adapters/src/supabase/schema.sql`](../packages/adapters/src/supabase/schema.sql)。它会在私有 schema `gateway` 里建表（开启 RLS），在 `public` 里建一组只有服务端密钥能调用的函数，并用 pg_cron 每天清理过期数据。重复执行是安全的。
+3. 重新部署，`/api/health` 的 `store` 应显示 `Supabase`，管理端引导里“数据库”一步显示已就绪。
 
 每个存储操作是一次函数调用（`POST /rest/v1/rpc/<函数名>`），多步操作（比如"去重 + 写入 + 抢锁"）在函数里是一个事务。表结构见 [Agent 文档](agent.md#存储结构)。
 

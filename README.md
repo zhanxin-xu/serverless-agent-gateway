@@ -81,13 +81,13 @@
 
 | 想改什么 | 改哪里 |
 |---|---|
-| 人设：她是谁、长相、声音、表情包、示例 | [`src/personas/dafeiyu/`](src/personas/dafeiyu/)；换人设在部署的组合里换 |
-| 每一轮怎么决策 | [`src/prompt/rules.ts`](src/prompt/rules.ts) |
-| 某个工具怎么用 | 它所在模块的说明，比如 [`src/modules/memory/index.ts`](src/modules/memory/index.ts) |
-| 新增工具、模块 | [`src/modules/`](src/modules/)，见[模块](docs/modules.md) |
-| 换一家服务、加渠道、换存储 | [`src/adapters/`](src/adapters/)，见[模块](docs/modules.md)、[新增渠道](docs/channels.md#新增渠道) |
-| 部署在哪、装哪些模块和实现 | [`deploy/`](deploy/)：每种部署一个组合 |
-| 表情包 | [`src/personas/dafeiyu/stickers.ts`](src/personas/dafeiyu/stickers.ts) |
+| 人设：她是谁、长相、声音、表情包、示例 | [`packages/vercel/src/personas/dafeiyu/`](packages/vercel/src/personas/dafeiyu/)；换人设在部署的组合里换 |
+| 每一轮怎么决策 | [`packages/core/src/prompt/rules.ts`](packages/core/src/prompt/rules.ts) |
+| 某个工具怎么用 | 它所在模块的说明，比如 [`packages/core/src/modules/memory/index.ts`](packages/core/src/modules/memory/index.ts) |
+| 新增工具、模块 | [`packages/core/src/modules/`](packages/core/src/modules/)，见[模块](docs/modules.md) |
+| 换一家服务、加渠道、换存储 | [`packages/adapters/src/`](packages/adapters/src/)，见[模块](docs/modules.md)、[新增渠道](docs/channels.md#新增渠道) |
+| 部署在哪、装哪些模块和实现 | [`packages/vercel/src/composition.ts`](packages/vercel/src/composition.ts)：部署包的组合 |
+| 表情包 | [`packages/vercel/src/personas/dafeiyu/stickers.ts`](packages/vercel/src/personas/dafeiyu/stickers.ts) |
 
 ## 本地开发
 
@@ -96,56 +96,60 @@
 ```bash
 npm install
 cp .env.example .env.local   # 填写需要的变量
-npm run dev                  # 本地 Node 部署（deploy/node）：http://localhost:3000/admin
+npm run dev                  # 本地跑 Vercel 部署包：http://localhost:3000/admin
 npm test                     # 离线端到端测试，不调用任何真实接口
-npm run typecheck
+npm run typecheck            # 直接检查各包的源码，不用先构建
+npm run build                # 把 core 和 adapters 编译到各自的 dist/（Vercel 部署时自动执行）
 ```
 
-本地是一种独立的部署（`deploy/node`）：常驻进程，没有函数时限，也不需要 `/api/worker` 接力。QQ、Telegram 用 webhook 推消息，平台必须能访问到这台机器，可以用 `cloudflared tunnel` 或 `ngrok` 把 3000 端口暴露出去；HTTP 渠道直接可用。
+开发和测试直接用各包的 TypeScript 源码（包的 `exports` 里有 `source` 条件，`tsx --conditions=source` 和类型检查会用它）；Vercel 上用编译好的 `dist/`。想在本地接收真实的 QQ 或 Telegram 回调，可以用 `cloudflared tunnel` 或 `ngrok` 把 3000 端口暴露出去。
 
 ## 项目结构
 
+三个 npm workspaces 包，依赖方向是 core ← adapters ← vercel，测试守住边界：
+
 ```
-src/                     核心 + 适配器 + 人设（同一个仓库，按层分目录，测试守住边界）
-  composition.ts         组合：部署交给核心的东西（宿主、人设、模块、实现、渠道、存储、管理端文案）
-  webhook.ts             路由：选择适配器 → 验签解析 → 回执 → 后台处理（Host.background）
-  health.ts              配置自检
-  config.ts              配置：管理端 → 环境变量 → 默认值
-  settings/              存在数据库里的配置
-    catalog.ts           汇总组合里每个模块、实现、渠道、宿主声明的配置项
-    service.ts           加载、保存、各项配置的来源
-  chats/                 每个聊天：回复方式、模块开关、额度、聊天记录
-  admin/                 管理端（接口 + ui/ 页面，原生 JS，没有构建步骤）
-  channels/              渠道接口：types.ts（ChannelAdapter）、消息头格式、网络重试
-  runtime/               运行时：入口、采样、运行者、锁、发件箱；时限和接力问宿主（Host）
-  conversation/          事件流：格式、推导模型输入、崩溃恢复
-  agent/                 模型这一侧：agent loop、时间预算、Responses API、上下文压缩
-  prompt/                系统提示：有名字、有序号的段落，人设从组合里读
-  modules/               模块：一组工具 + 说明它们的段落 + 配置 + 背后的能力接口
-    types.ts / registry.ts / capability.ts   模块、能力、实现的接口；检查、开关、选实现
-    chat/ basics/ model/ search/ memory/ sandbox/ image/ voice/
-  store/                 存储接口（types.ts）和内存实现（本地与测试）
-  media/                 图片下载缩小、WAV、读取随部署打包的文件
-  adapters/              第三方适配：一家厂商一个目录，里面按实现的接口分，只依赖核心
-    deepseek/search/     搜索模块的实现
-    upstash-vector/memory/   长期记忆模块的实现
-    vercel-sandbox/sandbox/  沙盒模块的实现
-    openrouter/          image/ 画图模块的实现；model-account.ts 聊天模型 key 的余额；key.ts 两者共用
-    openai-speech/voice/ 语音模块的实现（Fish / Seed 写法）
-    supabase/store/      存储实现（PostgresStore）和建表（Database）；config.ts 连接
-    qq/ telegram/ http/  渠道（各自带配置项；QQ 的 SILK 编码在 qq/silk.ts）
-  personas/
-    dafeiyu/             人设：提示词、示例、表情包、形象图和声音的路径
-deploy/                  部署：每种一个组合 + 宿主 + 管理端文案
-  vercel/                Vercel Functions：waitUntil、maxDuration、/api/worker 接力
-  node/                  常驻 Node 服务：npm run dev / npm start
-api/                     Vercel 的函数入口，只转给 deploy/vercel
-  webhook/[channel].ts   POST /api/webhook/{qq|telegram|http}
-  worker.ts              POST /api/worker：一轮做不完时由新的函数接着做（内部，凭运行锁）
-  health.ts              GET /api/health
-  admin.ts               /admin 页面和 /api/admin/* 接口
-assets/                  人设的参考声音和形象图
-supabase/schema.sql      Supabase 适配器的表和函数
+packages/
+  core/                  @gateway/core：核心，只通过 src/index.ts 对外
+    src/
+      index.ts           公开入口：组合接口、配置读取、模块与能力接口、渠道和存储接口、给宿主用的处理函数
+      composition.ts     组合：部署交给核心的东西（宿主、人设、模块、实现、渠道、存储、管理端文案）
+      webhook.ts         路由：选择适配器 → 验签解析 → 回执 → 后台处理（Host.background）
+      config.ts          配置：管理端 → 环境变量 → 默认值
+      settings/          存在数据库里的配置；catalog.ts 汇总组合里各方声明的配置项
+      chats/             每个聊天：回复方式、模块开关、额度、聊天记录
+      admin/             管理端（接口 + ui/ 页面，原生 JS，没有构建步骤）
+      channels/          渠道接口：ChannelAdapter、消息头格式、网络重试
+      runtime/           运行时：入口、采样、运行者、锁和交接、发件箱
+      conversation/      事件流：格式、推导模型输入、崩溃恢复
+      agent/             模型这一侧：agent loop、时间预算、Responses API、上下文压缩
+      prompt/            系统提示：有名字、有序号的段落，人设从组合里读
+      modules/           模块契约和 8 个内置模块：chat basics model search memory sandbox image voice
+      store/             存储接口和内存实现
+      media/             图片下载缩小、WAV、读取部署包里的文件
+  adapters/              @gateway/adapters：第三方适配，一家厂商一个目录，里面按实现的接口分
+    src/
+      deepseek/search/   搜索模块的实现
+      upstash-vector/memory/   长期记忆模块的实现
+      vercel-sandbox/sandbox/  沙盒模块的实现
+      openrouter/        image/ 画图模块的实现；model-account.ts 聊天模型 key 的余额；key.ts 两者共用
+      openai-speech/voice/     语音模块的实现（Fish / Seed 写法）
+      supabase/          store/ 存储实现和建表；schema.sql 表和函数；config.ts 连接
+      qq/ telegram/ http/      渠道（各自带配置项；QQ 的 SILK 编码在 qq/silk.ts）
+  vercel/                @gateway/vercel：部署包，Vercel 项目的 Root Directory
+    vercel.json          函数时长、打包的文件、改写规则；安装时构建 core 和 adapters
+    api/                 函数入口，只转给 src/index.ts
+      webhook/[channel].ts   POST /api/webhook/{qq|telegram|http}
+      worker.ts          POST /api/worker：一轮做不完时由新的函数接着做（凭运行锁）
+      health.ts          GET /api/health
+      admin.ts           /admin 页面和 /api/admin/* 接口
+    src/
+      composition.ts     组合：装哪些模块、实现、渠道、存储、人设
+      host.ts            Vercel 宿主：waitUntil、maxDuration、交给 /api/worker
+      worker.ts          /api/worker：凭运行锁接着跑
+      personas/dafeiyu/  人设：提示词、示例、表情包
+    assets/              人设的参考声音和形象图
+    scripts/dev.ts       本地开发服务器（npm run dev）
 scripts/
   selftest.ts            离线端到端测试（按 Vercel 部署组合）
   moduletest.ts          模块、提示词和分层边界测试

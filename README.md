@@ -112,7 +112,8 @@ packages/
   core/       @gateway/core：运行时、agent loop、提示词、模块、管理端、各种接口
   adapters/   @gateway/adapters：第三方服务和渠道的实现，一家厂商一个目录
   vercel/     @gateway/vercel：部署包（组合、宿主、人设、api/、vercel.json）
-scripts/      测试
+resources/    资源：模型价目表（pricing/，每天自动同步）
+scripts/      测试；pricing/ 是价目表的构建脚本
 docs/         文档
 ```
 
@@ -125,6 +126,8 @@ docs/         文档
 ## 致谢
 
 事件流、模块和组合的设计参考了 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh，MIT），没有使用它的代码。
+
+模型价目表的数据大部分来自 [langfuse](https://github.com/langfuse/langfuse) 和 [litellm](https://github.com/BerriAI/litellm)（均为 MIT），许可声明见 [`resources/pricing/THIRD_PARTY_NOTICES.md`](resources/pricing/THIRD_PARTY_NOTICES.md)。
 
 示例人设使用的「蓝色大肥鱼 / DeepSeek 娘」表情包来自社区整理的 [梗鲸 GengJing · 蓝色大肥鱼表情包档案馆](https://aigengtu.com)（[GitHub](https://github.com/the-beating-light-of-the-nail/deepseek-chan-meme-pack)）。本仓库不包含任何图片文件，只按原站公开的直链规则引用，版权说明见[工具文档](docs/tools.md#表情包出处与版权)。
 

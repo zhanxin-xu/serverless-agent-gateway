@@ -36,3 +36,15 @@ jobs:
       - run: npm run build
       - run: npm run test:store
       - run: npm test
+
+  # 价目表：构建脚本的单元测试和价目表校验（同步任务用 GITHUB_TOKEN 开的 PR 不会触发 CI，
+  # 那些 PR 在同步任务里已经跑过同样的检查）。npm test 另外检查每条正则在 JavaScript 里也能编译。
+  pricing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m unittest discover -s scripts/pricing/tests
+      - run: python3 scripts/pricing/validate_pricing.py resources/pricing/model-prices.json

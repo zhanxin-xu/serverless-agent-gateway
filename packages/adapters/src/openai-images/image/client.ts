@@ -1,11 +1,11 @@
 /**
  * OpenAI's Image API: POST {base URL}/images/generations to draw, or
  * /images/edits with the references (https or data URLs, up to 16) to edit
- * or draw like them. The response reports tokens, not money, so a call's cost
- * is estimated from the instance's prices.
+ * or draw like them. The response reports tokens, not money: the core prices
+ * them by the price table.
  */
-import { overrideBody, type ImageBackend, type ImageRequest } from "@gateway/core";
-import type { ImagesConfig, ImagePrices } from "./config.js";
+import { overrideBody, type ImageBackend, type ImageRequest, type TokenUsage } from "@gateway/core";
+import type { ImagesConfig } from "./config.js";
 
 /** Lossless, so output_compression (JPEG / WebP only) doesn't apply; previews are made from it. */
 const OUTPUT_FORMAT = "png";
@@ -37,14 +37,13 @@ export function sizeFor(aspectRatio: string | undefined): string {
   return `${width}x${round16(width / ratio)}`;
 }
 
-/** USD for a call's tokens; undefined when the API didn't report them. */
-export function costOf(usage: ImagesResponse["usage"], prices: ImagePrices): number | undefined {
+/** The response's tokens as the core counts them: text and image input apart, the output all image tokens. */
+export function tokensOf(usage: ImagesResponse["usage"]): TokenUsage | undefined {
   if (!usage) return undefined;
   const details = usage.input_tokens_details;
-  // Without the split, every input token is priced as text (the cheaper rate).
-  const text = details?.text_tokens ?? (details?.image_tokens === undefined ? (usage.input_tokens ?? 0) : 0);
+  // Without the split, every input token counts as text.
   const image = details?.image_tokens ?? 0;
-  return (text * prices.text_input + image * prices.image_input + (usage.output_tokens ?? 0) * prices.image_output) / 1_000_000;
+  return { input: details?.text_tokens ?? (usage.input_tokens ?? 0) - image, inputImage: image, output: usage.output_tokens ?? 0 };
 }
 
 export function openaiImagesClient(config: ImagesConfig): ImageBackend {
@@ -74,10 +73,10 @@ export function openaiImagesClient(config: ImagesConfig): ImageBackend {
       const result = JSON.parse(text) as ImagesResponse;
       const images = (result.data ?? []).filter((d) => d.b64_json);
       if (!images.length) throw new Error(`the image API returned no image: ${text.slice(0, 300)}`);
-      const cost = costOf(result.usage, config.prices);
+      const tokens = tokensOf(result.usage);
       return {
         images: images.map((d) => ({ bytes: Buffer.from(d.b64_json!, "base64"), type: `image/${result.output_format ?? OUTPUT_FORMAT}` })),
-        ...(cost !== undefined ? { cost } : {}),
+        usage: { model: config.model, ...(tokens ? { tokens } : {}) },
       };
     },
   };

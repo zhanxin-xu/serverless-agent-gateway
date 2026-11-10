@@ -55,7 +55,12 @@ export interface ImageContent {
   mimeType: string;
 }
 
-/** Tokens and cost of one call. `input` excludes the tokens read from or written to the prompt cache. */
+/**
+ * Tokens and cost of one call. `input` excludes the tokens read from or written
+ * to the prompt cache. A provider fills the cost only when the service billed
+ * the call (`totalFromProvider`); otherwise the core prices the tokens by the
+ * price table (src/pricing/) and says which entry it used.
+ */
 export interface Usage {
   input: number;
   output: number;
@@ -64,8 +69,8 @@ export interface Usage {
   /** Reasoning tokens, where the provider reports them (already counted in `output`). */
   reasoning?: number;
   totalTokens: number;
-  /** USD: estimated from prices, or what the provider billed (`totalFromProvider`). */
-  cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; totalFromProvider?: boolean };
+  /** USD: what the service billed (`totalFromProvider`), or priced from the table (`priceEntry`), else 0. */
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; totalFromProvider?: boolean; priceEntry?: string };
 }
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";

@@ -49,11 +49,6 @@ export function piAiConfig(instance: PiAiInstance) {
     get maxOutputTokens(): number | undefined {
       return s.value("max_output_tokens") ? s.int("max_output_tokens") : undefined;
     },
-    /** USD per million tokens; unset counts as 0. */
-    get prices() {
-      const price = (field: string) => Number(s.value(field)) || 0;
-      return { input: price("price_input"), cached: price("price_cached"), output: price("price_output") };
-    },
     /** The agent's context budget (a core setting): how much of the model's window the gateway uses. */
     get contextTokens() {
       return settingInt("AGENT_CONTEXT_TOKENS");

@@ -1,6 +1,6 @@
 // Settings of an OpenAI Image API provider instance, each named IMAGE_{ID}_{FIELD}.
 import { bodyOverrideSetting, type ConfigDecl } from "@gateway/core";
-import { DEFAULT_PRICES, imagesConfig, type ImagesInstance } from "./config.js";
+import { imagesConfig, type ImagesInstance } from "./config.js";
 
 export function imagesSettings(instance: ImagesInstance): ConfigDecl {
   const { key } = imagesConfig(instance);
@@ -21,14 +21,6 @@ export function imagesSettings(instance: ImagesInstance): ConfigDecl {
         help: "决定价格，由这里定，不让模型选。xhigh 和 max 只有 2.5 之后的 sunburst / flare 支持。",
       },
       bodyOverrideSetting(key("extra_body"), group, '{"moderation":"low"}'),
-      {
-        key: key("prices"),
-        group,
-        label: "价格（美元 / 百万 token）",
-        kind: "json",
-        default: JSON.stringify(DEFAULT_PRICES),
-        help: "接口只返回 token 数，按这个价格估算每次花了多少（花费上限按它算）。默认是 gpt-image-2.6 的标价：文字输入 5、参考图输入 8、出图 30；换了模型或价格变了就改这里。",
-      },
       { key: key("timeout_ms"), group, label: "超时（毫秒）", kind: "int", default: "180000" },
     ],
   };

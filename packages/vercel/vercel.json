@@ -7,7 +7,7 @@
     "api/**/*.ts": {
       "installCommand": "cd ../.. && npm ci && npm run build",
       "maxDuration": 300,
-      "includeFiles": "{assets/**,../../node_modules/silk-wasm/lib/silk.wasm}"
+      "includeFiles": "{assets/**,../../resources/**,../../node_modules/silk-wasm/lib/silk.wasm}"
     }
   },
   "rewrites": [

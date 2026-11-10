@@ -28,10 +28,11 @@ npm workspaces，依赖方向 core ← adapters ← vercel。
 | `host` | 后台任务、一次运行的时长、跑不完时怎么接力、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` |
 | `persona` | 人设 | 大肥鱼 |
 | `modules` | 加载哪些模块，按什么顺序 | 全部 8 个 |
-| `providers` | 各能力的实现，同一个实现可以按服务地址组合成几个实例 | 聊天模型：pi-ai 的 OpenRouter、OpenAI、Anthropic、Gemini、DeepSeek、自定义；DeepSeek 搜索、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音（OpenRouter） |
+| `providers` | 各能力的实现，同一个实现可以按服务地址组合成几个实例 | 聊天模型：pi-ai 的 OpenRouter、OpenAI、Anthropic、Gemini、DeepSeek、自定义；DeepSeek 搜索、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 画图、OpenAI 兼容语音（OpenRouter） |
 | `channels` | 渠道 | QQ、Telegram、HTTP |
 | `store` / `database` | 存储，以及管理端怎么给它建表 | 配了 Supabase 用 Supabase，否则内存 |
 | `guide` | 管理端里随部署变的文案：怎么设管理密码、怎么连数据库 | Vercel 控制台的步骤 |
+| `prices` | 模型价目表，第一次用时读：服务只报 token 时，core 按它补全花费（`packages/core/src/pricing/`） | 仓库的 `resources/pricing/model-prices.json`，随函数打包 |
 
 `compose()` 拒绝不属于任何已加载模块的实现，以及同一能力下重复的实现 id。
 

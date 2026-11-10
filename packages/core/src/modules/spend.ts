@@ -10,8 +10,9 @@
  * cost is added to the module's day (gateway.spend_daily) after it ends.
  *
  * What it can't do (docs/configuration.md#花费上限):
- *   - The cost is the provider's own figure where it reports one, else an
- *     estimate from the model's prices; a call that reports neither counts 0.
+ *   - The cost is the service's own figure where it reports one, else its
+ *     tokens priced by the price table (src/pricing/); a model the table
+ *     doesn't know counts 0.
  *   - It's added after a call ends, so calls running at once can go over by
  *     what they cost.
  *   - It only sees calls made through the gateway: a leaked key is the

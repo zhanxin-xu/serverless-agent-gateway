@@ -29,7 +29,7 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;
 
 /** The model as pi-ai describes it, from an instance's settings. */
 function piModel(config: PiAiConfig): Model<Api> {
-  const { api, baseUrl, model, prices, maxOutputTokens, contextTokens } = config;
+  const { api, baseUrl, model, maxOutputTokens, contextTokens } = config;
   return {
     id: model,
     name: model,
@@ -38,8 +38,8 @@ function piModel(config: PiAiConfig): Model<Api> {
     baseUrl,
     input: ["text", "image"],
     reasoning: false,
-    // Cache writes are priced as input: providers that bill them extra report their own cost.
-    cost: { input: prices.input, output: prices.output, cacheRead: prices.cached, cacheWrite: prices.input },
+    // No prices here: the answer reports its tokens, and the core prices them (src/pricing/ in the core).
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: contextTokens,
     maxTokens: maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   };

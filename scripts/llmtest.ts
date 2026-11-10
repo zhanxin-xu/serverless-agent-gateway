@@ -307,11 +307,12 @@ await test("gemini: thought signatures (base64, as Gemini sends them) go back on
   assert.ok(contents.at(-1).parts.some((p: any) => p.functionResponse?.name === "send_message"));
 });
 
-await test("cost: estimated from the prices when the provider doesn't bill it", async () => {
-  configure("anthropic-messages", "https://api.anthropic.example", "claude-x", { PRICE_INPUT: "3", PRICE_CACHED: "0.3", PRICE_OUTPUT: "15" });
+await test("cost: the adapter reports the tokens and no price of its own (the core prices them)", async () => {
+  configure("anthropic-messages", "https://api.anthropic.example", "claude-x");
   reply = () => anthropicStream([{ type: "text", text: "好" }], { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000 });
   const message = await complete([user("hi")]);
-  assert.equal(message.usage.cost.total, 3 + 15 + 0.3);
+  assert.deepEqual([message.usage.input, message.usage.output, message.usage.cacheRead], [1_000_000, 1_000_000, 1_000_000]);
+  assert.equal(message.usage.cost.total, 0);
   assert.ok(!message.usage.cost.totalFromProvider);
 });
 

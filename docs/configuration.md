@@ -57,7 +57,6 @@ JSON 写错或不是对象时，调用会报错。实现在 `packages/core/src/m
 | `MODEL_{实例}_EXTRA_BODY` | 请求体覆盖，见下文和[请求体覆盖](#请求体覆盖) |
 | `MODEL_{实例}_EXTRA_HEADERS` | JSON 对象，作为额外的请求头，例如 `{"X-Title":"my-bot"}` |
 | `MODEL_{实例}_MAX_OUTPUT_TOKENS` | 单次最多输出（含思维链）。不填时只有 Anthropic 带上限（它必须有，用 32000） |
-| `MODEL_{实例}_PRICE_INPUT` / `_PRICE_CACHED` / `_PRICE_OUTPUT` | 美元 / 百万 token。服务不在响应里报花费时，用它们估算每个聊天的花费（每群额度按它算）。OpenRouter 会报花费，可以不填 |
 
 模型模块自己的配置：
 
@@ -85,6 +84,16 @@ MODEL_GEMINI_EXTRA_BODY='{"config":{"thinkingConfig":{"includeThoughts":true}}}'
 
 **余额**：实例知道自己是哪家时用自己的 Key 去查（Vercel 部署里只有 `openrouter` 能查）。两个模块用的是同一个 Key 时，总览只显示一格，工具结果会注明和哪个模块共用。
 
+## 模型价目表
+
+服务只报 token、不报金额的调用（直连 OpenAI、Anthropic、Gemini、DeepSeek 的模型调用，OpenAI 画图），由 core 按价目表补全花费：用模型名按正则找到条目，按调用的输入 token 数、时段、服务档位选档，再按 token 数乘单价。价目表在 [`resources/pricing/`](../resources/pricing/)，格式、来源和每日自动同步见那里的 README。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `PRICE_CNY_PER_USD` | `7.1` | 按人民币计价的条目（DeepSeek、千问）折成美元用的汇率：1 美元等于多少人民币 |
+
+用的是哪个条目，记在每次模型调用的 `usage.cost.priceEntry` 里（管理端聊天页的事件里能看到）。表里没有的模型（比如自定义服务的私有模型）记 0：把它加进 `resources/pricing/curated.json`，重新生成价目表。
+
 ## 花费上限
 
 模型和画图各有一份花费上限，所有聊天加起来算，不管用的是哪个实例；在管理端模块页里各自模块的设置里填：
@@ -101,7 +110,7 @@ MODEL_GEMINI_EXTRA_BODY='{"config":{"thinkingConfig":{"includeThoughts":true}}}'
 
 这是网关自己的限额，不是服务商的：
 
-- **金额是估算的。** 服务商在响应里报了金额就用它（OpenRouter 会报，但用 BYOK 自己的 Key 时报 $0）；没报时，模型按 pi-ai 的价格表估，OpenAI 画图按 `IMAGE_OPENAI_PRICES` 的 token 单价估；两样都没有的调用记 0。
+- **金额多半是估算的。** 服务在响应里报了金额就用它（OpenRouter 画图会报，但用 BYOK 自己的 Key 时报 $0）；只报 token 时，按[模型价目表](#模型价目表)估算；表里没有这个模型的调用记 0。
 - **可能略超。** 调用结束后才记账，几个调用同时在跑时，都会在额度用完之前放行；每个函数实例还会缓存最多 15 秒的账。
 - **管不了网关之外的调用。** Key 泄露后别人直接拿去用，这里看不到，要靠服务商那边：OpenAI 项目的余额（关掉自动充值）、模型白名单和速率限制。
 
@@ -205,7 +214,7 @@ MODEL_GEMINI_EXTRA_BODY='{"config":{"thinkingConfig":{"includeThoughts":true}}}'
 
 ### OpenAI
 
-实例 `openai`，OpenAI 官方的 Image API：没有参考图时 `POST {IMAGE_OPENAI_BASE_URL}/images/generations`，有参考图时 `POST /images/edits`（参考图以 URL 或 data URL 发送，最多 16 张）。用户标识作为 `safety_identifier` 原样发给 OpenAI（走 OpenRouter 时它会换成自己的哈希）。
+实例 `openai`，OpenAI 官方的 Image API（花费由 core 按[模型价目表](#模型价目表)计：文字、参考图和出图的 token 分开计价）：没有参考图时 `POST {IMAGE_OPENAI_BASE_URL}/images/generations`，有参考图时 `POST /images/edits`（参考图以 URL 或 data URL 发送，最多 16 张）。用户标识作为 `safety_identifier` 原样发给 OpenAI（走 OpenRouter 时它会换成自己的哈希）。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -214,7 +223,6 @@ MODEL_GEMINI_EXTRA_BODY='{"config":{"thinkingConfig":{"includeThoughts":true}}}'
 | `IMAGE_OPENAI_MODEL` | `gpt-image-2.6-sunburst` | 图像模型 |
 | `IMAGE_OPENAI_QUALITY` | `low` | 对应接口的 `quality`，只能在这里设 |
 | `IMAGE_OPENAI_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，例如 `{"moderation":"low"}` |
-| `IMAGE_OPENAI_PRICES` | `{"text_input":5,"image_input":8,"image_output":30}` | 美元 / 百万 token。接口只返回 token 数，花费按它估算。默认是 gpt-image-2.6 的标价 |
 | `IMAGE_OPENAI_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒） |
 
 画幅（`aspect_ratio`）换成约一百万像素、宽高都是 16 的倍数的 `size`，比如 16:9 是 `1360x768`；`auto` 让模型自己定（有参考图时跟着参考图）。结果同样缩到 1920×1080 以内再保存。

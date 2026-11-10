@@ -40,7 +40,8 @@ export const openrouterImagesClient: ImageBackend = {
     if (!images.length) throw new Error(`the image API returned no image: ${text.slice(0, 300)}`);
     return {
       images: images.map((d) => ({ bytes: Buffer.from(d.b64_json!, "base64"), type: d.media_type ?? "image/png" })),
-      ...(typeof result.usage?.cost === "number" ? { cost: result.usage.cost } : {}),
+      // OpenRouter bills each call and says how much; the core takes that as is.
+      usage: { model, ...(typeof result.usage?.cost === "number" ? { billed: { amount: result.usage.cost, currency: "USD" as const } } : {}) },
     };
   },
   // The image key's limits (whether another module spends from the same key, the core tells).

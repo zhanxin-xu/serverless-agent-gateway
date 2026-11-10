@@ -60,16 +60,6 @@ export function chatModelSettings(instance: PiAiInstance): ConfigDecl {
         kind: "int",
         help: "包括思维链。不填时只有 Anthropic 协议带上限（它必须有，用 32000），其余协议由服务决定。",
       },
-      {
-        key: key("price_input"),
-        group,
-        label: "输入单价（美元 / 百万 token）",
-        kind: "number",
-        min: 0,
-        help: "服务没在响应里报花费时，用这三个单价估算每个群的花费（每群额度按它算）。OpenRouter 会报花费，可以不填。",
-      },
-      { key: key("price_cached"), group, label: "缓存命中单价（美元 / 百万 token）", kind: "number", min: 0 },
-      { key: key("price_output"), group, label: "输出单价（美元 / 百万 token）", kind: "number", min: 0 },
     ],
   };
 }

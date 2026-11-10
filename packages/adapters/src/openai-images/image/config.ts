@@ -14,16 +14,6 @@ export interface ImagesInstance {
   model: string;
 }
 
-/** USD per 1M tokens, by what the tokens are; the API reports tokens, not money. */
-export interface ImagePrices {
-  text_input: number;
-  image_input: number;
-  image_output: number;
-}
-
-/** gpt-image-2.6-sunburst's and -flare's list prices (developers.openai.com, November 2026). */
-export const DEFAULT_PRICES: ImagePrices = { text_input: 5, image_input: 8, image_output: 30 };
-
 /** An instance's settings. Names follow the API's fields. */
 export function imagesConfig(instance: ImagesInstance) {
   const s = instanceSettings("image", instance.id);
@@ -45,10 +35,6 @@ export function imagesConfig(instance: ImagesInstance) {
     /** The body override, merged in last (overrideBody), e.g. {"moderation":"low"}. */
     get extraBody() {
       return s.json("extra_body");
-    },
-    /** What the instance's tokens cost, to estimate a call's price; missing fields keep the defaults. */
-    get prices(): ImagePrices {
-      return { ...DEFAULT_PRICES, ...(s.json("prices") as Partial<ImagePrices>) };
     },
     get timeoutMs() {
       return s.int("timeout_ms");

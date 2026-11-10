@@ -59,6 +59,8 @@ export type {
   Usage,
   UserMessage,
 } from "./llm/types.js";
+export { costOf, priceEntry, toUsd, type CallCost, type CallUsage, type TokenUsage } from "./pricing/cost.js";
+export type { PriceCatalog, PriceEntry } from "./pricing/catalog.js";
 
 // ── Helpers adapters share ──
 export { getJson } from "./modules/shared/http.js";

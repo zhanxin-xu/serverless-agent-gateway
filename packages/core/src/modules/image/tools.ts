@@ -157,7 +157,8 @@ export const generateImage: Tool = {
       ctx.images.push({ type: "image", data: preview.toString("base64"), mimeType: "image/jpeg" });
       lines.push(`${file} (${width && height ? `${width}x${height}, ` : ""}${bytes.byteLength} bytes)`);
     }
-    const cost = result.cost !== undefined ? `, cost $${result.cost}` : "";
+    // Priced by the core (src/pricing/); 0 when neither the service nor the price table could tell.
+    const cost = result.cost ? `, cost $${Number(result.cost.toFixed(4))}` : "";
     return (
       `generated ${result.images.length} image(s)${cost}; saved and shown to you right after this:\n${lines.join("\n")}\n` +
       `If one looks right, send it with ${sendFile.name}.`

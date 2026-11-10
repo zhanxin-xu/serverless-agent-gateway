@@ -1810,8 +1810,8 @@ await test("generate_image: workspace references become data URLs; results cappe
   assert.ok(!activeTools().some((t) => t.name === "generate_image"), "off without IMAGE_OPENROUTER_API_KEY");
 });
 
-await test("generate_image through OpenAI's own Image API: generations or edits, the size from the aspect ratio, safety_identifier, the cost from the tokens", async () => {
-  const { costOf, sizeFor } = await import("../packages/adapters/src/openai-images/image/client.js");
+await test("generate_image through OpenAI's own Image API: generations or edits, the size from the aspect ratio, safety_identifier, its tokens priced by the core", async () => {
+  const { tokensOf, sizeFor } = await import("../packages/adapters/src/openai-images/image/client.js");
   assert.equal(sizeFor(undefined), "auto");
   assert.equal(sizeFor("auto"), "auto");
   assert.equal(sizeFor("1:1"), "1024x1024");
@@ -1822,10 +1822,9 @@ await test("generate_image through OpenAI's own Image API: generations or edits,
     assert.ok(Math.abs(w! / h! - a! / b!) < 0.03, `${ratio}: ${w}x${h}`);
     assert.ok(Math.abs((w! * h!) / (1024 * 1024) - 1) < 0.05, `${ratio}: about a megapixel`);
   }
-  const prices = { text_input: 5, image_input: 8, image_output: 30 };
-  assert.equal(costOf(undefined, prices), undefined);
-  assert.ok(Math.abs(costOf({ input_tokens: 1100, input_tokens_details: { text_tokens: 100, image_tokens: 1000 }, output_tokens: 1756 }, prices)! - 0.06118) < 1e-9);
-  assert.ok(Math.abs(costOf({ input_tokens: 100, output_tokens: 1000 }, prices)! - 0.0305) < 1e-9, "no split: priced as text");
+  assert.equal(tokensOf(undefined), undefined);
+  assert.deepEqual(tokensOf({ input_tokens: 1100, input_tokens_details: { text_tokens: 100, image_tokens: 1000 }, output_tokens: 1756 }), { input: 100, inputImage: 1000, output: 1756 });
+  assert.deepEqual(tokensOf({ input_tokens: 100, output_tokens: 1000 }), { input: 100, inputImage: 0, output: 1000 }, "no split: all text");
 
   process.env.SANDBOX_VERCEL_ENABLED = "1";
   process.env.IMAGE_OPENAI_API_KEY = "oai-img-key";

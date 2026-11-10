@@ -269,6 +269,63 @@ await test("a chat's switches: disabledModules, module ids only", () => {
   );
 });
 
+await test("pricing: the shipped table compiles in JavaScript, and each entry's examples find it first", async () => {
+  const { prices } = await import("../packages/core/src/composition.js");
+  const { compileCatalog, findEntry } = await import("../packages/core/src/pricing/catalog.js");
+  const catalog = prices()!;
+  assert.ok(catalog.models.length > 100, "the deployment ships resources/pricing/model-prices.json");
+  const { entries, rejected } = compileCatalog(catalog);
+  assert.deepEqual(rejected, [], "every pattern is a JavaScript regex too");
+  for (const { entry } of entries) for (const example of entry.examples ?? []) assert.equal(findEntry(entries, example)?.id, entry.id, `${example} → ${entry.id}`);
+});
+
+await test("pricing: billed as is; else tokens × the matching tier (default, long context, time of day, CNY); else unpriced", async () => {
+  const { costOf } = await import("../packages/core/src/pricing/cost.js");
+  const close = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
+  assert.deepEqual(costOf({ model: "x", billed: { amount: 0.25, currency: "USD" } }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.25, by: "provider" });
+  assert.equal(costOf({ model: "nobody-knows", tokens: { input: 1000, output: 1000 } }).by, "unpriced");
+  assert.equal(costOf({ model: "gpt-6-luna" }).total, 0, "no tokens, nothing billed");
+
+  // gpt-6-luna: input 0.1, cached 0.01, output 0.5 per million; with or without the OpenRouter prefix.
+  const luna = costOf({ model: "openai/gpt-6-luna", tokens: { input: 100_000, cacheRead: 100_000, output: 100_000 } });
+  assert.equal(luna.by, "price table");
+  assert.equal(luna.entry, "gpt-6-luna");
+  close(luna.input, 0.01, "input");
+  close(luna.cacheRead, 0.001, "cache read");
+  close(luna.output, 0.05, "output");
+  close(luna.total, 0.061, "total");
+  // Over 272K input, cached tokens included: the long-context tier (input 0.2) for the whole call.
+  const long = costOf({ model: "gpt-6-luna", tokens: { input: 100_000, cacheRead: 200_000, output: 0 } });
+  assert.notEqual(long.tier, luna.tier);
+  close(long.input, 0.02, "long-context input");
+
+  // Images: text and image input apart.
+  const image = costOf({ model: "gpt-image-2.6-sunburst", tokens: { input: 100, inputImage: 1000, output: 1756 } });
+  close(image.total, (100 * 5 + 1000 * 8 + 1756 * 30) / 1e6, "gpt-image");
+
+  // DeepSeek: CNY, twice the price at peak hours (weekdays 9-12, 14-18 Beijing time).
+  process.env.PRICE_CNY_PER_USD = "7.5";
+  try {
+    const offPeak = costOf({ model: "deepseek-v4-flash", tokens: { input: 1_000_000, output: 0 } }, Date.parse("2026-11-08T03:00:00Z"));
+    const peak = costOf({ model: "deepseek-v4-flash", tokens: { input: 1_000_000, output: 0 } }, Date.parse("2026-11-10T02:00:00Z"));
+    close(offPeak.total, 1.5 / 7.5, "Sunday: off-peak, CNY 1.5 at 7.5 to the dollar");
+    close(peak.total, 3 / 7.5, "Tuesday 10:00 Beijing: peak");
+  } finally {
+    delete process.env.PRICE_CNY_PER_USD;
+  }
+});
+
+await test("pricing: the model module's answers leave priced (billed ones kept), and the spend counts that", async () => {
+  const { priced } = await import("../packages/core/src/modules/model/capability.js");
+  const usage = { input: 200_000, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 200_000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const message = { role: "assistant" as const, content: [], api: "openai-responses", provider: "x", model: "gpt-6-luna", usage, stopReason: "stop" as const, timestamp: 0 };
+  const out = priced(message, Date.now());
+  assert.ok(Math.abs(out.usage.cost.total - 0.02) < 1e-9);
+  assert.equal(out.usage.cost.priceEntry, "gpt-6-luna");
+  const billed = { ...message, usage: { ...usage, cost: { ...usage.cost, total: 0.42, totalFromProvider: true } } };
+  assert.equal(priced(billed, Date.now()), billed, "what the service billed stays");
+});
+
 await test("body override: merged level by level, last; an array or a value replaces, null removes; nothing changed in place", async () => {
   const { overrideBody } = await import("../packages/core/src/modules/shared/body.js");
   const body = { model: "m", include: ["a"], reasoning: { effort: "low", summary: "auto" }, user: "u", nested: { keep: 1 } };

@@ -12,6 +12,7 @@
  * is read when used, never while the files load, so the order files load in
  * doesn't matter.
  */
+import type { PriceCatalog } from "./pricing/catalog.js";
 import type { ChannelAdapter } from "./channels/types.js";
 import type { Module, Provider } from "./modules/types.js";
 import type { Store } from "./store/types.js";
@@ -124,19 +125,28 @@ export interface Composition {
   /** The store's setup; without it the store needs none (memory). */
   database?: Database;
   guide: ConsoleGuide;
+  /**
+   * The model price table (src/pricing/), read on first use: what the core
+   * prices a call by when its service reports tokens but no amount. Without
+   * one such calls count 0.
+   */
+  prices?: () => PriceCatalog;
 }
 
-interface Composed extends Omit<Composition, "modules" | "store"> {
+interface Composed extends Omit<Composition, "modules" | "store" | "prices"> {
   modules: readonly Module[];
   store: Store | undefined;
   makeStore: () => Store;
+  loadPrices?: () => PriceCatalog;
+  prices?: PriceCatalog;
 }
 
 let current: Composed | undefined;
 
 /** Called once by the deployment, before anything else. Calling it again replaces it (tests). */
 export function compose(c: Composition): void {
-  current = { ...c, modules: [], store: undefined, makeStore: c.store };
+  const { prices: loadPrices, ...rest } = c;
+  current = { ...rest, modules: [], store: undefined, makeStore: c.store, loadPrices };
   // Definitions may read the rest (the persona, for defaults), so they run once it's in place.
   current.modules = c.modules.map((define) => define());
   checkProviders(current.modules, c.providers);
@@ -172,6 +182,12 @@ export const channels = (): ChannelAdapter[] => composed().channels;
 export const channel = (name: string): ChannelAdapter | undefined => composed().channels.find((c) => c.name === name);
 export const database = (): Database | undefined => composed().database;
 export const guide = (): ConsoleGuide => composed().guide;
+
+/** The price table, read once; undefined when the deployment has none. */
+export function prices(): PriceCatalog | undefined {
+  const c = composed();
+  return (c.prices ??= c.loadPrices?.());
+}
 
 /** The store, made once. */
 export function store(): Store {

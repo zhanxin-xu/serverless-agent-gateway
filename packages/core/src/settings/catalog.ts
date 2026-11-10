@@ -64,6 +64,7 @@ export interface SettingGroup {
 
 const CORE_GROUPS: SettingGroup[] = [
   { id: "agent", label: "Agent 参数", help: "步数、上下文、插话频率等。" },
+  { id: "pricing", label: "计价", help: "服务只报 token 不报金额时，按价目表（resources/pricing/）估算花费。" },
   { id: "console", label: "管理", help: "管理端自己的设置。" },
 ];
 
@@ -80,6 +81,17 @@ const CORE_SETTINGS: SettingDef[] = [
     default: "10",
     min: 0,
     help: "群里没 @ 的消息，每个群每这么多秒最多给模型看一次，由它决定插不插话。0 = 从不插话。每个群可以单独改。",
+  },
+
+  // ── Pricing ──
+  {
+    key: "PRICE_CNY_PER_USD",
+    group: "pricing",
+    label: "人民币兑美元汇率",
+    kind: "number",
+    default: "7.1",
+    min: 0,
+    help: "价目表里按人民币计价的模型（DeepSeek、千问），花费按这个汇率折成美元计入额度和花费上限：1 美元等于多少人民币。",
   },
 
   // ── Console ──

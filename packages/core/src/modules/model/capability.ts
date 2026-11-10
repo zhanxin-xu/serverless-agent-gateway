@@ -1,5 +1,6 @@
 /** The chat model: the interface every model provider implements, and the providers. */
 import type { AssistantMessage, LlmRequest, ModelIdentity } from "../../llm/types.js";
+import { costOf } from "../../pricing/cost.js";
 import { providersOf } from "../capability.js";
 import type { Balance, Capability } from "../types.js";
 
@@ -7,6 +8,9 @@ import type { Balance, Capability } from "../types.js";
  * A chat model. A failed call throws ModelCallError (src/llm/errors.ts):
  * OutOfCreditError when the key has no money left, `transient` when the same
  * request may well succeed later.
+ *
+ * Its answer reports the tokens it used, and the cost only when the service
+ * billed it (Usage.totalFromProvider); the core prices the rest (priced below).
  */
 export interface ChatModel {
   /** Where calls go now; what the next assistant message will record. */
@@ -24,18 +28,31 @@ export const chatModelCapability: Capability<ChatModel> = {
   get providers() {
     return providersOf<ChatModel>(this.id);
   },
-  // What a call cost: the provider's bill where it reports one, else its estimate from the model's prices.
+  // Each answer leaves priced: the service's bill, else its tokens by the price table.
   meter: (model, gate) => ({
     identity: () => model.identity(),
     ...(model.balance ? { balance: () => model.balance!() } : {}),
     async complete(request) {
       await gate.check();
-      const message = await model.complete(request);
+      const started = Date.now();
+      const message = priced(await model.complete(request), started);
       await gate.record(message.usage.cost.total);
       return message;
     },
   }),
 };
+
+/** The answer with its cost: as billed, or its tokens priced by the table (src/pricing/). */
+export function priced(message: AssistantMessage, at: number): AssistantMessage {
+  const { usage } = message;
+  if (usage.cost.totalFromProvider) return message;
+  const cost = costOf(
+    { model: message.model, tokens: { input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, reasoning: usage.reasoning } },
+    at,
+  );
+  const { by: _by, entry, tier: _tier, ...parts } = cost;
+  return { ...message, usage: { ...usage, cost: { ...parts, ...(entry ? { priceEntry: entry } : {}) } } };
+}
 
 /**
  * Reads what's left on a model key from the service that issued it (OpenRouter's /key…).

@@ -16,6 +16,7 @@ import { PostgresStore, supabaseConfig, supabaseDatabase } from "@gateway/adapte
 import { telegramAdapter } from "@gateway/adapters/telegram";
 import { upstashVectorProvider } from "@gateway/adapters/upstash-vector";
 import { vercelSandboxProvider } from "@gateway/adapters/vercel-sandbox";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dafeiyu } from "./personas/dafeiyu/index.js";
 import { vercelHost } from "./host.js";
@@ -60,7 +61,7 @@ export function composeVercel(): void {
       openaiImagesProvider({
         id: "openai",
         label: "OpenAI Image API",
-        help: "OpenAI 官方的图像接口（POST /images/generations、/images/edits），直接用 OpenAI 的 Key。按 token 计费，按价格表估算花费。",
+        help: "OpenAI 官方的图像接口（POST /images/generations、/images/edits），直接用 OpenAI 的 Key。按 token 计费，花费按模型价目表估算。",
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-image-2.6-sunburst",
       }),
@@ -75,6 +76,9 @@ export function composeVercel(): void {
     channels: [qqAdapter, telegramAdapter, httpAdapter],
     store: () => (supabaseConfig.configured ? new PostgresStore(supabaseConfig.url, supabaseConfig.key) : new MemoryStore()),
     database: supabaseDatabase,
+    // The price table in the repository's resource directory (resources/pricing/, kept current by
+    // .github/workflows/sync-pricing.yml); vercel.json ships it with every function.
+    prices: () => JSON.parse(readFileSync(fileURLToPath(new URL("../../../resources/pricing/model-prices.json", import.meta.url)), "utf8")),
     guide: {
       password: [
         "打开 Vercel 项目的 Settings → Environment Variables。",

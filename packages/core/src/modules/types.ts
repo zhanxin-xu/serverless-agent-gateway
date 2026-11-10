@@ -105,6 +105,12 @@ export interface Provider<Impl> {
   available(): Readiness;
   /** The client. Cheap: called for each use. */
   create(): Impl;
+  /**
+   * The credential its calls are billed to (its API key), when it has one:
+   * compared to tell when two modules' providers spend from the same key
+   * (src/modules/balance.ts), never shown or sent anywhere.
+   */
+  billedTo?(): string | undefined;
 }
 
 export const providerLabel = (p: Provider<unknown>) => p.config.group.label;

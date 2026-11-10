@@ -70,7 +70,7 @@
 用量从事件流里统计。每一轮结束后，网关把这一轮的 token、花费和工具调用次数按 UTC 日期累加进 `gateway.usage_daily`。花费的取法：
 
 - 优先用接口报告的金额，OpenRouter 会报告。
-- 接口没报告时，用 `MODEL_PRICE_INPUT`、`MODEL_PRICE_CACHED`、`MODEL_PRICE_OUTPUT` 三个单价估算（美元 / 百万 token）。
+- 接口没报告时，用所用模型实例的三个单价估算（`MODEL_{实例}_PRICE_INPUT`、`_PRICE_CACHED`、`_PRICE_OUTPUT`，美元 / 百万 token）。
 
 ## 模块页和配置页
 

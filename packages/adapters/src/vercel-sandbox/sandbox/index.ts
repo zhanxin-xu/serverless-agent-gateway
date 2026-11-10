@@ -9,7 +9,7 @@ import { vercelSandboxConfig } from "./config.js";
 import { CONFIG } from "./settings.js";
 
 export const vercelSandboxProvider: Provider<SandboxBackend> = {
-  id: "vercel-sandbox",
+  id: "vercel",
   capability: sandboxCapability.id,
   config: CONFIG,
   available: () =>

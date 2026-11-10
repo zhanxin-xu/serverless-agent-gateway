@@ -556,27 +556,62 @@ $$;
 
 -- ── Upgrades ──
 
--- Version 6: the chat model's settings and the model's messages are no longer
--- tied to the OpenAI Responses API.
---
--- The settings set in the console are renamed (the old names stop meaning anything).
+-- The version this schema.sql brings, once no data waits for a migration. Keep in step with
+-- SCHEMA_VERSION in src/store/types.ts.
+create or replace function gateway.mark_schema_current() returns void
+language sql set search_path = '' as $$
+  insert into gateway.meta (key, value) values ('schema_version', '7')
+    on conflict (key) do update set value = excluded.value;
+$$;
+
+-- Settings that were renamed, old name → name now: version 6 (the chat model's settings no
+-- longer named after the Responses API) and 7 (every provider's settings named after its
+-- module and instance, MODEL_OPENROUTER_API_KEY…, so each instance has its own key). Where two
+-- old names lead to one, rank 1 (the newer) wins. The console's upgrade also moves environment
+-- variables still under an old name into the console's settings (the Supabase adapter's database.ts).
+create or replace function gateway.renamed_settings() returns table (old_key text, new_key text, rank int)
+language sql immutable set search_path = '' as $$
+  values
+    ('MODEL_API', 'MODEL_OPENROUTER_API', 1), ('MODEL_BASE_URL', 'MODEL_OPENROUTER_BASE_URL', 1),
+    ('MODEL_API_KEY', 'MODEL_OPENROUTER_API_KEY', 1), ('MODEL_ID', 'MODEL_OPENROUTER_MODEL', 1),
+    ('MODEL_EXTRA_BODY', 'MODEL_OPENROUTER_EXTRA_BODY', 1), ('MODEL_EXTRA_HEADERS', 'MODEL_OPENROUTER_EXTRA_HEADERS', 1),
+    ('MODEL_MAX_OUTPUT_TOKENS', 'MODEL_OPENROUTER_MAX_OUTPUT_TOKENS', 1), ('MODEL_PRICE_INPUT', 'MODEL_OPENROUTER_PRICE_INPUT', 1),
+    ('MODEL_PRICE_CACHED', 'MODEL_OPENROUTER_PRICE_CACHED', 1), ('MODEL_PRICE_OUTPUT', 'MODEL_OPENROUTER_PRICE_OUTPUT', 1),
+    ('OPENAI_RESPONSES_BASE_URL', 'MODEL_OPENROUTER_BASE_URL', 2), ('OPENAI_RESPONSES_API_KEY', 'MODEL_OPENROUTER_API_KEY', 2),
+    ('OPENAI_RESPONSES_MODEL', 'MODEL_OPENROUTER_MODEL', 2), ('OPENAI_RESPONSES_EXTRA_BODY', 'MODEL_OPENROUTER_EXTRA_BODY', 2),
+    ('OPENAI_RESPONSES_EXTRA_HEADERS', 'MODEL_OPENROUTER_EXTRA_HEADERS', 2), ('OPENAI_RESPONSES_TIMEOUT_MS', 'MODEL_TIMEOUT_MS', 2),
+    ('IMAGE_API_KEY', 'IMAGE_OPENROUTER_API_KEY', 1), ('IMAGE_BASE_URL', 'IMAGE_OPENROUTER_BASE_URL', 1),
+    ('IMAGE_MODEL', 'IMAGE_OPENROUTER_MODEL', 1), ('IMAGE_QUALITY', 'IMAGE_OPENROUTER_QUALITY', 1),
+    ('IMAGE_RESOLUTION', 'IMAGE_OPENROUTER_RESOLUTION', 1), ('IMAGE_EXTRA_BODY', 'IMAGE_OPENROUTER_EXTRA_BODY', 1),
+    ('IMAGE_TIMEOUT_MS', 'IMAGE_OPENROUTER_TIMEOUT_MS', 1), ('TTS_API_KEY', 'VOICE_OPENROUTER_API_KEY', 1),
+    ('TTS_BASE_URL', 'VOICE_OPENROUTER_BASE_URL', 1), ('TTS_MODEL', 'VOICE_OPENROUTER_MODEL', 1),
+    ('TTS_VOICE', 'VOICE_OPENROUTER_VOICE', 1), ('TTS_REFERENCE_AUDIO', 'VOICE_OPENROUTER_REFERENCE_AUDIO', 1),
+    ('TTS_REFERENCE_TEXT', 'VOICE_OPENROUTER_REFERENCE_TEXT', 1), ('TTS_SING_REFERENCE_AUDIO', 'VOICE_OPENROUTER_SING_REFERENCE_AUDIO', 1),
+    ('TTS_SING_REFERENCE_TEXT', 'VOICE_OPENROUTER_SING_REFERENCE_TEXT', 1), ('TTS_INSTRUCTIONS', 'VOICE_OPENROUTER_INSTRUCTIONS', 1),
+    ('TTS_EXTRA_BODY', 'VOICE_OPENROUTER_EXTRA_BODY', 1), ('TTS_TIMEOUT_MS', 'VOICE_OPENROUTER_TIMEOUT_MS', 1),
+    ('DEEPSEEK_API_KEY', 'SEARCH_DEEPSEEK_API_KEY', 1), ('DEEPSEEK_BASE_URL', 'SEARCH_DEEPSEEK_BASE_URL', 1),
+    ('SANDBOX_ENABLED', 'SANDBOX_VERCEL_ENABLED', 1), ('SANDBOX_REGION', 'SANDBOX_VERCEL_REGION', 1);
+$$;
+
 do $$
-declare
-  pair text[];
 begin
-  foreach pair slice 1 in array array[
-    ['OPENAI_RESPONSES_BASE_URL', 'MODEL_BASE_URL'], ['OPENAI_RESPONSES_API_KEY', 'MODEL_API_KEY'],
-    ['OPENAI_RESPONSES_MODEL', 'MODEL_ID'], ['OPENAI_RESPONSES_EXTRA_BODY', 'MODEL_EXTRA_BODY'],
-    ['OPENAI_RESPONSES_EXTRA_HEADERS', 'MODEL_EXTRA_HEADERS'], ['OPENAI_RESPONSES_TIMEOUT_MS', 'MODEL_TIMEOUT_MS']
-  ] loop
-    insert into gateway.settings (key, value, updated_at)
-      select pair[2], value, updated_at from gateway.settings where key = pair[1]
-      on conflict (key) do nothing;
-    delete from gateway.settings where key = pair[1];
-  end loop;
+  insert into gateway.settings (key, value, updated_at)
+    select distinct on (r.new_key) r.new_key, s.value, s.updated_at
+    from gateway.settings s join gateway.renamed_settings() r on s.key = r.old_key
+    order by r.new_key, r.rank
+    on conflict (key) do nothing;
+  delete from gateway.settings s using gateway.renamed_settings() r where s.key = r.old_key;
+  -- Providers chosen by their old ids.
+  update gateway.settings set value = case value
+      when 'pi-ai' then 'openrouter' when 'openrouter-images' then 'openrouter' when 'openai-speech' then 'openrouter'
+      when 'upstash-vector' then 'upstash' when 'vercel-sandbox' then 'vercel' end
+    where key in ('MODEL_PROVIDER', 'IMAGE_PROVIDER', 'VOICE_PROVIDER', 'MEMORY_PROVIDER', 'SANDBOX_PROVIDER')
+      and value in ('pi-ai', 'openrouter-images', 'openai-speech', 'upstash-vector', 'vercel-sandbox');
 end;
 $$;
 
+-- Version 6: the model's messages are no longer tied to the OpenAI Responses API.
+--
 -- Responses API usage → the gateway's (src/llm/types.ts Usage): input without the cached tokens,
 -- the cost as billed when the provider reported it.
 create or replace function gateway.legacy_usage(u jsonb) returns jsonb
@@ -637,7 +672,7 @@ language sql immutable set search_path = '' as $$
   end;
 $$;
 
--- Move the events written before version 6 to the new format, then mark the schema version 6.
+-- Move the events written before version 6 to the new format, then mark the schema current.
 -- Every legacy assistant message came from the Responses API; p_provider and p_model are the
 -- chat model's identity now (the gateway passes them, see the Supabase adapter's database.ts),
 -- so the replay data in them is sent back as long as that identity doesn't change.
@@ -675,8 +710,7 @@ begin
   where type = 'compaction/summary' and data -> 'usage' ? 'input_tokens';
   get diagnostics summaries = row_count;
 
-  insert into gateway.meta (key, value) values ('schema_version', '6')
-    on conflict (key) do update set value = excluded.value;
+  perform gateway.mark_schema_current();
   return jsonb_build_object('messages', messages, 'toolEvents', tool_events, 'summaries', summaries);
 end;
 $$;
@@ -743,11 +777,14 @@ exception when others then
 end;
 $$;
 
--- Keep in step with SCHEMA_VERSION in src/store/types.ts. Events in an older format wait for
--- gateway.migrate_events_v6 (above), which sets the version itself.
-insert into gateway.meta (key, value)
-  select 'schema_version', '6' where not gateway.has_legacy_events()
-  on conflict (key) do update set value = excluded.value;
+-- Current, unless events in an older format wait for gateway.migrate_events_v6 (which marks it then).
+do $$
+begin
+  if not gateway.has_legacy_events() then
+    perform gateway.mark_schema_current();
+  end if;
+end;
+$$;
 
 -- Let the Data API see new functions right away.
 notify pgrst, 'reload schema';

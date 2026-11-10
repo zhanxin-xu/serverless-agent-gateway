@@ -3,10 +3,14 @@
  * (with TEST_DATABASE_URL, a database you can throw away; skipped without).
  *
  * Version 6: a database holding a chat written before it (Responses API output
- * items, the model's settings under their old names) is upgraded the way the
- * console does it: schema.sql, then gateway.migrate_events_v6 with the model's
- * identity. The chat must then read back as the same requests: the reasoning
- * item sent back whole, the calls paired with their outputs.
+ * items) is upgraded the way the console does it: schema.sql, then
+ * gateway.migrate_events_v6 with the model's identity. The chat must then read
+ * back as the same requests: the reasoning item sent back whole, the calls
+ * paired with their outputs.
+ *
+ * Version 7: settings named by module and instance (MODEL_OPENROUTER_API_KEY…),
+ * from the console's old names and, on the console's upgrade, from the
+ * environment's; providers chosen by their old ids follow.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,10 +24,11 @@ if (!url) {
 }
 
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
-Object.assign(process.env, { MODEL_API_KEY: "k", MODEL_BASE_URL: "https://openrouter.ai/api/v1", MODEL_ID: "openai/gpt-x" });
+Object.assign(process.env, { MODEL_OPENROUTER_API_KEY: "k", MODEL_OPENROUTER_MODEL: "openai/gpt-x" });
 (await import("../packages/vercel/src/composition.js")).composeVercel();
 const { deriveMessages } = await import("../packages/core/src/conversation/derive.js");
-const { piAiChatModel } = await import("../packages/adapters/src/pi-ai/index.js");
+const { use } = await import("../packages/core/src/modules/capability.js");
+const { chatModelCapability } = await import("../packages/core/src/modules/model/capability.js");
 
 const SCHEMA = fs.readFileSync(new URL("../packages/adapters/src/supabase/schema.sql", import.meta.url), "utf8");
 const client = new pg.Client({ connectionString: url });
@@ -49,10 +54,21 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-await test("a fresh database is version 6 at once", async () => {
+await test("a fresh database is current at once", async () => {
   await client.query("drop schema if exists gateway cascade");
   await client.query(SCHEMA);
-  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 6, legacyEvents: false } });
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 7, legacyEvents: false } });
+});
+
+await test("version 6 (the deployment today): schema.sql renames the settings and is current at once", async () => {
+  await client.query("update gateway.meta set value = '6' where key = 'schema_version'");
+  await client.query(`insert into gateway.settings (key, value) values
+    ('MODEL_API_KEY', 'or-key'), ('MODEL_ID', 'openai/gpt-x'), ('MODEL_PROVIDER', 'pi-ai'), ('VOICE_PROVIDER', 'openai-speech')`);
+  await client.query(SCHEMA);
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 7, legacyEvents: false } });
+  const settings = Object.fromEntries((await client.query("select key, value from gateway.settings")).rows.map((r) => [r.key, r.value]));
+  assert.deepEqual(settings, { MODEL_OPENROUTER_API_KEY: "or-key", MODEL_OPENROUTER_MODEL: "openai/gpt-x", MODEL_PROVIDER: "openrouter", VOICE_PROVIDER: "openrouter" });
+  await client.query("delete from gateway.settings");
 });
 
 await test("an older database: schema.sql renames the settings and waits for the events' migration", async () => {
@@ -72,18 +88,29 @@ await test("an older database: schema.sql renames the settings and waits for the
     await client.query("insert into gateway.events (chat, seq, type, time, data) values ('qq:c2c:U', $1, $2, to_timestamp($3), $4)", [seq, type, 1_700_000_000 + seq, data]);
   }
   await client.query("update gateway.meta set value = '5' where key = 'schema_version'");
-  await client.query("insert into gateway.settings (key, value) values ('OPENAI_RESPONSES_MODEL', 'openai/gpt-x'), ('OPENAI_RESPONSES_EXTRA_BODY', '{\"a\":1}'), ('MODEL_EXTRA_BODY', '{\"b\":2}')");
+  // Settings as versions 5 and 6 named them, and providers chosen by their old ids.
+  await client.query(`insert into gateway.settings (key, value) values
+    ('OPENAI_RESPONSES_MODEL', 'openai/gpt-x'), ('OPENAI_RESPONSES_EXTRA_BODY', '{"a":1}'), ('MODEL_EXTRA_BODY', '{"b":2}'),
+    ('IMAGE_API_KEY', 'img'), ('TTS_MODEL', 'fish'), ('DEEPSEEK_API_KEY', 'ds'), ('SANDBOX_REGION', 'sin1'),
+    ('IMAGE_PROVIDER', 'openrouter-images'), ('MEMORY_PROVIDER', 'upstash-vector'), ('AGENT_MAX_STEPS', '9')`);
 
   await client.query(SCHEMA);
-  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 5, legacyEvents: true } }, "not marked 6 while events wait");
-  const settings = (await client.query("select key, value from gateway.settings order by key")).rows;
-  assert.deepEqual(settings, [
-    { key: "MODEL_EXTRA_BODY", value: '{"b":2}' },
-    { key: "MODEL_ID", value: "openai/gpt-x" },
-  ], "renamed; a value already under the new name wins");
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 5, legacyEvents: true } }, "not marked current while events wait");
+  const settings = Object.fromEntries((await client.query("select key, value from gateway.settings")).rows.map((r) => [r.key, r.value]));
+  assert.deepEqual(settings, {
+    MODEL_OPENROUTER_EXTRA_BODY: '{"b":2}',
+    MODEL_OPENROUTER_MODEL: "openai/gpt-x",
+    IMAGE_OPENROUTER_API_KEY: "img",
+    VOICE_OPENROUTER_MODEL: "fish",
+    SEARCH_DEEPSEEK_API_KEY: "ds",
+    SANDBOX_VERCEL_REGION: "sin1",
+    IMAGE_PROVIDER: "openrouter",
+    MEMORY_PROVIDER: "upstash",
+    AGENT_MAX_STEPS: "9",
+  }, "renamed by module and instance; of two old names for one setting, the newer wins; the rest untouched");
 });
 
-await test("migrate_events_v6: blocks as pi-ai reads them, tool call ids as pi-ai writes them, usage, version 6", async () => {
+await test("migrate_events_v6: blocks as pi-ai reads them, tool call ids as pi-ai writes them, usage; then the schema is current", async () => {
   const counts = await one<{ r: unknown }>("select gateway.migrate_events_v6('openai-responses', 'https://openrouter.ai/api/v1', 'openai/gpt-x') as r");
   assert.deepEqual(counts.r, { messages: 2, toolEvents: 3, summaries: 1 }, "two calls' marker and results renamed");
   const rows = (await client.query("select seq, type, data from gateway.events where chat = 'qq:c2c:U' order by seq")).rows;
@@ -104,10 +131,10 @@ await test("migrate_events_v6: blocks as pi-ai reads them, tool call ids as pi-a
   assert.deepEqual(second.content[1].arguments, {}, "arguments that weren't JSON become {}");
   assert.equal(second.usage.cost.total, 0, "no usage recorded: zero");
   assert.equal(rows[8].data.usage.input, 10);
-  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 6, legacyEvents: false } });
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 7, legacyEvents: false } });
 
   await client.query(SCHEMA);
-  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 6, legacyEvents: false } }, "running schema.sql again changes nothing");
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 7, legacyEvents: false } }, "running schema.sql again changes nothing");
 });
 
 await test("the migrated chat reads back as the same requests: reasoning whole, calls paired with their outputs", async () => {
@@ -119,7 +146,7 @@ await test("the migrated chat reads back as the same requests: reasoning whole, 
     body = JSON.parse(await new Request(input, init).text());
     return responsesStream([{ type: "message", id: "msg_9", role: "assistant", status: "completed", content: [{ type: "output_text", text: "好", annotations: [] }] }], { input_tokens: 1, output_tokens: 1, total_tokens: 2 });
   }) as typeof fetch;
-  await piAiChatModel().create().complete({ systemPrompt: "S", messages, tools: [], toolChoice: "none", timeoutMs: 5_000 });
+  await use(chatModelCapability).complete({ systemPrompt: "S", messages, tools: [], toolChoice: "none", timeoutMs: 5_000 });
   const items = body.input.filter((i: any) => i.type);
   assert.deepEqual(items[0], reasoning, "sent back exactly as the model returned it");
   assert.deepEqual(items[1], call);
@@ -131,14 +158,18 @@ await test("the migrated chat reads back as the same requests: reasoning whole, 
 await test("the console's upgrade (Database.apply) runs schema.sql, then the migration with the model's identity now", async () => {
   await client.query("insert into gateway.events (chat, seq, type, data) values ('qq:c2c:U', 9, 'assistant/message', $1)", [{ turn: 2, step: 1, output: [message] }]);
   await client.query("update gateway.meta set value = '5' where key = 'schema_version'");
-  process.env.DATABASE_URL = url;
+  // Old names still in the environment: moved into the console's settings, unless the new name is set somewhere.
+  Object.assign(process.env, { DATABASE_URL: url, TTS_API_KEY: "tts-from-env", IMAGE_MODEL: "img-model-from-env", DEEPSEEK_BASE_URL: "https://ds.example" });
+  process.env.SEARCH_DEEPSEEK_BASE_URL = "https://already.example";
   try {
     const { supabaseDatabase } = await import("../packages/adapters/src/supabase/index.js");
     await supabaseDatabase.apply();
   } finally {
-    delete process.env.DATABASE_URL;
+    for (const name of ["DATABASE_URL", "TTS_API_KEY", "IMAGE_MODEL", "DEEPSEEK_BASE_URL", "SEARCH_DEEPSEEK_BASE_URL"]) delete process.env[name];
   }
-  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 6, legacyEvents: false } });
+  const moved = Object.fromEntries((await client.query("select key, value from gateway.settings where key in ('VOICE_OPENROUTER_API_KEY', 'IMAGE_OPENROUTER_MODEL', 'SEARCH_DEEPSEEK_BASE_URL')")).rows.map((r) => [r.key, r.value]));
+  assert.deepEqual(moved, { VOICE_OPENROUTER_API_KEY: "tts-from-env", IMAGE_OPENROUTER_MODEL: "img-model-from-env" }, "set under the new name in the environment: left alone");
+  assert.deepEqual(await one("select public.gateway_info() as i"), { i: { schemaVersion: 7, legacyEvents: false } });
   const { data } = await one<{ data: any }>("select data from gateway.events where chat = 'qq:c2c:U' and seq = 9");
   assert.deepEqual([data.message.api, data.message.provider, data.message.model], ["openai-responses", "https://openrouter.ai/api/v1", "openai/gpt-x"]);
 });

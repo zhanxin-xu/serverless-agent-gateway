@@ -10,13 +10,13 @@ import { fileURLToPath } from "node:url";
 
 // Every optional module configured (fake values), as in a full deployment.
 const FULL = {
-  MODEL_API_KEY: "k",
-  DEEPSEEK_API_KEY: "k",
-  IMAGE_API_KEY: "k",
-  TTS_API_KEY: "k",
+  MODEL_OPENROUTER_API_KEY: "k",
+  SEARCH_DEEPSEEK_API_KEY: "k",
+  IMAGE_OPENROUTER_API_KEY: "k",
+  VOICE_OPENROUTER_API_KEY: "k",
   UPSTASH_VECTOR_REST_URL: "https://vector.example.com",
   UPSTASH_VECTOR_REST_TOKEN: "k",
-  SANDBOX_ENABLED: "1",
+  SANDBOX_VERCEL_ENABLED: "1",
 };
 Object.assign(process.env, FULL);
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
@@ -119,8 +119,30 @@ await test("turning one module off leaves every other section as it was", () => 
   }
 });
 
+await test("the chat model: one provider per endpoint, each with its own key; the one in use is chosen", async () => {
+  const model = MODULES.find((m) => m.id === "model")!;
+  const { currentModelIdentity } = await import("../packages/core/src/modules/model/capability.js");
+  assert.deepEqual(
+    model.capability!.providers.map((p) => p.id),
+    ["openrouter", "openai", "anthropic", "gemini", "deepseek", "custom"],
+  );
+  assert.equal(currentModelIdentity()!.provider, "https://openrouter.ai/api/v1", "only OpenRouter has a key: it's used");
+  await withEnv({ MODEL_ANTHROPIC_API_KEY: "ak", MODEL_ANTHROPIC_MODEL: "claude-x" }, async () => {
+    const status = moduleStatus(model);
+    assert.ok(!status.ok && /有 2 个可用的聊天模型（OpenRouter、Anthropic），请在配置页选一个/.test(status.reason), JSON.stringify(status));
+    await withEnv({ MODEL_PROVIDER: "anthropic" }, () => {
+      assert.deepEqual(currentModelIdentity(), { api: "anthropic-messages", provider: "https://api.anthropic.com", model: "claude-x" });
+      assert.equal(process.env.MODEL_OPENROUTER_API_KEY, "k", "switching keeps the other instance's settings");
+    });
+  });
+  await withEnv({ MODEL_CUSTOM_API_KEY: "ck", MODEL_CUSTOM_MODEL: "m", MODEL_PROVIDER: "custom" }, () => {
+    const status = moduleStatus(model);
+    assert.ok(!status.ok && /还没填 自定义 的服务地址/.test(status.reason), "a custom endpoint needs its URL");
+  });
+});
+
 await test("a module whose requirement is off is off too, saying why", async () => {
-  await withEnv({ SANDBOX_ENABLED: "0" }, () => {
+  await withEnv({ SANDBOX_VERCEL_ENABLED: "0" }, () => {
     const image = MODULES.find((m) => m.id === "image")!;
     const status = moduleStatus(image);
     assert.equal(status.ok, false);
@@ -182,7 +204,7 @@ await test("an undefined {{variable}} stops the prompt instead of reaching the m
 await test("the voice section follows the speech model's dialect", async () => {
   const voice = () => prompt("group").sections.find((s) => s.name === "module:voice")!.text;
   assert.match(voice(), /现在是 Fish 模型：可在 `text` 里用 `\[得意地\]`/);
-  await withEnv({ TTS_MODEL: "bytedance-seed/seed-audio-1.0" }, () => {
+  await withEnv({ VOICE_OPENROUTER_MODEL: "bytedance-seed/seed-audio-1.0" }, () => {
     assert.match(voice(), /现在是 Seed 模型/);
     assert.doesNotMatch(voice(), /\[得意地\]/, "Seed gets no inline tags");
     assert.match(new Toolset().definitions().find((d) => d.name === "send_voice")!.description, /ByteDance Seed/);
@@ -270,8 +292,10 @@ await test("settings: each module brings its own, the catalog collects them, swi
   }
   assert.equal(new Set(settingDefs().map((d) => d.key)).size, settingDefs().length, "no key twice");
   assert.equal(groups.find((g) => g.id === "llm")!.module, "model", "the model module's own settings (which provider, the call timeout)");
-  assert.equal(settingDef("MODEL_API_KEY")!.group, "pi-ai", "the endpoint, key and model come with the provider");
-  assert.deepEqual(groups.find((g) => g.id === "pi-ai")!.provider, { capability: "chat-model", id: "pi-ai" });
+  assert.equal(settingDef("MODEL_OPENROUTER_API_KEY")!.group, "model.openrouter", "the endpoint, key and model come with the provider instance");
+  assert.deepEqual(groups.find((g) => g.id === "model.openrouter")!.provider, { capability: "chat-model", id: "openrouter" });
+  assert.equal(settingDef("MODEL_ANTHROPIC_API_KEY")!.group, "model.anthropic", "each instance has its own key");
+  assert.equal(settingDef("IMAGE_OPENROUTER_API_KEY")!.group, "image.openrouter", "the same vendor in another module: another key");
   assert.equal(settingDef("STICKER_BASE_URL")!.group, "chat", "the sticker CDN comes with the chat module");
   assert.equal(groups.find((g) => g.id === "qq")!.channel, "qq", "a channel's settings come with its adapter");
   assert.equal(settingDef("WORKER_SECRET"), undefined, "a hand-over needs no secret: the run's lock is the ticket");
@@ -401,7 +425,7 @@ await test("compose() refuses a provider no loaded module uses, or two with one 
   const { upstashVectorProvider } = await import("../packages/adapters/src/upstash-vector/index.js");
   const { MemoryStore } = await import("../packages/core/src/store/index.js");
   const base = { baseDir: "/", host: { id: "t", background() {}, runBudgetMs: () => 1 }, persona, channels: [], store: () => new MemoryStore(), guide: { password: [], changePassword: "", database: { intro: "", steps: [] } } };
-  assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, upstashVectorProvider] }), /upstash-vector implements vector-memory, which no loaded module uses/);
+  assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, upstashVectorProvider] }), /upstash implements vector-memory, which no loaded module uses/);
   assert.throws(() => compose({ ...base, modules: [searchModule], providers: [deepseekProvider, deepseekProvider] }), /two search providers are called deepseek/);
 });
 

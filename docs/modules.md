@@ -27,7 +27,9 @@
 
 核心模块不能关；依赖能力的核心模块只有模型，它是新手引导的第一步（`setup: "required"`），没配好整个机器人都不工作。
 
-**余额归各自的模块**：模型 key 由“模型”模块的 `get_llm_key_limit` 查，画图 key 由“画图”模块的 `get_image_key_limit` 查（和模型共用一个 key 时它会直接说明），搜索余额由“搜索”模块的 `get_search_balance` 查（只有能查余额的搜索实现才提供）。管理端总览逐个模块列余额。
+**实现可以组合多次**：一个实现（比如 pi-ai、OpenAI 兼容语音）由部署按不同的服务地址组合成几个实例，每个实例有自己的配置和 Key，配置名是 `模块_实例_字段`（`MODEL_ANTHROPIC_API_KEY`）。Key 跟着实例走，不按厂商合并：同一家的模型和画图可以用两个 Key。
+
+**余额归各自的模块**：模型 key 由“模型”模块的 `get_llm_key_limit` 查，画图 key 由“画图”模块的 `get_image_key_limit` 查，搜索余额由“搜索”模块的 `get_search_balance` 查，只有能查余额的实现才提供。几个模块的实现用的是同一个 Key 时（实现声明 `billedTo`，core 比较 Key 的哈希，不看是哪家），工具结果注明共用，管理端总览只显示一格（`packages/core/src/modules/balance.ts`）。
 
 ## 模块怎么定义（参照 DeepSeek Harness 的插件）
 

@@ -12,6 +12,9 @@
  *
  * Reasoning is left to the provider's defaults and the extra body (the model
  * is declared non-reasoning, so pi-ai adds no reasoning fields of its own).
+ *
+ * The provider is defined once and composed per endpoint (piAiChatModel), each
+ * instance with its own settings and key.
  */
 import {
   chatModelCapability,
@@ -21,22 +24,21 @@ import {
   type AssistantMessage,
   type ChatModel,
   type LlmRequest,
-  type ModelAccount,
   type Provider,
 } from "@gateway/core";
 import type { Api, AssistantMessage as PiAssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
-import { piAiConfig } from "./config.js";
+import { piAiConfig, type PiAiConfig, type PiAiInstance } from "./config.js";
 import { callError } from "./errors.js";
 import { checkedExtraBody, PROTOCOLS } from "./protocols.js";
-import { CONFIG } from "./settings.js";
+import { chatModelSettings } from "./settings.js";
 
 /** Anthropic requires an output cap; without MODEL_MAX_OUTPUT_TOKENS it gets this one. */
 const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;
 
-/** The model as pi-ai describes it, from the settings. */
-function piModel(): Model<Api> {
-  const { api, baseUrl, model, prices, maxOutputTokens, contextTokens } = piAiConfig;
+/** The model as pi-ai describes it, from an instance's settings. */
+function piModel(config: PiAiConfig): Model<Api> {
+  const { api, baseUrl, model, prices, maxOutputTokens, contextTokens } = config;
   return {
     id: model,
     name: model,
@@ -60,12 +62,12 @@ function answer(message: PiAssistantMessage, timeoutMs: number, timedOut: boolea
   throw callError(message.errorMessage || `the call ended with ${stopReason}`);
 }
 
-async function complete(request: LlmRequest): Promise<AssistantMessage> {
-  const { api, apiKey, extraHeaders, maxOutputTokens } = piAiConfig;
+async function complete(config: PiAiConfig, request: LlmRequest): Promise<AssistantMessage> {
+  const { api, apiKey, extraHeaders, maxOutputTokens } = config;
   const protocol = PROTOCOLS[api];
   let extra: Record<string, unknown>;
   try {
-    extra = checkedExtraBody(api, piAiConfig.extraBody);
+    extra = checkedExtraBody(api, config.extraBody, config.key("extra_body"));
   } catch (err) {
     throw new ModelCallError(err instanceof Error ? err.message : String(err), false);
   }
@@ -78,7 +80,7 @@ async function complete(request: LlmRequest): Promise<AssistantMessage> {
   });
   const toolChoice = request.tools.length ? protocol.toolChoice(request.toolChoice) : undefined;
   const signal = AbortSignal.timeout(request.timeoutMs);
-  const stream = (await protocol.load())(piModel(), context, {
+  const stream = (await protocol.load())(piModel(config), context, {
     apiKey,
     headers: extraHeaders,
     signal,
@@ -92,23 +94,29 @@ async function complete(request: LlmRequest): Promise<AssistantMessage> {
 }
 
 /**
- * The provider. `account`, when given, reads what's left on the key from the
- * service that issued it (the deployment knows which: OpenRouter's, say).
+ * One chat model endpoint as a provider. A deployment composes as many as it
+ * offers (OpenRouter, Anthropic…), each with its own settings and key; the
+ * model module's MODEL_PROVIDER picks the one in use.
  */
-export function piAiChatModel(options: { account?: ModelAccount } = {}): Provider<ChatModel> {
-  const { account } = options;
+export function piAiChatModel(instance: PiAiInstance): Provider<ChatModel> {
+  const config = piAiConfig(instance);
+  const { account } = instance;
   const model: ChatModel = {
-    identity: () => ({ api: piAiConfig.api, provider: piAiConfig.baseUrl, model: piAiConfig.model }),
-    complete,
-    ...(account
-      ? { balance: () => account.balance({ baseUrl: piAiConfig.baseUrl, apiKey: piAiConfig.apiKey, headers: piAiConfig.extraHeaders }) }
-      : {}),
+    identity: () => ({ api: config.api, provider: config.baseUrl, model: config.model }),
+    complete: (request) => complete(config, request),
+    ...(account ? { balance: () => account.balance({ baseUrl: config.baseUrl, apiKey: config.apiKey, headers: config.extraHeaders }) } : {}),
   };
   return {
-    id: "pi-ai",
+    id: instance.id,
     capability: chatModelCapability.id,
-    config: CONFIG,
-    available: () => (piAiConfig.apiKey ? READY : notReady("还没填模型的 API Key")),
+    config: chatModelSettings(instance),
+    available: () => {
+      if (!config.apiKey) return notReady(`还没填 ${instance.label} 的 API Key`);
+      if (!config.baseUrl) return notReady(`还没填 ${instance.label} 的服务地址`);
+      if (!config.model) return notReady(`还没填 ${instance.label} 的模型`);
+      return READY;
+    },
     create: () => model,
+    billedTo: () => config.apiKey || undefined,
   };
 }

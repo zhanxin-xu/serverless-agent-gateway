@@ -1,6 +1,6 @@
 /**
  * What each speech model family understands, and how it is asked to sing: the
- * provider's dialect (docs/design/modules.md 6.3). Chosen by TTS_MODEL.
+ * provider's dialect (docs/design/modules.md 6.3). Chosen by the instance's speech model.
  */
 export interface ModelKind {
   /** For the description: who it is and what it's good at. */

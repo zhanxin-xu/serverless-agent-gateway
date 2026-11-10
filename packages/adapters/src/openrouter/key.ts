@@ -79,7 +79,7 @@ export async function keyReport(baseUrl: string, apiKey: string, headers: Record
 }
 
 /** What every key report says about how to read it. */
-export const KEY_NOTE =
+const KEY_NOTE =
   "usage = spend on OpenRouter credits; byok_usage = spend on your own provider keys. A budget or limit that counts BYOK " +
   "includes both, so it can show spend while usage is 0. Daily / weekly / monthly windows reset at 00:00 UTC (08:00 Beijing), weeks run Monday–Sunday.";
 

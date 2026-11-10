@@ -1,8 +1,8 @@
 /**
  * DeepSeek's tool APIs (https://api-docs.deepseek.com/zh-cn/guides/search):
- *   POST {DEEPSEEK_BASE_URL}/v1/tools/search  { query, count, ... } → { results: [...] }
- *   POST {DEEPSEEK_BASE_URL}/v1/tools/fetch   { url }               → { title, content }
- *   GET  {DEEPSEEK_BASE_URL}/user/balance                           → the account's balance
+ *   POST {base URL}/v1/tools/search  { query, count, ... } → { results: [...] }
+ *   POST {base URL}/v1/tools/fetch   { url }               → { title, content }
+ *   GET  {base URL}/user/balance                           → the account's balance
  * Plain HTTP APIs, so they work for whatever model the agent uses.
  */
 import { getJson, type Balance, type SearchBackend, type SearchHit } from "@gateway/core";

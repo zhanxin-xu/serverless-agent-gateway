@@ -74,11 +74,11 @@
 
 Vercel 部署的实现是 pi-ai（[`packages/adapters/src/pi-ai/chat-model/`](../packages/adapters/src/pi-ai/chat-model/)），用法参照 DeepSeek Harness 的 `llm-pi-ai`：
 
-- **四种协议**：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai`，由 `MODEL_API` 选，见[配置参考](configuration.md#模型)。只加载所选协议的 SDK。
+- **四种协议**：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai`，每个实例有默认协议，可以用 `MODEL_{实例}_API` 改；用哪个实例由 `MODEL_PROVIDER` 选，见[配置参考](configuration.md#模型)。只加载所选协议的 SDK。
 - **无状态**：每次请求带上从事件流推导出的完整对话，不用服务端会话（Responses 设 `store: false`）。
 - **思维链整个回传**：服务商要求回传的数据原样存在消息块里，下次请求原样带回：Responses 的整个 reasoning 对象（请求时总带上 `include: ["reasoning.encrypted_content"]`）、Anthropic 思考块的签名和被隐藏的思考、Gemini 的 thought signature、OpenRouter 的 `reasoning_details`、DeepSeek 的 `reasoning_content`。只回传给同一个“身份”（协议、服务地址、模型三者都相同）；换了任何一项，只保留文字和工具调用。
 - **缓存**：每个聊天一个固定的缓存键（Responses 里是 `prompt_cache_key`）；Anthropic 由 pi-ai 在系统提示、工具和最后一条消息上打缓存断点。
-- **额外参数**：`MODEL_EXTRA_BODY` 按协议的字段名合并进请求体，消息、工具、工具选择这些由网关生成的字段不能设。思维链的开关和强度也在这里设，pi-ai 自己不加推理参数。
+- **额外参数**：`MODEL_{实例}_EXTRA_BODY` 按协议的字段名合并进请求体，消息、工具、工具选择这些由网关生成的字段不能设。思维链的开关和强度也在这里设，pi-ai 自己不加推理参数。
 - **失败**：pi-ai 不给 HTTP 状态码，按错误信息分类（参照 dsh）：余额用完（`OutOfCreditError`，带恢复时间就提示几点恢复）、可以重试（限流、5xx、超时、连接断开：交给新的函数接着跑）、其余直接失败。SDK 自己不重试，重试由运行时决定。
 
 ## 说话与挂断

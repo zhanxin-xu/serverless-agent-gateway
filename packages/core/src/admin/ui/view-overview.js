@@ -4,7 +4,7 @@ import { every, fill, fmtAgo, fmtInt, fmtTokens, fmtUsd, h, meter, pill } from "
 
 const REASONS = { error: "出错", unreachable: "平台连不上", "max-steps": "步数用完" };
 
-/** What's left on one module's service (src/modules: Module.balance): its own key or account. */
+/** What's left on one key or account, and which modules spend from it (src/modules/balance.ts). */
 function balanceTile(b) {
   if (b.error) return h("div", { class: "tile" }, h("span", { class: "k" }, b.label), pill("bad", "查询失败"), h("span", { class: "s" }, b.error));
   return h(

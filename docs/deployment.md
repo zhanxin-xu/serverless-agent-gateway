@@ -58,7 +58,8 @@ Supabase（Postgres）保存每个聊天的会话、事件流、回复状态、�
 
 **升级代码后升级数据库**：新代码要求的表结构版本比数据库新时，网关不读写聊天记录（Webhook 回 503，平台会重推），管理端引导里“数据库”一步提示升级。点“升级”会执行 `schema.sql`，需要时再迁移已有数据；手动升级时，SQL Editor 里先执行 `schema.sql`，回到引导点“检测”，有数据要迁移的话它会再给出一句 SQL。
 
-- **第 6 版**：聊天记录不再绑定 OpenAI Responses 格式，模型配置改名（`OPENAI_RESPONSES_*` → `MODEL_*`，`OPENAI_RESPONSES_MODEL` → `MODEL_ID`）。管理端里存的配置随升级自动改名；**写在环境变量里的要自己改名**，再重新部署。已有的聊天记录按当前的模型转换，思维链原样保留，升级后接着回传。
+- **第 6 版**：聊天记录不再绑定 OpenAI Responses 格式。已有的聊天记录按当前的模型转换，思维链原样保留，升级后接着回传。
+- **第 7 版**：实现的配置按“模块_实例_字段”命名，每个实例有自己的 Key（`MODEL_API_KEY` → `MODEL_OPENROUTER_API_KEY`、`IMAGE_API_KEY` → `IMAGE_OPENROUTER_API_KEY`、`TTS_*` → `VOICE_OPENROUTER_*`、`DEEPSEEK_*` → `SEARCH_DEEPSEEK_*`、`SANDBOX_ENABLED` / `SANDBOX_REGION` → `SANDBOX_VERCEL_*`，完整对照见 `schema.sql` 的 `gateway.renamed_settings`），实现的 id 也跟着改（`pi-ai` → `openrouter` 等）。管理端里存的配置随升级自动改名；还写在环境变量里的旧名字，点“升级”时会把值存进管理端配置的新名字下（新名字已经设了的不动），之后可以删掉旧的环境变量。手动执行 SQL 升级时不会处理环境变量，要自己改名。
 
 **数据保留**：每天的清理任务（`gateway_expire`）删除 7 天没有新消息的聊天，连同它的事件、回复状态和图片。要改天数，修改 `schema.sql` 末尾 `cron.schedule` 里的参数后重新执行。
 

@@ -9,12 +9,12 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { responsesStream } from "./fake-llm.js";
 
-process.env.MODEL_API_KEY = "test-key";
-process.env.MODEL_BASE_URL = "https://gw.example.com/api/v1/";
-process.env.MODEL_ID = "openai/gpt-6-luna";
-process.env.MODEL_EXTRA_BODY = '{"provider":{"only":["openai"],"allow_fallbacks":false},"max_output_tokens":2000}';
-process.env.MODEL_EXTRA_HEADERS = '{"X-Title":"selftest"}';
-process.env.DEEPSEEK_API_KEY = "ds-key";
+process.env.MODEL_OPENROUTER_API_KEY = "test-key";
+process.env.MODEL_OPENROUTER_BASE_URL = "https://gw.example.com/api/v1/";
+process.env.MODEL_OPENROUTER_MODEL = "openai/gpt-6-luna";
+process.env.MODEL_OPENROUTER_EXTRA_BODY = '{"provider":{"only":["openai"],"allow_fallbacks":false},"max_output_tokens":2000}';
+process.env.MODEL_OPENROUTER_EXTRA_HEADERS = '{"X-Title":"selftest"}';
+process.env.SEARCH_DEEPSEEK_API_KEY = "ds-key";
 process.env.QQ_APP_ID = "102000000";
 process.env.QQ_APP_SECRET = "naOC0ocQE3shWLAfffVLB1rhYPG7";
 process.env.TELEGRAM_BOT_TOKEN = "123:abc";
@@ -25,7 +25,7 @@ for (const name of [
   "UPSTASH_VECTOR_REST_TOKEN",
   "VERCEL",
   "VERCEL_OIDC_TOKEN",
-  "SANDBOX_ENABLED",
+  "SANDBOX_VERCEL_ENABLED",
   "SUPABASE_URL",
   "SUPABASE_SECRET_KEY",
 ]) {
@@ -331,7 +331,8 @@ const { getStore, resetStore } = await import("../packages/core/src/store/index.
 const { PostgresStore, supabaseConfig } = await import("../packages/adapters/src/supabase/index.js");
 const qqHint = (await import("../packages/adapters/src/qq/index.js")).qqAdapter.promptHint!;
 const { config } = await import("../packages/core/src/config.js");
-const { piAiConfig } = await import("../packages/adapters/src/pi-ai/index.js");
+const { currentModelIdentity } = await import("../packages/core/src/modules/model/capability.js");
+const { settingJson } = await import("../packages/core/src/config.js");
 const { setWorkspaceFactory } = await import("../packages/core/src/modules/sandbox/workspace.js");
 const { attachmentFileName } = await import("../packages/core/src/modules/sandbox/tools.js");
 const { driveName } = await import("../packages/adapters/src/vercel-sandbox/sandbox/client.js");
@@ -426,27 +427,27 @@ await test("calculator", () => {
 });
 
 await test("config: extra body / base url parsing", () => {
-  assert.equal(piAiConfig.baseUrl, "https://gw.example.com/api/v1");
-  const saved = process.env.MODEL_EXTRA_BODY;
-  process.env.MODEL_EXTRA_BODY = "{bad";
-  assert.throws(() => piAiConfig.extraBody, /MODEL_EXTRA_BODY is not valid JSON/);
-  process.env.MODEL_EXTRA_BODY = "[1]";
-  assert.throws(() => piAiConfig.extraBody, /must be a JSON object/);
-  process.env.MODEL_EXTRA_BODY = saved;
+  assert.equal(currentModelIdentity()!.provider, "https://gw.example.com/api/v1");
+  const saved = process.env.MODEL_OPENROUTER_EXTRA_BODY;
+  process.env.MODEL_OPENROUTER_EXTRA_BODY = "{bad";
+  assert.throws(() => settingJson("MODEL_OPENROUTER_EXTRA_BODY"), /MODEL_OPENROUTER_EXTRA_BODY is not valid JSON/);
+  process.env.MODEL_OPENROUTER_EXTRA_BODY = "[1]";
+  assert.throws(() => settingJson("MODEL_OPENROUTER_EXTRA_BODY"), /must be a JSON object/);
+  process.env.MODEL_OPENROUTER_EXTRA_BODY = saved;
 });
 
-await test("DeepSeek-backed tools only enabled with DEEPSEEK_API_KEY", () => {
+await test("DeepSeek-backed tools only enabled with SEARCH_DEEPSEEK_API_KEY", () => {
   assert.deepEqual(
     activeTools().map((t) => t.name),
     // In module order (src/modules/registry.ts): chat, basics, model, search.
     ["send_message", "send_sticker", "end_turn", "chat_members", "get_current_time", "calculate", "get_llm_key_limit", "web_search", "web_fetch", "get_search_balance"],
   );
-  process.env.DEEPSEEK_API_KEY = "";
+  process.env.SEARCH_DEEPSEEK_API_KEY = "";
   assert.deepEqual(
     activeTools().map((t) => t.name),
     ["send_message", "send_sticker", "end_turn", "chat_members", "get_current_time", "calculate", "get_llm_key_limit"],
   );
-  process.env.DEEPSEEK_API_KEY = "ds-key";
+  process.env.SEARCH_DEEPSEEK_API_KEY = "ds-key";
 });
 
 await test("get_search_balance: DeepSeek /user/balance", async () => {
@@ -474,11 +475,11 @@ await test("get_llm_key_limit: {baseUrl}/key with extra headers", async () => {
   assert.match(out.note, /00:00 UTC/);
 });
 
-await test("get_image_key_limit: the image module reports its own key, or says it shares the model's", async () => {
-  process.env.IMAGE_API_KEY = "img-key";
-  process.env.IMAGE_BASE_URL = "https://img.example.com/api/v1";
+await test("get_image_key_limit: the image module reports its own key, and which other module spends from the same key", async () => {
+  process.env.IMAGE_OPENROUTER_API_KEY = "img-key";
+  process.env.IMAGE_OPENROUTER_BASE_URL = "https://img.example.com/api/v1";
   // The image module needs the workspace to be on.
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     assert.equal(JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx)).image_key, undefined, "the model's report is about the model's key only");
     const out = JSON.parse(await runTool("get_image_key_limit", "{}", noCtx));
@@ -489,16 +490,21 @@ await test("get_image_key_limit: the image module reports its own key, or says i
     assert.equal(out.image_key.limit_remaining, 1.88);
     assert.match(out.note, /00:00 UTC/);
 
-    process.env.IMAGE_BASE_URL = "https://img.example.com/broken";
+    process.env.IMAGE_OPENROUTER_BASE_URL = "https://img.example.com/broken";
     assert.match(await runTool("get_image_key_limit", "{}", noCtx), /^Error: .*HTTP 404/);
 
-    process.env.IMAGE_API_KEY = "test-key";
+    // The same key as the chat model's: told by the key itself, whoever issued it.
+    process.env.IMAGE_OPENROUTER_BASE_URL = "https://img.example.com/api/v1";
+    process.env.IMAGE_OPENROUTER_API_KEY = "test-key";
     const shared = JSON.parse(await runTool("get_image_key_limit", "{}", noCtx));
-    assert.match(shared.image_key, /^same key as model_key/);
+    assert.deepEqual(shared.same_key_as, ["模型"]);
+    assert.deepEqual(JSON.parse(await runTool("get_llm_key_limit", "{}", noCtx)).same_key_as, ["画图"]);
+    const { balanceGroups } = await import("../packages/core/src/modules/balance.js");
+    assert.deepEqual(balanceGroups().map((g) => g.map((m) => m.id)), [["model", "image"], ["search"]], "the console shows one tile per key");
   } finally {
-    delete process.env.IMAGE_API_KEY;
-    delete process.env.IMAGE_BASE_URL;
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.IMAGE_OPENROUTER_API_KEY;
+    delete process.env.IMAGE_OPENROUTER_BASE_URL;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
@@ -1548,7 +1554,7 @@ function fakeWorkspaces() {
 
 await test("workspace: bash / write_file / read_file share one sandbox per run", async () => {
   assert.ok(!activeTools().some((t) => t.name === "bash"), "off without Vercel credentials");
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const ws = fakeWorkspaces();
     const ctx = { ...noCtx, images: [] };
@@ -1563,12 +1569,12 @@ await test("workspace: bash / write_file / read_file share one sandbox per run",
     assert.match(driveName("qq:group:ABC"), /^chat-[0-9a-f]{20}$/);
     assert.notEqual(driveName("qq:group:ABC"), driveName("qq:group:ABD"));
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("workspace: read_file shows an image to the model, kept in the log; the sandbox stops after the run", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const ws = fakeWorkspaces();
     ws.files.set("/workspace/out/plot.png", Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -1584,12 +1590,12 @@ await test("workspace: read_file shows an image to the model, kept in the log; t
     await httpCall("1+1", "c-img");
     assert.ok(llmRequests().at(-1)!.body.input.some((i: any) => i.role === "user" && i.content[1]?.detail === "auto"), "replayed in the next turn");
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("workspace: bash time limit shrinks to the run's time budget (20s before the deadline)", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     fakeWorkspaces();
     const at = (seconds: number) => ({ ...noCtx, images: [], deadline: Date.now() + seconds * 1000 });
@@ -1597,12 +1603,12 @@ await test("workspace: bash time limit shrinks to the run's time budget (20s bef
     assert.match(await runTool("bash", '{"command":"ls"}', at(45)), /\(limit 19s\)$|\(limit 20s\)$/, "45s left - 20s margin - 5s kill grace");
     assert.match(await runTool("bash", '{"command":"ls"}', at(25)), /^Error: no time left in this function/);
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("send_file: QQ uploads the bytes (file_data) with the right file_type, then sends msg_type 7", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const ws = fakeWorkspaces();
     ws.files.set("/workspace/report.pdf", Buffer.from("%PDF-1"));
@@ -1617,12 +1623,12 @@ await test("send_file: QQ uploads the bytes (file_data) with the right file_type
     assert.deepEqual(sentTo("/v2/users/FILEUSER/messages")[0], { msg_type: 7, media: { file_info: "FILEINFO" }, msg_id: "f1", msg_seq: 1 });
     assert.equal(llmRequests().length, 2, "send_file + end_turn: one model call per message");
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("save_attachment: a QQ attachment's original is logged, then curled into the workspace", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const runs: string[] = [];
     setWorkspaceFactory(async () => ({
@@ -1662,12 +1668,12 @@ await test("save_attachment: a QQ attachment's original is logged, then curled i
     const out = llmRequests()[1]!.body.input.find((i: any) => i.type === "function_call_output").output;
     assert.equal(out, "saved /workspace/inbox/0-retouch 1.jpg (2840113 bytes, file)");
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("save_attachment: downloads it itself when the sandbox can't; bad numbers and expired links", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const written = new Map<string, Buffer>();
     setWorkspaceFactory(async () => ({
@@ -1694,14 +1700,14 @@ await test("save_attachment: downloads it itself when the sandbox can't; bad num
     assert.equal(attachmentFileName(3, 1, atts[1]!), "3-passwd", "no path tricks");
     assert.equal(attachmentFileName(3, 0, { name: "a'b; rm -rf ~.jpg", url: "", contentType: "" }), "3-a_b_ rm -rf _.jpg");
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
 await test("generate_image: workspace references become data URLs; results capped at 1080p, saved and shown", async () => {
-  process.env.SANDBOX_ENABLED = "1";
-  process.env.IMAGE_API_KEY = "img-key";
-  process.env.IMAGE_BASE_URL = "https://img.example.com/api/v1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
+  process.env.IMAGE_OPENROUTER_API_KEY = "img-key";
+  process.env.IMAGE_OPENROUTER_BASE_URL = "https://img.example.com/api/v1";
   const sharp = (await import("sharp")).default;
   try {
     const ws = fakeWorkspaces();
@@ -1762,29 +1768,29 @@ await test("generate_image: workspace references become data URLs; results cappe
     imageResponse = () => Response.json({ error: { message: "rejected by the safety system" } }, { status: 400 });
     assert.match(await runTool("generate_image", '{"prompt":"x"}', ctx), /^Error: image API HTTP 400: .*safety system/);
   } finally {
-    delete process.env.SANDBOX_ENABLED;
-    delete process.env.IMAGE_API_KEY;
-    delete process.env.IMAGE_BASE_URL;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
+    delete process.env.IMAGE_OPENROUTER_API_KEY;
+    delete process.env.IMAGE_OPENROUTER_BASE_URL;
     imageResponse = undefined;
   }
-  assert.ok(!activeTools().some((t) => t.name === "generate_image"), "off without IMAGE_API_KEY");
+  assert.ok(!activeTools().some((t) => t.name === "generate_image"), "off without IMAGE_OPENROUTER_API_KEY");
 });
 
-const TTS_ENV = ["TTS_API_KEY", "TTS_BASE_URL", "TTS_INSTRUCTIONS", "TTS_REFERENCE_AUDIO", "TTS_REFERENCE_TEXT", "TTS_VOICE", "TTS_MODEL", "TTS_SING_REFERENCE_AUDIO", "TTS_SING_REFERENCE_TEXT"];
+const VOICE_ENV = ["VOICE_OPENROUTER_API_KEY", "VOICE_OPENROUTER_BASE_URL", "VOICE_OPENROUTER_INSTRUCTIONS", "VOICE_OPENROUTER_REFERENCE_AUDIO", "VOICE_OPENROUTER_REFERENCE_TEXT", "VOICE_OPENROUTER_VOICE", "VOICE_OPENROUTER_MODEL", "VOICE_OPENROUTER_SING_REFERENCE_AUDIO", "VOICE_OPENROUTER_SING_REFERENCE_TEXT"];
 function withTts() {
-  process.env.TTS_API_KEY = "tts-key";
-  process.env.TTS_BASE_URL = "https://tts.example.com/api/v1";
+  process.env.VOICE_OPENROUTER_API_KEY = "tts-key";
+  process.env.VOICE_OPENROUTER_BASE_URL = "https://tts.example.com/api/v1";
 }
 const defaultTts = ttsResponse;
 function resetTts() {
-  for (const name of TTS_ENV) delete process.env[name];
+  for (const name of VOICE_ENV) delete process.env[name];
   ttsResponse = defaultTts;
 }
 
 await test("send_voice: clones the bundled voice clip, asks for PCM, hands the audio to the channel", async () => {
-  assert.ok(!activeTools().some((t) => t.name === "send_voice"), "off without TTS_API_KEY");
+  assert.ok(!activeTools().some((t) => t.name === "send_voice"), "off without VOICE_OPENROUTER_API_KEY");
   withTts();
-  process.env.TTS_INSTRUCTIONS = "软萌可爱";
+  process.env.VOICE_OPENROUTER_INSTRUCTIONS = "软萌可爱";
   try {
     assert.ok(activeTools().some((t) => t.name === "send_voice"));
     const sent: any[] = [];
@@ -1825,8 +1831,8 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     assert.equal(speech.speed, 1.2, "Fish takes speed");
     assert.equal(sent[1].voice.text, "小鲸鱼～游呀游～", "the lyrics as written");
 
-    // TTS_MODEL=Seed: its syntax in the description; singing with plain lyrics, its own recipe and the model's style; no speed; stereo PCM folded to mono.
-    process.env.TTS_MODEL = "bytedance-seed/seed-audio-1-0";
+    // VOICE_OPENROUTER_MODEL=Seed: its syntax in the description; singing with plain lyrics, its own recipe and the model's style; no speed; stereo PCM folded to mono.
+    process.env.VOICE_OPENROUTER_MODEL = "bytedance-seed/seed-audio-1-0";
     assert.match(activeTools().find((t) => t.name === "send_voice")!.description, /The speech model is ByteDance Seed Audio/);
     ttsResponse = () => new Response(new Uint8Array(Buffer.concat([Buffer.alloc(4 * 24000, 0)])), { headers: { "content-type": "audio/pcm;rate=24000;channels=2" } });
     calls.length = 0;
@@ -1843,7 +1849,7 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     assert.equal(sent[2].voice.sampleRate, 24000);
     assert.equal(sent[2].voice.pcm.byteLength, 2 * 24000, "stereo folded to one channel");
     ttsResponse = defaultTts;
-    delete process.env.TTS_MODEL;
+    delete process.env.VOICE_OPENROUTER_MODEL;
 
     // Another character: no clone, no standing direction, the character in instructions.
     calls.length = 0;
@@ -1861,32 +1867,32 @@ await test("send_voice: clones the bundled voice clip, asks for PCM, hands the a
     assert.match(await runTool("send_voice", JSON.stringify({ text: "hi", speed: 5 }), ctx), /^Error: speed is 0\.5 to 2/);
 
     // A singing clip, when configured, is offered and sent with its words.
-    process.env.TTS_SING_REFERENCE_AUDIO = "https://cdn.example.com/sing.mp3";
-    process.env.TTS_SING_REFERENCE_TEXT = "啦啦啦";
+    process.env.VOICE_OPENROUTER_SING_REFERENCE_AUDIO = "https://cdn.example.com/sing.mp3";
+    process.env.VOICE_OPENROUTER_SING_REFERENCE_TEXT = "啦啦啦";
     calls.length = 0;
     await runTool("send_voice", JSON.stringify({ text: "啦～", mode: "sing", voice: "self_sing" }), ctx);
     speech = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.deepEqual(speech.input_references, [{ type: "input_audio", input_audio: { url: "https://cdn.example.com/sing.mp3" } }, { type: "text", text: "啦啦啦" }]);
-    delete process.env.TTS_SING_REFERENCE_AUDIO;
-    delete process.env.TTS_SING_REFERENCE_TEXT;
+    delete process.env.VOICE_OPENROUTER_SING_REFERENCE_AUDIO;
+    delete process.env.VOICE_OPENROUTER_SING_REFERENCE_TEXT;
 
-    process.env.TTS_REFERENCE_AUDIO = "https://cdn.example.com/me.wav";
+    process.env.VOICE_OPENROUTER_REFERENCE_AUDIO = "https://cdn.example.com/me.wav";
     calls.length = 0;
     await runTool("send_voice", '{"text":"hi"}', ctx);
     let body = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.deepEqual(body.input_references, [{ type: "input_audio", input_audio: { url: "https://cdn.example.com/me.wav" } }], "a URL is passed on; no transcript for a custom clip");
 
-    process.env.TTS_REFERENCE_AUDIO = "none";
-    process.env.TTS_VOICE = "voice-123";
+    process.env.VOICE_OPENROUTER_REFERENCE_AUDIO = "none";
+    process.env.VOICE_OPENROUTER_VOICE = "voice-123";
     calls.length = 0;
     await runTool("send_voice", '{"text":"hi"}', ctx);
     body = calls.find((c) => c.url.endsWith("/audio/speech"))!.body;
     assert.equal(body.input_references, undefined, "none turns cloning off");
     assert.equal(body.voice, "voice-123");
 
-    process.env.TTS_REFERENCE_AUDIO = "assets/voice/missing.mp3";
-    assert.match(await runTool("send_voice", '{"text":"hi"}', ctx), /^Error: can't read TTS_REFERENCE_AUDIO assets\/voice\/missing\.mp3/);
-    delete process.env.TTS_REFERENCE_AUDIO;
+    process.env.VOICE_OPENROUTER_REFERENCE_AUDIO = "assets/voice/missing.mp3";
+    assert.match(await runTool("send_voice", '{"text":"hi"}', ctx), /^Error: can't read VOICE_OPENROUTER_REFERENCE_AUDIO assets\/voice\/missing\.mp3/);
+    delete process.env.VOICE_OPENROUTER_REFERENCE_AUDIO;
     assert.match(await runTool("send_voice", '{"text":"  "}', ctx), /^Error: text is empty/);
     assert.match(await runTool("send_voice", JSON.stringify({ text: "啊".repeat(501) }), ctx), /^Error: text is 501 characters/);
     ttsResponse = () => Response.json({ error: { message: "Insufficient credits" } }, { status: 402 });
@@ -1967,7 +1973,7 @@ await test("send_voice elsewhere: Telegram gets a WAV file, the HTTP channel get
 });
 
 await test("send_file: missing file, size limit, and channels that can't send files", async () => {
-  process.env.SANDBOX_ENABLED = "1";
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
   try {
     const ws = fakeWorkspaces();
     ws.files.set("/workspace/big.bin", Buffer.alloc(5 * 1024 * 1024 + 1));
@@ -1979,7 +1985,7 @@ await test("send_file: missing file, size limit, and channels that can't send fi
     const outputs = llmRequests()[1]!.body.input.filter((i: any) => i.type === "function_call_output");
     assert.match(outputs.find((o: any) => o.call_id === "call_f").output, /^Error: the http channel can't send files/);
   } finally {
-    delete process.env.SANDBOX_ENABLED;
+    delete process.env.SANDBOX_VERCEL_ENABLED;
   }
 });
 
@@ -2094,21 +2100,21 @@ const { deepseekConfig } = await import("../packages/adapters/src/deepseek/searc
 
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
-    await saveSettings({ MODEL_ID: "x/console-model", DEEPSEEK_API_KEY: "ds-from-console-123" });
-    assert.equal(piAiConfig.model, "x/console-model");
+    await saveSettings({ MODEL_OPENROUTER_MODEL: "x/console-model", SEARCH_DEEPSEEK_API_KEY: "ds-from-console-123" });
+    assert.equal(currentModelIdentity()!.model, "x/console-model");
     assert.equal(deepseekConfig.apiKey, "ds-from-console-123");
-    const view = (await describeSettings()).values.find((v) => v.key === "DEEPSEEK_API_KEY")!;
+    const view = (await describeSettings()).values.find((v) => v.key === "SEARCH_DEEPSEEK_API_KEY")!;
     assert.deepEqual([view.source, view.value], ["db", "ds-fro…-123"], "a masked preview");
-    assert.deepEqual((await getStore().adminLog(1))[0]!.detail, { keys: ["MODEL_ID", "DEEPSEEK_API_KEY"] }, "the log has names, not values");
+    assert.deepEqual((await getStore().adminLog(1))[0]!.detail, { keys: ["MODEL_OPENROUTER_MODEL", "SEARCH_DEEPSEEK_API_KEY"] }, "the log has names, not values");
 
-    await assert.rejects(saveSettings({ MODEL_EXTRA_BODY: "[1]", AGENT_MAX_STEPS: "0" }), (err: any) => {
-      assert.deepEqual(Object.keys(err.errors).sort(), ["AGENT_MAX_STEPS", "MODEL_EXTRA_BODY"]);
+    await assert.rejects(saveSettings({ MODEL_OPENROUTER_EXTRA_BODY: "[1]", AGENT_MAX_STEPS: "0" }), (err: any) => {
+      assert.deepEqual(Object.keys(err.errors).sort(), ["AGENT_MAX_STEPS", "MODEL_OPENROUTER_EXTRA_BODY"]);
       return true;
     });
     await assert.rejects(saveSettings({ NOT_A_SETTING: "x" }), /NOT_A_SETTING/);
 
-    await saveSettings({ MODEL_ID: null, DEEPSEEK_API_KEY: "" });
-    assert.equal(piAiConfig.model, "openai/gpt-6-luna", "cleared: back to the environment");
+    await saveSettings({ MODEL_OPENROUTER_MODEL: null, SEARCH_DEEPSEEK_API_KEY: "" });
+    assert.equal(currentModelIdentity()!.model, "openai/gpt-6-luna", "cleared: back to the environment");
     assert.equal(deepseekConfig.apiKey, "ds-key");
     assert.equal((await describeSettings()).values.find((v) => v.key === "QQ_APP_SECRET")!.source, "env", "not in the console: the environment's");
   } finally {
@@ -2172,7 +2178,7 @@ await test("deploying before the database upgrade: the bot keeps the log untouch
   const before = llmCalls;
   try {
     await refreshSettings({ force: true });
-    assert.equal(piAiConfig.model, "openai/gpt-6-luna", "settings come from the environment");
+    assert.equal(currentModelIdentity()!.model, "openai/gpt-6-luna", "settings come from the environment");
     const res = await handleWebhook(groupAt("GOLD", "o1", " 在吗"), "qq");
     assert.equal(res.status, 503, "not ACKed: QQ delivers it again after the upgrade");
     const http = await httpCall("first", "oldschema");

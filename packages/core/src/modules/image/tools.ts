@@ -13,7 +13,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { bundledDataUrl } from "../../media/assets.js";
 import { persona } from "../../composition.js";
-import { select, use } from "../capability.js";
+import { balanceReport, canReportBalance, capabilityBalance } from "../balance.js";
+import { use } from "../capability.js";
 import { WORKDIR, saveAttachment, sendFile, workspaceFor } from "../sandbox/index.js";
 import type { Tool, ToolContext } from "../tool.js";
 import { imageCapability } from "./capability.js";
@@ -164,25 +165,15 @@ export const generateImage: Tool = {
 };
 
 /** The image service's balance, when the provider in use can tell. */
-export function imageBalance() {
-  const selection = select(imageCapability);
-  return selection.ok ? selection.provider.create().balance?.() : undefined;
-}
+export const imageBalance = () => capabilityBalance(imageCapability);
 
 export const imageKeyLimit: Tool = {
   name: "get_image_key_limit",
   description:
     "Check the spending limit, remaining credit and usage (today / this week / this month / all time, USD) of image_key, " +
-    "the API key that pays for generate_image. If it's the same key as the chat model's, it says so.",
+    "the API key that pays for generate_image. If another of your tools spends from the same key, it says so.",
   parameters: { type: "object", properties: {} },
   // Only when the image provider in use can tell.
-  enabled: () => {
-    const selection = select(imageCapability);
-    return selection.ok && Boolean(selection.provider.create().balance);
-  },
-  async run() {
-    const balance = imageBalance();
-    if (!balance) throw new Error("the image service in use can't report its balance");
-    return JSON.stringify((await balance).report);
-  },
+  enabled: () => canReportBalance(imageCapability),
+  run: () => balanceReport("image"),
 };

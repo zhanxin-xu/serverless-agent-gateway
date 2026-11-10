@@ -18,7 +18,7 @@ export type {
 } from "./composition.js";
 
 // ── Settings: how an adapter or a host reads its own ──
-export { config, envValue, settingInt, settingJson, settingValue } from "./config.js";
+export { config, envValue, instanceSettings, settingInt, settingJson, settingKey, settingValue } from "./config.js";
 export type { SettingDef, SettingGroup } from "./settings/catalog.js";
 
 // ── Modules and their capabilities: what a provider implements ──

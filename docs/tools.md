@@ -11,11 +11,11 @@
 | 小工具 | `get_current_time` | 查询当前时间（可指定时区） | 始终 |
 | | `calculate` | 四则运算、取模、乘方 | 始终 |
 | 模型 | `get_llm_key_limit` | 查询聊天模型 Key 的额度和用量 | 模型实现能查余额（Vercel 部署：OpenRouter） |
-| 搜索 | `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 搜索服务配置好了（DeepSeek：`DEEPSEEK_API_KEY`） |
+| 搜索 | `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 搜索服务配置好了（DeepSeek：`SEARCH_DEEPSEEK_API_KEY`） |
 | | `get_search_balance` | 查询搜索账户的余额 | 搜索服务能查余额（DeepSeek 能） |
-| 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_API_KEY`），且沙盒开着 |
+| 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_OPENROUTER_API_KEY`），且沙盒开着 |
 | | `get_image_key_limit` | 查询画图 Key 的额度和用量；和模型共用一个 Key 时直接说明 | 同上 |
-| 语音 | `send_voice` | 用大肥鱼的声音发一条语音 | 语音服务配置好了（`TTS_API_KEY`） |
+| 语音 | `send_voice` | 用大肥鱼的声音发一条语音 | 语音服务配置好了（`VOICE_OPENROUTER_API_KEY`） |
 | 长期记忆 | `remember` / `recall` / `forget` | 长期记忆 | 记忆存储配置好了（Upstash Vector） |
 | 沙盒 | `bash` / `read_file` / `write_file` / `send_file` / `save_attachment` | 沙盒工作区 | 部署在 Vercel 上，或本地有 `VERCEL_OIDC_TOKEN` |
 
@@ -32,8 +32,9 @@
 余额查询归各自的模块：
 
 - `get_search_balance`（搜索模块）：由搜索实现提供。DeepSeek 调用 `GET /user/balance`，区分赠送余额和充值余额，并估算还能搜索多少次。不能查余额的搜索实现不提供这个工具。
-- `get_llm_key_limit`（模型模块）：由模型实现提供，部署在组合里决定 Key 的余额向谁查。Vercel 部署接的是 OpenRouter：调用 `GET {MODEL_BASE_URL}/key`，返回聊天模型 Key（`model_key`）的限额、剩余额度、重置周期，以及今日、本周、本月和累计用量；换成其他服务商时这个工具会返回错误。
-- `get_image_key_limit`（画图模块）：同样的报告，查的是画图的 Key（`image_key`，`GET {IMAGE_BASE_URL}/key`）。和模型配的是同一个 Key 时，直接注明“和 model_key 是同一个”，避免重复计算。
+- `get_llm_key_limit`（模型模块）：由所用的模型实例提供，能查的实例才有这个工具。Vercel 部署里是 `openrouter` 实例：调用 `GET {MODEL_OPENROUTER_BASE_URL}/key`，返回聊天模型 Key（`model_key`）的限额、剩余额度、重置周期，以及今日、本周、本月和累计用量。
+- `get_image_key_limit`（画图模块）：同样的报告，查的是画图的 Key（`image_key`，`GET {IMAGE_OPENROUTER_BASE_URL}/key`）。
+- **共用一个 Key**：两个模块的实现用的是同一个 Key 时（比较 Key 本身，不看是哪家），工具结果里的 `same_key_as` 列出共用的模块，管理端总览只显示一格，避免重复计算。
 - 两个 Key 报告的用量都分两笔：`usage` 是从 OpenRouter 余额里扣的钱，`byok_usage` 是走你自己服务商 Key（BYOK）的花费。预算或 Key 限额设成"包含 BYOK"时会把两笔加在一起，所以可能出现 `usage` 为 0、预算却已经花了一部分的情况，工具结果里的 `counts_byok` 字段会标出来。
 - "今天"按 UTC 计算，北京时间每天早上 8 点重置；每周从周一开始。
 
@@ -62,21 +63,21 @@
 | `background` | `auto`、`transparent`、`opaque` |
 | `n` | 生成几张，1–10，默认 1 |
 
-`quality`（默认 `low`）在管理端或环境变量里设，模型不能改；输出格式固定为 `png`（无损，所以不用 `output_compression`）。`resolution` 默认不发：默认的 gpt-image 模型不支持它，换成支持的模型时再设 `IMAGE_RESOLUTION`。
+`quality`（默认 `low`）在管理端或环境变量里设，模型不能改；输出格式固定为 `png`（无损，所以不用 `output_compression`）。`resolution` 默认不发：默认的 gpt-image 模型不支持它，换成支持的模型时再设 `IMAGE_OPENROUTER_RESOLUTION`。
 
 - **结果**：存到 `/workspace/images/{时间}-{序号}.png`。超过 1920×1080（横竖都算）的会先缩小再保存。同时把一张 1024px 的预览给模型看，确认没问题后再用 `send_file` 发到聊天。
 - **修别人发的照片**：先用 `save_attachment` 把原图存进 `/workspace/inbox/`，再把这个路径填进 `input_references`。
 - **自拍长得一样**：仓库里有一张大肥鱼的形象图 [`packages/vercel/assets/persona/dafeiyu.webp`](../packages/vercel/assets/persona/dafeiyu.webp)（768px，约 90 KB）。`include_self` 时它排在参考图第一张，提示词末尾再加一句英文，告诉图像模型"第一张参考图就是她本人，保持脸、浅蓝长发和呆毛、鲸鱼鳍耳朵、鲸鱼发夹、蓝眼睛，姿势、场景、衣服按要求画"。人设里写了她的长相；画图模块的段落告诉模型画自己时要打开 `include_self`，别凭空描述长相。换形象就替换这张图，或者用 `IMAGE_SELF_REFERENCE` 指向别的文件或链接。
-- **费用**：每次调用都按图收费，工具结果里会带上接口返回的 `cost`。和余额工具一样，群里任何人都能让机器人画图，介意的话不要配置 `IMAGE_API_KEY`。
+- **费用**：每次调用都按图收费，工具结果里会带上接口返回的 `cost`。和余额工具一样，群里任何人都能让机器人画图，介意的话不要配置 `IMAGE_OPENROUTER_API_KEY`。
 
 ## 语音
 
-`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `TTS_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`packages/core/src/modules/voice/`](../packages/core/src/modules/voice/)，实现在 [`packages/adapters/src/openai-speech/voice/`](../packages/adapters/src/openai-speech/voice/)，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
+`send_voice` 把一段文字说出来或唱出来，当场作为一条语音消息发出去（和 `send_message` 一样算一次回复）。第一个实现是 OpenAI 兼容的语音接口（`POST /audio/speech`，默认 OpenRouter），模型由 `VOICE_OPENROUTER_MODEL` 决定（默认 Fish Audio Drama 3，也可以配成字节 Seed Audio 1.0），模型自己不能选，配置见[配置参考](configuration.md#语音)。模块在 [`packages/core/src/modules/voice/`](../packages/core/src/modules/voice/)，实现在 [`packages/adapters/src/openai-speech/voice/`](../packages/adapters/src/openai-speech/voice/)，Fish / Seed 两种写法在它的 `dialects.ts`。不依赖沙盒。
 
 | 参数 | 说明 |
 |---|---|
 | `text` | 要说或唱的内容，最多 500 字，按所选模型的写法（Fish 可以夹带下面的语气指令） |
-| `instructions` | 可选，整条语音的语气，例如 `像在讲睡前故事`；唱歌时是风格（`温柔的摇篮曲`）；音色选 `none` 时用来描述角色的声音。会接在 `TTS_INSTRUCTIONS` 后面一起发给接口（`none` 时不带 `TTS_INSTRUCTIONS`） |
+| `instructions` | 可选，整条语音的语气，例如 `像在讲睡前故事`；唱歌时是风格（`温柔的摇篮曲`）；音色选 `none` 时用来描述角色的声音。会接在 `VOICE_OPENROUTER_INSTRUCTIONS` 后面一起发给接口（`none` 时不带 `VOICE_OPENROUTER_INSTRUCTIONS`） |
 | `mode` | `speak`（默认）或 `sing`：把 `text` 当歌词唱 |
 | `voice` | `self`（默认，克隆人设自己的声音）、`self_sing`（配置了唱歌参考音频才有）、`none`（不克隆，演别的角色） |
 | `speed` | 可选，0.5–2，Fish 认，Seed 忽略（不会发给它） |
@@ -85,7 +86,7 @@
 
 工具描述和语音模块的提示词段落都是按配置现拼的：只教当前配置的那个语音模型的写法（实现提供的 dialect）（`text` 和 `instructions` 怎么写、唱歌怎么写），只列出可用的音色。效果不好时（群友说不像、像念的），描述让模型换音色或写法再试，而不是原样重发；好用的组合可以用 `remember` 记下来。工具结果会写明这次用了什么，例如 `voice message: sung, model=…, voice=self, 9.4s`，日志里能看出用的哪个模型。
 
-两个模型的区别（在 `TTS_MODEL` 里选）：
+两个模型的区别（在 `VOICE_OPENROUTER_MODEL` 里选）：
 
 | 模型 | 特点 | 价格（实测） |
 |---|---|---|
@@ -103,7 +104,7 @@
   - 中途换语言：`<english>…</english>`、`<japanese>…</japanese>` 等（实验性）。
   - 多音字、人名注音：每个字一组 `<|phoneme_start|>chong2<|phoneme_end|>`，拼音后面带声调数字。
   - 方括号里的内容不会被念出来；每句最多三个左右，用多了反而不自然。详见 [Fish Audio 的 Drama 3 文档](https://docs.fish.audio/features/text-to-speech/drama-3)。
-- **费用**：按输入文字的字节数计费，OpenRouter 上 Drama 3 是 $2 / 百万 UTF-8 字节，一条短语音不到 0.01 美分。群里任何人都能让机器人发语音，介意的话不要配置 `TTS_API_KEY`。
+- **费用**：按输入文字的字节数计费，OpenRouter 上 Drama 3 是 $2 / 百万 UTF-8 字节，一条短语音不到 0.01 美分。群里任何人都能让机器人发语音，介意的话不要配置 `VOICE_OPENROUTER_API_KEY`。
 
 ## 沙盒工作区
 

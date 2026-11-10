@@ -1,19 +1,22 @@
-import { settingInt, settingJson, settingValue } from "@gateway/core";
+import { instanceSettings } from "@gateway/core";
+
+/** Its settings are IMAGE_OPENROUTER_… */
+export const IMAGE_OPENROUTER = instanceSettings("image", "openrouter");
 
 /** OpenRouter's Image API. Names follow the API's fields. */
 export const openrouterImagesConfig = {
   get apiKey() {
-    return settingValue("IMAGE_API_KEY");
+    return IMAGE_OPENROUTER.value("api_key");
   },
   get baseUrl() {
-    return settingValue("IMAGE_BASE_URL").replace(/\/+$/, "");
+    return IMAGE_OPENROUTER.value("base_url").replace(/\/+$/, "");
   },
   get model() {
-    return settingValue("IMAGE_MODEL");
+    return IMAGE_OPENROUTER.value("model");
   },
   /** auto | low | medium | high | xhigh | max. Set here, not by the model: it drives the price. */
   get quality() {
-    return settingValue("IMAGE_QUALITY");
+    return IMAGE_OPENROUTER.value("quality");
   },
   /**
    * 512 | 768 | 1K | 1.5K | 2K | 4K, for models that take it (see supported_parameters in
@@ -21,13 +24,13 @@ export const openrouterImagesConfig = {
    * draw at about 1024px whatever is sent.
    */
   get resolution() {
-    return settingValue("IMAGE_RESOLUTION");
+    return IMAGE_OPENROUTER.value("resolution");
   },
   /** Extra request body fields, e.g. {"provider":{"options":{"openai":{"moderation":"low"}}}}. */
   get extraBody() {
-    return settingJson("IMAGE_EXTRA_BODY");
+    return IMAGE_OPENROUTER.json("extra_body");
   },
   get timeoutMs() {
-    return settingInt("IMAGE_TIMEOUT_MS");
+    return IMAGE_OPENROUTER.int("timeout_ms");
   },
 };

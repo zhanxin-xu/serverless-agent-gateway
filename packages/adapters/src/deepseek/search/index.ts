@@ -8,6 +8,7 @@ export const deepseekProvider: Provider<SearchBackend> = {
   id: "deepseek",
   capability: searchCapability.id,
   config: CONFIG,
-  available: () => (deepseekConfig.apiKey ? READY : notReady("还没填 DeepSeek API Key")),
+  available: () => (deepseekConfig.apiKey ? READY : notReady("还没填 DeepSeek 搜索的 API Key")),
   create: () => deepseekClient,
+  billedTo: () => deepseekConfig.apiKey || undefined,
 };

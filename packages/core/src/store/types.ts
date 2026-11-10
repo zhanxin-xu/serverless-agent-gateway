@@ -108,7 +108,7 @@ export interface ChatStore {
 // Separate interfaces, so each part of the gateway depends only on what it uses.
 
 /** The schema version this code expects; a store with tables keeps its setup (Database) in step with it. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * The store's tables are older than this code (`detail`: what's missing or

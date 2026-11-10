@@ -28,14 +28,14 @@ npm workspaces，依赖方向 core ← adapters ← vercel。
 | `host` | 后台任务、一次运行的时长、跑不完时怎么接力、CDN 缓存头 | `waitUntil`、`maxDuration`、把运行锁交给 `/api/worker` |
 | `persona` | 人设 | 大肥鱼 |
 | `modules` | 加载哪些模块，按什么顺序 | 全部 8 个 |
-| `providers` | 各能力的实现 | pi-ai 聊天模型（余额向 OpenRouter `/key` 查）、DeepSeek、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音 |
+| `providers` | 各能力的实现，同一个实现可以按服务地址组合成几个实例 | 聊天模型：pi-ai 的 OpenRouter、OpenAI、Anthropic、Gemini、DeepSeek、自定义；DeepSeek 搜索、Upstash Vector、Vercel Sandbox、OpenRouter 画图、OpenAI 兼容语音（OpenRouter） |
 | `channels` | 渠道 | QQ、Telegram、HTTP |
 | `store` / `database` | 存储，以及管理端怎么给它建表 | 配了 Supabase 用 Supabase，否则内存 |
 | `guide` | 管理端里随部署变的文案：怎么设管理密码、怎么连数据库 | Vercel 控制台的步骤 |
 
 `compose()` 拒绝不属于任何已加载模块的实现，以及同一能力下重复的实现 id。
 
-实现之间的配合也在组合里接：pi-ai 聊天模型拿到 OpenRouter 的余额查询，OpenRouter 画图拿到聊天模型的 key 来判断两者是不是共用一个 key。厂商目录之间互不引用。
+实现之间的配合也在组合里接：OpenRouter 实例的聊天模型拿到 OpenRouter 的余额查询。厂商目录之间互不引用；几个模块是不是共用一个 Key，由 core 比较各实现声明的 Key 判断。
 
 管理端跟着组合走：配置页列出组合里的模块、实现和渠道的配置项；引导页的密码和数据库步骤来自 `guide`，数据库状态来自 `database`，标题和头像来自人设。
 

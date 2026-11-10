@@ -3,7 +3,8 @@
  * is selected (capability.ts). Their names and parameters don't change with
  * the provider.
  */
-import { select, use } from "../capability.js";
+import { balanceReport, canReportBalance, capabilityBalance } from "../balance.js";
+import { use } from "../capability.js";
 import type { Tool } from "../tool.js";
 import { searchCapability } from "./capability.js";
 
@@ -52,24 +53,13 @@ export const webFetch: Tool = {
 };
 
 /** The search account's balance, when the provider in use can tell. */
-export function searchBalance() {
-  const selection = select(searchCapability);
-  const backend = selection.ok ? selection.provider.create() : undefined;
-  return backend?.balance?.();
-}
+export const searchBalance = () => capabilityBalance(searchCapability);
 
 export const searchBalanceTool: Tool = {
   name: "get_search_balance",
   description: "Check the remaining balance of the account that pays for web_search / web_fetch, and roughly how many more calls it covers.",
   parameters: { type: "object", properties: {} },
   // Only when the search provider in use can tell.
-  enabled: () => {
-    const selection = select(searchCapability);
-    return selection.ok && Boolean(selection.provider.create().balance);
-  },
-  async run() {
-    const balance = searchBalance();
-    if (!balance) throw new Error("the search service in use can't report its balance");
-    return JSON.stringify((await balance).report);
-  },
+  enabled: () => canReportBalance(searchCapability),
+  run: () => balanceReport("search"),
 };

@@ -2,7 +2,7 @@
 import { channels } from "../../composition.js";
 import { utcDay } from "../../chats/day.js";
 import { getStore, type UsageCounts } from "../../store/index.js";
-import { activeModules } from "../../modules/registry.js";
+import { balanceGroups } from "../../modules/balance.js";
 import type { Route } from "../http.js";
 
 const DAY_MS = 86_400_000;
@@ -19,15 +19,17 @@ export const overviewRoutes: Route[] = [
     path: "overview",
     async handler() {
       const store = getStore();
-      // Each module that's on and can tell what's left on its service (its own key, its own account).
+      // What's left on each key the modules that are on spend from: one tile per key, naming every module on it.
       const balances = await Promise.all(
-        activeModules().flatMap((m) => {
-          const pending = m.balance?.();
+        balanceGroups().flatMap((group) => {
+          const [first] = group;
+          const pending = first!.balance?.();
           if (!pending) return [];
+          const ids = { module: first!.id, modules: group.map((m) => m.id), label: group.map((m) => m.label).join(" · ") };
           return [
             pending.then(
-              (b) => ({ module: m.id, label: m.label, ...b.tile }),
-              (err: unknown) => ({ module: m.id, label: m.label, error: err instanceof Error ? err.message : String(err) }),
+              (b) => ({ ...ids, ...b.tile, ...(group.length > 1 ? { detail: [b.tile.detail, "同一个 Key"].filter(Boolean).join(" · ") } : {}) }),
+              (err: unknown) => ({ ...ids, error: err instanceof Error ? err.message : String(err) }),
             ),
           ];
         }),

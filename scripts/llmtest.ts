@@ -10,7 +10,6 @@ import assert from "node:assert/strict";
 import { anthropicStream, completionsStream, geminiStream, responsesStream } from "./fake-llm.js";
 
 for (const name of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "VERCEL", "VERCEL_OIDC_TOKEN"]) delete process.env[name];
-process.env.MODEL_API_KEY = "test-key";
 (await import("../packages/vercel/src/composition.js")).composeVercel();
 const { piAiChatModel } = await import("../packages/adapters/src/pi-ai/index.js");
 const { ModelCallError, OutOfCreditError } = await import("../packages/core/src/llm/errors.js");
@@ -18,7 +17,8 @@ type AssistantMessage = import("../packages/core/src/llm/types.js").AssistantMes
 type Message = import("../packages/core/src/llm/types.js").Message;
 type ToolChoice = import("../packages/core/src/llm/types.js").ToolChoice;
 
-const model = piAiChatModel().create();
+// An instance of its own (its settings MODEL_TEST_…), whatever the deployment composes.
+const model = piAiChatModel({ id: "test", label: "Test", help: "", api: "openai-responses", baseUrl: "" }).create();
 
 interface Seen {
   url: string;
@@ -38,9 +38,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   return reply(entry);
 }) as typeof fetch;
 
+/** The test instance's settings: protocol, endpoint, model, and any others by field (EXTRA_BODY, PRICE_INPUT…). */
 function configure(api: string, baseUrl: string, model: string, extra: Record<string, string> = {}) {
-  for (const key of Object.keys(process.env)) if (key.startsWith("MODEL_") && key !== "MODEL_API_KEY") delete process.env[key];
-  Object.assign(process.env, { MODEL_API: api, MODEL_BASE_URL: baseUrl, MODEL_ID: model, ...extra });
+  for (const key of Object.keys(process.env)) if (key.startsWith("MODEL_TEST_")) delete process.env[key];
+  const fields = { API: api, BASE_URL: baseUrl, MODEL: model, API_KEY: "test-key", ...extra };
+  for (const [field, value] of Object.entries(fields)) process.env[`MODEL_TEST_${field}`] = value;
   seen = [];
 }
 
@@ -81,7 +83,7 @@ const reasoning = { type: "reasoning", id: "rs_1", summary: [{ type: "summary_te
 const fnCall = { type: "function_call", id: "fc_1", call_id: "call_1", name: "send_message", arguments: '{"text":"hi"}' };
 
 await test("responses: tool choice forms, the extra body, the identity", async () => {
-  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { MODEL_EXTRA_BODY: '{"reasoning":{"effort":"high"},"include":["x"]}' });
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"reasoning":{"effort":"high"},"include":["x"]}' });
   reply = () => responsesStream([reasoning, fnCall], RESPONSES_USAGE);
   await complete([user("hi")], { tool: "send_message" });
   await complete([user("hi")], "none");
@@ -133,8 +135,8 @@ await test("responses: failures are classified (rate limit and 5xx transient, cr
   assert.ok(broke instanceof OutOfCreditError && !broke.transient);
   const bad = await fail(400, "invalid tool schema");
   assert.ok(!(bad instanceof OutOfCreditError) && !bad.transient);
-  process.env.MODEL_EXTRA_BODY = '{"tools":[]}';
-  await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient && /MODEL_EXTRA_BODY 不能设置 tools/.test(err.message));
+  process.env.MODEL_TEST_EXTRA_BODY = '{"tools":[]}';
+  await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient && /MODEL_TEST_EXTRA_BODY 不能设置 tools/.test(err.message));
 });
 
 await test("responses: a call that outlasts its time is a transient failure", async () => {
@@ -164,7 +166,7 @@ await test("responses: a call that outlasts its time is a transient failure", as
 // ── OpenAI Chat Completions ──
 
 await test("completions: system message, tools and tool choice; DeepSeek's reasoning_content goes back with its call", async () => {
-  configure("openai-completions", "https://api.deepseek.com", "deepseek-chat", { MODEL_EXTRA_BODY: '{"thinking":{"type":"enabled"}}' });
+  configure("openai-completions", "https://api.deepseek.com", "deepseek-chat", { EXTRA_BODY: '{"thinking":{"type":"enabled"}}' });
   reply = () =>
     completionsStream(
       { reasoning: { field: "reasoning_content", text: "先想" }, toolCalls: [{ id: "call_9", name: "send_message", arguments: '{"text":"hi"}' }] },
@@ -207,7 +209,7 @@ await test("completions: OpenRouter's reasoning_details go back whole", async ()
 // ── Anthropic Messages ──
 
 await test("anthropic: system and tools cached, no forced tool (thinking stays on), the default output cap", async () => {
-  configure("anthropic-messages", "https://api.anthropic.example", "claude-x", { MODEL_EXTRA_BODY: '{"thinking":{"type":"adaptive"}}' });
+  configure("anthropic-messages", "https://api.anthropic.example", "claude-x", { EXTRA_BODY: '{"thinking":{"type":"adaptive"}}' });
   reply = () => anthropicStream([{ type: "text", text: "你好" }], { input_tokens: 10, output_tokens: 3, cache_read_input_tokens: 0 });
   const plain = await complete([user("hi")], { tool: "send_message" });
   await complete([user("hi")], "none");
@@ -254,7 +256,7 @@ await test("anthropic: thinking (signed and redacted) goes back unchanged with i
 // ── Google Gemini ──
 
 await test("gemini: system instruction, tools, ANY (narrowed to one function when forced), the extra body in config", async () => {
-  configure("google-generative-ai", "https://gem.example/v1beta", "gemini-x", { MODEL_EXTRA_BODY: '{"thinkingConfig":{"includeThoughts":true}}' });
+  configure("google-generative-ai", "https://gem.example/v1beta", "gemini-x", { EXTRA_BODY: '{"thinkingConfig":{"includeThoughts":true}}' });
   reply = () => geminiStream([{ text: "好" }], { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 });
   await complete([user("hi")]);
   await complete([user("hi")], { tool: "send_message" });
@@ -290,7 +292,7 @@ await test("gemini: thought signatures (base64, as Gemini sends them) go back on
 });
 
 await test("cost: estimated from the prices when the provider doesn't bill it", async () => {
-  configure("anthropic-messages", "https://api.anthropic.example", "claude-x", { MODEL_PRICE_INPUT: "3", MODEL_PRICE_CACHED: "0.3", MODEL_PRICE_OUTPUT: "15" });
+  configure("anthropic-messages", "https://api.anthropic.example", "claude-x", { PRICE_INPUT: "3", PRICE_CACHED: "0.3", PRICE_OUTPUT: "15" });
   reply = () => anthropicStream([{ type: "text", text: "好" }], { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000 });
   const message = await complete([user("hi")]);
   assert.equal(message.usage.cost.total, 3 + 15 + 0.3);

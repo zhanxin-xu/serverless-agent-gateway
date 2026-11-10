@@ -40,6 +40,23 @@ export function envValue(name: string): string {
   return env(name);
 }
 
+/** A setting's name from its parts: ("model", "openrouter", "api_key") → MODEL_OPENROUTER_API_KEY. */
+export const settingKey = (...parts: string[]): string => parts.join("_").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+
+/**
+ * The settings of one provider instance, all named `{PREFIX}_{FIELD}` (settingKey):
+ * a provider defined once can be composed several times, each with its own.
+ */
+export function instanceSettings(...prefix: string[]) {
+  const key = (field: string) => settingKey(...prefix, field);
+  return {
+    key,
+    value: (field: string, fallback?: string) => (fallback === undefined ? settingValue(key(field)) : settingValue(key(field), fallback)),
+    int: (field: string) => settingInt(key(field)),
+    json: (field: string) => settingJson(key(field)),
+  };
+}
+
 function str(name: string, fallback = settingDefault(name)): string {
   return raw(name)?.trim() || fallback;
 }

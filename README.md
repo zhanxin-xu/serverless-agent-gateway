@@ -18,7 +18,7 @@
 
 官网：[serverless-agent.cnday.cn](https://serverless-agent.cnday.cn)（源码在 [`site/`](site/)，作为独立的 Vercel 项目部署）。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&env=MODEL_API_KEY&envDescription=API%20key%20for%20the%20chat%20model%20(OpenRouter%20by%20default))
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fzhanxin-xu%2Fserverless-agent-gateway&env=MODEL_OPENROUTER_API_KEY&envDescription=API%20key%20for%20the%20chat%20model%20(OpenRouter%20by%20default))
 
 ## 特性
 

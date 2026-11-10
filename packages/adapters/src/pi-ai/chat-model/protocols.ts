@@ -74,9 +74,9 @@ export type Protocol = keyof typeof PROTOCOLS;
 
 export const isProtocol = (value: string): value is Protocol => Object.hasOwn(PROTOCOLS, value);
 
-/** The extra body, checked: none of the fields the gateway builds. */
-export function checkedExtraBody(protocol: Protocol, extra: Payload): Payload {
+/** The extra body (setting `name`), checked: none of the fields the gateway builds. */
+export function checkedExtraBody(protocol: Protocol, extra: Payload, name: string): Payload {
   const reserved = PROTOCOLS[protocol].reserved.filter((key) => Object.hasOwn(extra, key));
-  if (reserved.length) throw new Error(`MODEL_EXTRA_BODY 不能设置 ${reserved.join("、")}（由网关生成）`);
+  if (reserved.length) throw new Error(`${name} 不能设置 ${reserved.join("、")}（由网关生成）`);
   return extra;
 }

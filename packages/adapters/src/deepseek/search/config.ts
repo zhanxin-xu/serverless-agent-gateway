@@ -1,10 +1,13 @@
-import { settingValue } from "@gateway/core";
+import { instanceSettings } from "@gateway/core";
+
+/** Its settings are SEARCH_DEEPSEEK_… */
+export const SEARCH_DEEPSEEK = instanceSettings("search", "deepseek");
 
 export const deepseekConfig = {
   get apiKey() {
-    return settingValue("DEEPSEEK_API_KEY");
+    return SEARCH_DEEPSEEK.value("api_key");
   },
   get baseUrl() {
-    return settingValue("DEEPSEEK_BASE_URL").replace(/\/+$/, "");
+    return SEARCH_DEEPSEEK.value("base_url").replace(/\/+$/, "");
   },
 };

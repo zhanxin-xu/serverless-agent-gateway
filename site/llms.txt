@@ -24,7 +24,7 @@
 
 1. 部署：运行 `npx vercel` 或通过 Vercel 一键克隆部署，项目的 Root Directory 设成 `packages/vercel`。
 2. 必需环境变量：
-   - `MODEL_API_KEY`：聊天模型的密钥（默认 OpenRouter；协议用 `MODEL_API` 选）
+   - `MODEL_OPENROUTER_API_KEY`：聊天模型的密钥（默认 OpenRouter；其他服务商用各自的 `MODEL_{实例}_*`，由 `MODEL_PROVIDER` 选）
    - `QQ_APP_ID` / `QQ_APP_SECRET`（或 Telegram / HTTP 渠道凭据）
    - `SUPABASE_URL` / `SUPABASE_SECRET_KEY`（执行 `packages/adapters/src/supabase/schema.sql` 初始化表结构）
 3. 健康检查：访问 `GET /api/health` 确认存储、渠道和模型就绪。

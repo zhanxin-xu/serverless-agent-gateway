@@ -1,16 +1,19 @@
 // Settings of the DeepSeek search provider.
 import type { ConfigDecl } from "@gateway/core";
+import { SEARCH_DEEPSEEK } from "./config.js";
+
+const key = SEARCH_DEEPSEEK.key;
 
 export const CONFIG: ConfigDecl = {
   group: {
     id: "search.deepseek",
     label: "DeepSeek",
     help: "DeepSeek 的搜索和网页抓取接口，每千次成功调用约 ¥5，能查余额。",
-    enabledBy: "DEEPSEEK_API_KEY",
-    essentials: ["DEEPSEEK_API_KEY"],
+    enabledBy: key("api_key"),
+    essentials: [key("api_key")],
   },
   settings: [
-    { key: "DEEPSEEK_API_KEY", group: "search.deepseek", label: "DeepSeek API Key", kind: "secret" },
-    { key: "DEEPSEEK_BASE_URL", group: "search.deepseek", label: "服务地址", kind: "url", default: "https://api.deepseek.com" },
+    { key: key("api_key"), group: "search.deepseek", label: "API Key", kind: "secret" },
+    { key: key("base_url"), group: "search.deepseek", label: "服务地址", kind: "url", default: "https://api.deepseek.com" },
   ],
 };

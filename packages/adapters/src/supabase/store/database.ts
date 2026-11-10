@@ -3,10 +3,13 @@
  * tables by running schema.sql (../schema.sql, safe to run again) over a direct
  * Postgres connection. Without one the console shows the SQL to run by hand.
  *
- * Some upgrades move data too. Version 6 rewrites the events written before it
- * (gateway.migrate_events_v6), which needs the chat model's identity as it is
- * now: read after schema.sql has renamed the model's settings, so it's a step
- * of its own (apply() runs both; by hand, schema() gives one, then the other).
+ * Some upgrades move data too:
+ *   - renamed settings still set under an old name in the environment are
+ *     moved into the console's settings (schema.sql renames the console's own);
+ *   - version 6 rewrites the events written before it (gateway.migrate_events_v6),
+ *     which needs the chat model's identity as it is now: read after the
+ *     settings are renamed, so it's a step of its own (apply() runs both; by
+ *     hand, schema() gives one, then the other).
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -25,6 +28,22 @@ export function connectionVar(): string | undefined {
 
 export function readSchema(): Promise<string> {
   return readFile(SCHEMA_FILE, "utf8");
+}
+
+/**
+ * Settings renamed by an upgrade that the deployment still sets under an old
+ * name in its environment: stored in the console's settings under the new
+ * name, unless that name is set already (in the environment or the console).
+ * schema.sql renamed the console's own; this is the environment's half. By
+ * hand (SQL only), the environment variables are renamed by hand.
+ */
+async function moveRenamedEnvironment(client: { query<R extends object>(sql: string, values?: unknown[]): Promise<{ rows: R[] }> }) {
+  const { rows } = await client.query<{ old_key: string; new_key: string }>("select old_key, new_key from gateway.renamed_settings() order by rank");
+  for (const { old_key: from, new_key: to } of rows) {
+    const value = process.env[from]?.trim();
+    if (!value || process.env[to]?.trim()) continue;
+    await client.query("insert into gateway.settings (key, value) values ($1, $2) on conflict (key) do nothing", [to, value]);
+  }
 }
 
 /** The chat model's identity now, for migrating the events written before version 6. */
@@ -58,6 +77,7 @@ export async function applySchema(): Promise<void> {
   try {
     await client.query("set client_min_messages = warning");
     await client.query(await readSchema());
+    await moveRenamedEnvironment(client);
     const { rows } = await client.query<{ legacy: boolean }>("select gateway.has_legacy_events() as legacy");
     if (rows[0]?.legacy) {
       const { api, provider, model } = await modelIdentity();
@@ -89,7 +109,7 @@ export const supabaseDatabase: Database = {
         : `没有找到数据库直连地址（${URL_VARS.join(" / ")}），只能手动执行。`,
       manualNote: legacyEvents
         ? "表已经是新版，还差把旧的聊天记录转成新格式：在 Supabase 控制台的 SQL Editor 执行下面这一句，再回来点“检测”。"
-        : "打开 Supabase 控制台的 SQL Editor，粘贴下面的 SQL 执行，再回来点“检测”。",
+        : "打开 Supabase 控制台的 SQL Editor，粘贴下面的 SQL 执行，再回来点“检测”。手动升级不会处理环境变量：改过名的配置（见部署文档）要在环境变量里自己改名。",
     };
   },
   apply: applySchema,

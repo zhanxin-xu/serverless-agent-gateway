@@ -1,18 +1,18 @@
 /**
- * An OpenAI-compatible speech API (POST {TTS_BASE_URL}/audio/speech, OpenRouter
- * by default). The voice is cloned from a short reference clip on every
- * request (`input_references`), so it stays the same voice without an
- * account-side voice. What the model may write depends on TTS_MODEL (dialects.ts).
+ * An OpenAI-compatible speech API (POST {base URL}/audio/speech). The voice is
+ * cloned from a short reference clip on every request (`input_references`),
+ * so it stays the same voice without an account-side voice. What the model
+ * may write depends on the speech model (dialects.ts).
  */
 import { bundledDataUrl, type SpeechBackend, type VoiceChoice } from "@gateway/core";
-import { speechConfig } from "./config.js";
+import type { SpeechConfig } from "./config.js";
 import { kindOf } from "./dialects.js";
 
 /** When the API doesn't say (it normally does: "audio/pcm;rate=44100;channels=1"). */
 const DEFAULT_SAMPLE_RATE = 44_100;
 
 /** The voices the model can pick: the clone, its singing clip when configured, or none. */
-function voices(): VoiceChoice[] {
+function voices(speechConfig: SpeechConfig): VoiceChoice[] {
   const { referenceAudio, singReferenceAudio } = speechConfig;
   return [
     ...(referenceAudio ? [{ id: "self", about: '"self" (default): your own voice, cloned from a short clip of you talking.' }] : []),
@@ -68,8 +68,9 @@ function toMono(pcm: Buffer, channels: number): Buffer {
   return out;
 }
 
-export const openaiSpeechClient: SpeechBackend = {
-  voices,
+/** A speech client over an instance's settings. */
+export const openaiSpeechClient = (speechConfig: SpeechConfig): SpeechBackend => ({
+  voices: () => voices(speechConfig),
   dialect() {
     const kind = kindOf(speechConfig.model);
     return { tool: `The speech model is ${kind.about}\n${kind.syntax}`, prompt: kind.hint };
@@ -85,9 +86,9 @@ export const openaiSpeechClient: SpeechBackend = {
       .join("；");
     const refs =
       voice === "self"
-        ? await references(speechConfig.referenceAudio, speechConfig.referenceText, "TTS_REFERENCE_AUDIO")
+        ? await references(speechConfig.referenceAudio, speechConfig.referenceText, speechConfig.key("reference_audio"))
         : voice === "self_sing"
-          ? await references(speechConfig.singReferenceAudio, speechConfig.singReferenceText, "TTS_SING_REFERENCE_AUDIO")
+          ? await references(speechConfig.singReferenceAudio, speechConfig.singReferenceText, speechConfig.key("sing_reference_audio"))
           : undefined;
     const body = {
       model,
@@ -113,4 +114,4 @@ export const openaiSpeechClient: SpeechBackend = {
     if (pcm.byteLength < 2) throw new Error("speech API returned no audio");
     return { pcm, sampleRate, model };
   },
-};
+});

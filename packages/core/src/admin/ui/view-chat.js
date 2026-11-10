@@ -321,6 +321,7 @@ function turnHeader(group) {
   const turn = end?.data.turn ?? start?.data.turn;
   if (turn === undefined) return h("div", { class: "turn-head" }, h("b", null, "等着下一轮"));
   const steps = group.log.filter((e) => e.type === "step/start").length;
+  const endUsers = [...new Set(group.log.filter((e) => e.type === "step/start" && e.data.endUser).map((e) => e.data.endUser))];
   let input = 0, cached = 0, output = 0, cost = 0;
   for (const e of group.log) {
     const u = e.type === "assistant/message" ? e.data.message?.usage : undefined;
@@ -337,6 +338,8 @@ function turnHeader(group) {
     start ? ` · ${start.data.trigger === "direct" ? "被叫" : "旁观"}` : "",
     ` · ${steps} 步 · 输入 ${fmtTokens(input)}（缓存 ${fmtTokens(cached)}）输出 ${fmtTokens(output)}`,
     cost ? ` · ${fmtUsd(cost)}` : "",
+    // Who the turn's model calls were for, as the provider saw them (a warning names them by it).
+    endUsers.length ? h("span", { class: "muted" }, ` · 安全标识 ${endUsers.join("、")}`) : "",
     " ",
     end ? pill(...(REASONS[end.data.reason] ?? ["mute", end.data.reason])) : pill("info", "进行中"),
   );

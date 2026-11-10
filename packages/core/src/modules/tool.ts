@@ -51,8 +51,12 @@ export interface ToolContext {
    * slow caps its timeout with this.
    */
   callBudgetMs(): number;
-  /** The chat this run belongs to: memory metadata and the per-chat workspace. */
-  chat: { key: string; scene: "群聊" | "私聊"; sender: string };
+  /**
+   * The chat this run belongs to: memory metadata and the per-chat workspace.
+   * `sender` and `endUser` are the person the turn answers (its default reply
+   * target), `endUser` as providers see them (llm/end-user.ts).
+   */
+  chat: { key: string; scene: "群聊" | "私聊"; sender: string; endUser: string };
   /** Images a tool wants the model to see; the loop shows them after the step's tool outputs. */
   images: ImageContent[];
   /** Run `fn` when the agent run ends, e.g. to stop a sandbox the tool started. */

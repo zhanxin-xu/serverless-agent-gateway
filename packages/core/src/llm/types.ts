@@ -119,6 +119,8 @@ export interface LlmRequest {
   toolChoice: ToolChoice;
   /** Stable per chat: lets the provider keep the chat's requests on one prompt cache. */
   cacheKey?: string;
+  /** The person this call answers, opaque and stable (llm/end-user.ts): the provider's per-user abuse identity. */
+  endUser?: string;
   /** Give up after this long (a transient ModelCallError). */
   timeoutMs: number;
 }

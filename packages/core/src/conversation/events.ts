@@ -77,7 +77,8 @@ export interface EventMap {
   "session/reset": Record<string, never>;
   "turn/start": { turn: number; trigger: "direct" | "ambient" };
   "turn/end": { turn: number; reason: TurnEndReason; error?: string };
-  "step/start": { turn: number; step: number };
+  /** `endUser`: who the step's model call was for, as the provider saw them (llm/end-user.ts). */
+  "step/start": { turn: number; step: number; endUser?: string };
   "step/end": { turn: number; step: number };
   /** A system note ("（系统提示）第 N 轮开始…"); model-visible, kept like everything else. */
   "developer/message": { turn: number; text: string };

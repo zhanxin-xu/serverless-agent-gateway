@@ -56,7 +56,7 @@ MODEL_ANTHROPIC_EXTRA_BODY='{"thinking":{"type":"adaptive"}}'
 MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 ```
 
-消息、系统提示、工具、工具选择由网关生成，写进来会报错。JSON 写错时调用也会报错。
+消息、系统提示、工具、工具选择、用户标识（`safety_identifier`、`user`）由网关生成，写进来会报错。JSON 写错时调用也会报错。
 
 换实例、协议、服务地址或模型后，之前的思维链不再回传（只保留文字和工具调用），提示词缓存从头开始。
 

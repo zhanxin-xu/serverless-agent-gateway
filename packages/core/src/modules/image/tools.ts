@@ -143,6 +143,7 @@ export const generateImage: Tool = {
       ...(args.background !== undefined ? { background: String(args.background) } : {}),
       ...(n !== undefined ? { n } : {}),
       timeoutMs: left,
+      endUser: ctx.chat.endUser,
     });
 
     const ws = await workspaceFor(ctx);

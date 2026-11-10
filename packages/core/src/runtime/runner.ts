@@ -24,6 +24,7 @@ import type { ChannelAdapter } from "../channels/types.js";
 import { host } from "../composition.js";
 import { LAST_STEP_MIN_MS, NEW_STEP_MIN_MS, timeLeftMs } from "../agent/budget.js";
 import { runTurn, type TurnResult } from "../agent/loop.js";
+import { endUserId } from "../llm/end-user.js";
 import { OutOfCreditError } from "../llm/errors.js";
 import { ambientInterval, chatProfile } from "../chats/profile.js";
 import { beijingTime, nextDayStart } from "../chats/day.js";
@@ -209,10 +210,14 @@ async function drain(
           handling.at(-1)!
         );
       };
-      const main = await defaultTarget();
-      turnState.main = main.seq;
+      // Who the turn answers: where replies go by default, and who the model's calls are for.
+      const answer = (m: SessionEvent<"user/message">) => {
+        turnState.main = m.seq;
+        ctx.chat.sender = m.data.sender;
+        ctx.chat.endUser = endUserId(chatKey, m.data.userId ?? m.data.sender);
+      };
+      answer(await defaultTarget());
       ctx.sent = [];
-      ctx.chat.sender = main.data.sender;
       const turn = await session.nextTurn();
       turnState.turn = turn;
       // What the model is told and what it's given, from the modules on in this chat (src/prompt).
@@ -232,7 +237,7 @@ async function drain(
           canReply: () => outbox.canReply(turnState.main),
           async arrived(messages) {
             handling.push(...messages);
-            turnState.main = (await defaultTarget()).seq;
+            answer(await defaultTarget());
           },
           unreachable: () => Boolean(outbox.unreachable),
           continuable,

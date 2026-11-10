@@ -59,8 +59,9 @@ const result = (call: { id: string; name: string }, output: string): Message => 
   isError: false,
   timestamp: 2,
 });
+const END_USER = "qq.0123456789abcdef.fedcba9876543210";
 const complete = (messages: Message[], toolChoice: ToolChoice = "required") =>
-  model.complete({ systemPrompt: "SYS", messages, tools: TOOLS, toolChoice, cacheKey: "0123456789abcdef0123456789abcdef", timeoutMs: 5_000 });
+  model.complete({ systemPrompt: "SYS", messages, tools: TOOLS, toolChoice, cacheKey: "0123456789abcdef0123456789abcdef", endUser: END_USER, timeoutMs: 5_000 });
 const callOf = (m: AssistantMessage) => m.content.find((b) => b.type === "toolCall") as { id: string; name: string; arguments: Record<string, unknown> };
 
 let failed = 0;
@@ -93,6 +94,7 @@ await test("responses: tool choice forms, the extra body, the identity", async (
   assert.equal(none.tool_choice, "none");
   assert.deepEqual(forced.reasoning, { effort: "high" }, "the extra body's reasoning, not pi-ai's");
   assert.deepEqual(forced.include, ["x", "reasoning.encrypted_content"], "the extra include kept, the encrypted reasoning always asked for");
+  assert.deepEqual([forced.safety_identifier, forced.user], [END_USER, END_USER], "the person it answers: OpenAI's field and OpenRouter's");
   assert.deepEqual(model.identity(), { api: "openai-responses", provider: "https://or.example.com/api/v1", model: "openai/gpt-x" });
 });
 
@@ -137,6 +139,8 @@ await test("responses: failures are classified (rate limit and 5xx transient, cr
   assert.ok(!(bad instanceof OutOfCreditError) && !bad.transient);
   process.env.MODEL_TEST_EXTRA_BODY = '{"tools":[]}';
   await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient && /MODEL_TEST_EXTRA_BODY 不能设置 tools/.test(err.message));
+  process.env.MODEL_TEST_EXTRA_BODY = '{"user":"someone"}';
+  await assert.rejects(complete([user("hi")]), /MODEL_TEST_EXTRA_BODY 不能设置 user/, "the per-user identity is the gateway's");
 });
 
 await test("responses: a call that outlasts its time is a transient failure", async () => {
@@ -178,6 +182,7 @@ await test("completions: system message, tools and tool choice; DeepSeek's reaso
   assert.equal(req.body.messages[0].content, "SYS");
   assert.equal(req.body.tool_choice, "required");
   assert.deepEqual(req.body.thinking, { type: "enabled" }, "extra body merged");
+  assert.deepEqual([req.body.safety_identifier, req.body.user], [END_USER, END_USER]);
   assert.deepEqual(req.body.tools.map((t: any) => t.function.name), ["send_message", "end_turn"]);
   assert.deepEqual(first.content[0], { type: "thinking", thinking: "先想", thinkingSignature: "reasoning_content" });
   assert.deepEqual(callOf(first).arguments, { text: "hi" });
@@ -219,6 +224,7 @@ await test("anthropic: system and tools cached, no forced tool (thinking stays o
   assert.deepEqual(none.tool_choice, { type: "none" });
   assert.deepEqual(forced.thinking, { type: "adaptive" });
   assert.equal(forced.max_tokens, 32_000);
+  assert.deepEqual(forced.metadata, { user_id: END_USER }, "Anthropic's per-user identity");
   assert.ok(forced.system.at(-1).cache_control, "the system prompt is a cache breakpoint");
   assert.ok(forced.tools.at(-1).cache_control, "so are the tools");
   assert.equal(plain.stopReason, "stop");
@@ -267,6 +273,7 @@ await test("gemini: system instruction, tools, ANY (narrowed to one function whe
   assert.deepEqual(required!.body.toolConfig, { functionCallingConfig: { mode: "ANY" } });
   assert.deepEqual(forced!.body.toolConfig, { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["send_message"] } });
   assert.deepEqual(required!.body.generationConfig.thinkingConfig, { includeThoughts: true });
+  assert.ok(!JSON.stringify(required!.body).includes(END_USER), "Gemini takes no per-user identity: none is sent");
 });
 
 await test("gemini: thought signatures (base64, as Gemini sends them) go back on the same parts", async () => {

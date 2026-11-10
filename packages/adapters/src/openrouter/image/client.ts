@@ -25,6 +25,8 @@ export const openrouterImagesClient: ImageBackend = {
       ...(request.aspectRatio !== undefined ? { aspect_ratio: request.aspectRatio } : {}),
       ...(request.background !== undefined ? { background: request.background } : {}),
       ...(request.n !== undefined ? { n: request.n } : {}),
+      // OpenRouter's per-user identity, which it turns into the upstream one (OpenAI's safety_identifier).
+      ...(request.endUser ? { user: request.endUser } : {}),
     };
     const res = await fetch(`${baseUrl}/images`, {
       method: "POST",

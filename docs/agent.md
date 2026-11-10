@@ -78,6 +78,7 @@ Vercel 部署的实现是 pi-ai（[`packages/adapters/src/pi-ai/chat-model/`](..
 - **无状态**：每次请求带上从事件流推导出的完整对话，不用服务端会话（Responses 设 `store: false`）。
 - **思维链整个回传**：服务商要求回传的数据原样存在消息块里，下次请求原样带回：Responses 的整个 reasoning 对象（请求时总带上 `include: ["reasoning.encrypted_content"]`）、Anthropic 思考块的签名和被隐藏的思考、Gemini 的 thought signature、OpenRouter 的 `reasoning_details`、DeepSeek 的 `reasoning_content`。只回传给同一个“身份”（协议、服务地址、模型三者都相同）；换了任何一项，只保留文字和工具调用。
 - **缓存**：每个聊天一个固定的缓存键（Responses 里是 `prompt_cache_key`）；Anthropic 由 pi-ai 在系统提示、工具和最后一条消息上打缓存断点。
+- **安全标识**：每次调用都带上“这一轮在回应谁”（默认回复对象的发消息人），格式是 `渠道.聊天哈希.发消息人哈希`（如 `qq.3f9c….a81e…`，各取 SHA-256 前 16 位）。OpenAI 两种协议发 `safety_identifier` 和 `user`（OpenRouter 用 `user` 生成上游标识），Anthropic 发 `metadata.user_id`，Gemini 没有对应字段；画图请求也带 `user`。服务商只看到哈希，出了问题能只封那一个人；我们能反查：管理端聊天列表的搜索框粘贴标识就能找到那个群，事件页每一轮的标题栏显示这一轮用的标识（记在 `step/start` 的 `endUser` 里），下面就是那个人的消息。实现见 `packages/core/src/llm/end-user.ts`。
 - **额外参数**：`MODEL_{实例}_EXTRA_BODY` 按协议的字段名合并进请求体，消息、工具、工具选择这些由网关生成的字段不能设。思维链的开关和强度也在这里设，pi-ai 自己不加推理参数。
 - **失败**：pi-ai 不给 HTTP 状态码，按错误信息分类（参照 dsh）：余额用完（`OutOfCreditError`，带恢复时间就提示几点恢复）、可以重试（限流、5xx、超时、连接断开：交给新的函数接着跑）、其余直接失败。SDK 自己不重试，重试由运行时决定。
 

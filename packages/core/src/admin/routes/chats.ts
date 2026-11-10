@@ -1,4 +1,5 @@
 /** Chats: the list, one chat's history and events, its settings, and acting in it. */
+import { chatRef } from "../../llm/end-user.js";
 import { channel as channelNamed, host } from "../../composition.js";
 import { daysBefore, utcDay } from "../../chats/day.js";
 import { historyAfter, historyBefore } from "../../chats/history.js";
@@ -47,6 +48,8 @@ function view(c: ChatSummary) {
     modeLabel: profileChoices().modes.find((o) => o.value === mode)?.label ?? mode,
     ambientIntervalSeconds: ambientInterval(profile),
     canSend: Boolean(adapter?.send),
+    // How a provider's warning names this chat (llm/end-user.ts): a pasted end-user id finds it.
+    ref: chatRef(c.chat),
   };
 }
 

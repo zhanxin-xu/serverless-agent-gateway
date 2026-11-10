@@ -52,7 +52,7 @@ function cutPoints(events: SessionEvent[]): number[] {
 
 export async function compactIfNeeded(
   session: Session,
-  o: { systemPrompt: string; tools: ToolDefinition[]; inputTokens: number; keepFrom: number; timeoutMs: number },
+  o: { systemPrompt: string; tools: ToolDefinition[]; inputTokens: number; keepFrom: number; timeoutMs: number; endUser?: string },
 ): Promise<boolean> {
   const budget = config.agent.contextTokens;
   if (o.inputTokens < budget * TRIGGER_RATIO) return false;
@@ -84,6 +84,7 @@ export async function compactIfNeeded(
     tools: o.tools,
     toolChoice: "none",
     cacheKey: session.cacheKey,
+    ...(o.endUser ? { endUser: o.endUser } : {}),
     timeoutMs: Math.min(config.model.timeoutMs, o.timeoutMs),
   });
   const text = messageText(message);

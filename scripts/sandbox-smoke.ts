@@ -14,7 +14,7 @@ if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 process.env.SANDBOX_ENABLED = "1";
 // The tools come from the deployment's composition, as in production.
 (await import("../packages/vercel/src/composition.js")).composeVercel();
-const chat = { key: "smoke:test", scene: "私聊" as const, sender: "#SMOKE" };
+const chat = { key: "smoke:test", scene: "私聊" as const, sender: "#SMOKE", endUser: "smoke.test" };
 const newCtx = (): ToolContext => ({
   sent: [],
   send: async () => "sent",

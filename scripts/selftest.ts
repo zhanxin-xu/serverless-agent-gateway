@@ -341,7 +341,7 @@ const { driveName } = await import("../packages/adapters/src/vercel-sandbox/sand
 (await import("../packages/core/src/channels/net.js")).connectRetry.delayMs = 5;
 
 /** Tool context for calling tools directly, outside a conversation. */
-const testChat = { key: "http:c0", scene: "私聊" as const, sender: "#USER01" };
+const testChat = { key: "http:c0", scene: "私聊" as const, sender: "#USER01", endUser: "http.test" };
 const noCtx = {
   sent: [] as string[],
   send: async () => "sent",
@@ -546,6 +546,14 @@ await test("qq: c2c → ACK, turn on the event log, tool loop, passive reply", a
   assert.deepEqual(first!.body.include, ["reasoning.encrypted_content"]);
   assert.match(first!.body.prompt_cache_key, /^[0-9a-f]{32}$/);
   assert.equal(second!.body.prompt_cache_key, first!.body.prompt_cache_key);
+  // Who each call answers, opaque to the provider and ours to trace back: channel, chat hash, person hash.
+  const { endUserId } = await import("../packages/core/src/llm/end-user.js");
+  const endUser = endUserId("qq:c2c:USER1", "USER1");
+  assert.match(endUser, /^qq\.[0-9a-f]{16}\.[0-9a-f]{16}$/);
+  assert.deepEqual([first!.body.safety_identifier, first!.body.user, second!.body.safety_identifier], [endUser, endUser, endUser]);
+  const crypto = await import("node:crypto");
+  assert.equal(endUser.split(".")[1], crypto.createHash("sha256").update("qq:c2c:USER1").digest("hex").slice(0, 16), "the chat part is the chat key's hash");
+  assert.ok((await events("qq:c2c:USER1")).filter((e) => e.type === "step/start").every((e) => e.data.endUser === endUser), "each step records it"); 
   const [, message, ...rest] = first!.body.input;
   assert.match(textOf(message), /^\[第0条｜\d{4}\/\d{2}\/\d{2}.* Asia\/Shanghai｜私聊｜发送人 #USER1\]\n算一下 \(2\+3\)\*4$/);
   assert.deepEqual(rest, [], "an ordinary turn starts with the messages alone: no note");
@@ -913,6 +921,15 @@ await test("qq group: ordinary messages logged; ≤1 ambient wake per window; am
   assert.match(lines[2]!, /｜@你\]\n你觉得呢$/);
   assert.match(textOf(direct.body.input.at(-1)), /｜@你\]\n你觉得呢$/);
   assert.equal(sentTo("/v2/groups/GROUP3/messages").length, 1, "the @ is answered");
+  // Each turn's calls are for the person it answers: the same chat, another person.
+  const { endUserId } = await import("../packages/core/src/llm/end-user.js");
+  const [byMA, byMB] = [endUserId("qq:group:GROUP3", "MA"), endUserId("qq:group:GROUP3", "MB")];
+  assert.equal(llmRequests()[0]!.body.safety_identifier, byMA, "the ambient turn answers 老王");
+  assert.equal(direct.body.safety_identifier, byMB, "the @ turn answers who @-ed");
+  assert.equal(byMA.split(".")[1], byMB.split(".")[1], "one chat");
+  const { chatRef } = await import("../packages/core/src/llm/end-user.js");
+  assert.ok(byMA.startsWith(`${chatRef("qq:group:GROUP3")}.`), "the console finds the chat by the id's first two parts");
+  assert.notEqual(byMA.split(".")[2], byMB.split(".")[2], "two people");
 });
 
 await test("cost: a silent ambient wake (model only hangs up) is a handful of store calls", async () => {
@@ -1496,7 +1513,7 @@ await test("memory: remember / recall / forget on Upstash Vector, shared across 
   process.env.UPSTASH_VECTOR_REST_URL = "https://vector.example.com/";
   process.env.UPSTASH_VECTOR_REST_TOKEN = "vec-token";
   try {
-    const groupCtx = { ...noCtx, chat: { key: "qq:group:G1", scene: "群聊" as const, sender: "老王 #3B6834" } };
+    const groupCtx = { ...noCtx, chat: { key: "qq:group:G1", scene: "群聊" as const, sender: "老王 #3B6834", endUser: "qq.test" } };
     const saved = await runTool("remember", JSON.stringify({ content: "#3B6834 叫老王，是前端程序员" }), groupCtx);
     const id = /id (m_\w+)/.exec(saved)![1]!;
     const upsert = calls.find((c) => c.url === "https://vector.example.com/upsert-data")!;
@@ -1730,6 +1747,7 @@ await test("generate_image: workspace references become data URLs; results cappe
     assert.equal(req.body.resolution, undefined, "gpt-image doesn't take it: not sent unless configured");
     assert.equal(req.body.output_format, "png");
     assert.equal(req.body.aspect_ratio, "3:2");
+    assert.equal(req.body.user, ctx.chat.endUser, "drawn for the person the turn answers");
     assert.equal(req.body.n, undefined, "the API's default unless asked");
     assert.equal(req.body.input_references[0].type, "image_url");
     assert.match(req.body.input_references[0].image_url.url, /^data:image\/jpeg;base64,\/9j\//, "a workspace file sent as a data URL");

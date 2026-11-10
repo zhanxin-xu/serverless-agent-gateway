@@ -18,9 +18,22 @@ interface Spec {
   toolChoice(choice: ToolChoice): unknown;
   /** Request fields the gateway builds: the extra body can't set them. */
   reserved: readonly string[];
-  /** pi-ai's request with the extra body merged in, and what the tool choice still needs. */
-  patch(payload: Payload, extra: Payload, choice: ToolChoice): Payload;
+  /** pi-ai's request with the extra body merged in, what the tool choice still needs, and who it's for. */
+  patch(payload: Payload, extra: Payload, call: Call): Payload;
 }
+
+/** What the gateway adds to each request: the tool choice, and the person it answers (LlmRequest.endUser). */
+interface Call {
+  choice: ToolChoice;
+  endUser?: string;
+}
+
+/**
+ * The person a call answers, where OpenAI-style APIs take one: `safety_identifier`
+ * (OpenAI's per-user abuse identity) and `user` (OpenRouter's, which it turns
+ * into the upstream identity; OpenAI's older field).
+ */
+const openaiEndUser = (endUser?: string): Payload => (endUser ? { safety_identifier: endUser, user: endUser } : {});
 
 const forced = (choice: ToolChoice): string | undefined => (typeof choice === "object" ? choice.tool : undefined);
 
@@ -28,19 +41,19 @@ export const PROTOCOLS = {
   "openai-responses": {
     load: async () => (await import("@earendil-works/pi-ai/api/openai-responses")).stream as StreamFunction,
     toolChoice: (choice) => (typeof choice === "object" ? { type: "function", name: choice.tool } : choice),
-    reserved: ["model", "input", "instructions", "tools", "tool_choice", "stream", "store"],
+    reserved: ["model", "input", "instructions", "tools", "tool_choice", "stream", "store", "safety_identifier", "user"],
     // Calls are stateless (store: false), so reasoning comes back only when asked for encrypted, and
     // that whole item is what the next request must carry. Extra `include` entries are kept.
-    patch: (payload, extra) => {
+    patch: (payload, extra, { endUser }) => {
       const include = new Set([...(Array.isArray(extra.include) ? extra.include : []), "reasoning.encrypted_content"]);
-      return { ...payload, ...extra, include: [...include] };
+      return { ...payload, ...extra, include: [...include], ...openaiEndUser(endUser) };
     },
   },
   "openai-completions": {
     load: async () => (await import("@earendil-works/pi-ai/api/openai-completions")).stream as StreamFunction,
     toolChoice: (choice) => (typeof choice === "object" ? { type: "function", function: { name: choice.tool } } : choice),
-    reserved: ["model", "messages", "tools", "tool_choice", "stream", "stream_options"],
-    patch: (payload, extra) => ({ ...payload, ...extra }),
+    reserved: ["model", "messages", "tools", "tool_choice", "stream", "stream_options", "safety_identifier", "user"],
+    patch: (payload, extra, { endUser }) => ({ ...payload, ...extra, ...openaiEndUser(endUser) }),
   },
   "anthropic-messages": {
     load: async () => (await import("@earendil-works/pi-ai/api/anthropic-messages")).stream as StreamFunction,
@@ -49,14 +62,19 @@ export const PROTOCOLS = {
     // Keeping tool_choice the same on every call also keeps the cached messages valid.
     toolChoice: (choice) => (choice === "none" ? "none" : undefined),
     reserved: ["model", "messages", "system", "tools", "tool_choice", "stream"],
-    patch: (payload, extra) => ({ ...payload, ...extra }),
+    // Anthropic's per-user identity is metadata.user_id; other metadata from the extra body is kept.
+    patch: (payload, extra, { endUser }) => {
+      const merged = { ...payload, ...extra };
+      return endUser ? { ...merged, metadata: { ...(merged.metadata as Payload | undefined), user_id: endUser } } : merged;
+    },
   },
   "google-generative-ai": {
     load: async () => (await import("@earendil-works/pi-ai/api/google-generative-ai")).stream as StreamFunction,
     toolChoice: (choice) => (choice === "none" ? "none" : "any"),
     // The SDK's request is { model, contents, config }: the extra body goes into config.
+    // Gemini takes no per-user identity.
     reserved: ["systemInstruction", "tools", "toolConfig"],
-    patch: (payload, extra, choice) => {
+    patch: (payload, extra, { choice }) => {
       const config = { ...(payload.config as Payload | undefined), ...extra };
       const tool = forced(choice);
       if (tool) {

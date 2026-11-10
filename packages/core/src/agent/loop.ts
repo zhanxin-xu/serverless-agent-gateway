@@ -173,7 +173,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
     await session.append(
       ...opening,
       ...notes.map((text) => ({ type: "developer/message" as const, data: { turn, text } })),
-      { type: "step/start", data: { turn, step } },
+      { type: "step/start", data: { turn, step, endUser: ctx.chat.endUser } },
     );
     opening = [];
 
@@ -187,6 +187,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
         // The last step must say something: whoever is waiting hears the result or where it got stuck.
         toolChoice: lastStep ? { tool: say } : "required",
         cacheKey: session.cacheKey,
+        endUser: ctx.chat.endUser,
         timeoutMs: Math.min(config.model.timeoutMs, callBudgetMs(ctx.deadline)),
       });
     } catch (err) {
@@ -267,6 +268,7 @@ export async function runTurn(o: TurnOptions): Promise<TurnResult> {
           systemPrompt: o.systemPrompt,
           tools,
           inputTokens: promptTokens(message.usage),
+          endUser: ctx.chat.endUser,
           keepFrom: o.pending[0]!.seq,
           timeoutMs: callBudgetMs(ctx.deadline),
         });

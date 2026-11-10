@@ -88,7 +88,7 @@ async function complete(config: PiAiConfig, request: LlmRequest): Promise<Assist
     ...(request.cacheKey ? { sessionId: request.cacheKey } : {}),
     ...(maxOutputTokens ? { maxTokens: maxOutputTokens } : {}),
     ...(toolChoice !== undefined ? { toolChoice } : {}),
-    onPayload: (payload) => protocol.patch(payload as Record<string, unknown>, extra, request.toolChoice),
+    onPayload: (payload) => protocol.patch(payload as Record<string, unknown>, extra, { choice: request.toolChoice, endUser: request.endUser }),
   });
   return answer(await stream.result(), request.timeoutMs, signal.aborted);
 }

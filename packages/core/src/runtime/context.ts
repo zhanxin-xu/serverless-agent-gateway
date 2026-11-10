@@ -3,6 +3,7 @@
  * run ends. Tools say what to deliver (text, an image URL, a file); this is
  * where that becomes a channel call.
  */
+import { endUserId } from "../llm/end-user.js";
 import { callBudgetMs } from "../agent/budget.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
 import { chatPeople } from "../conversation/people.js";
@@ -30,7 +31,7 @@ export function makeToolContext(
     sent: [],
     deadline,
     callBudgetMs: () => callBudgetMs(deadline),
-    chat: { key: chatKey, scene: meta.chatType === "group" ? "群聊" : "私聊", sender: "?" },
+    chat: { key: chatKey, scene: meta.chatType === "group" ? "群聊" : "私聊", sender: "?", endUser: endUserId(chatKey, "?") },
     images: [],
     async send(message, replyTo, opts) {
       if (message.kind === "file" && (collect || !adapter.sendFile)) throw new Error(`the ${adapter.name} channel can't send files`);

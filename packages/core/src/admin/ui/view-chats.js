@@ -19,7 +19,10 @@ export async function renderChats(main) {
 
   const draw = () => {
     const shown = chats.filter(
-      (c) => (kind === "all" || c.chatType === kind) && (!search || `${c.profile?.title ?? ""} ${c.chat} ${(c.speakers ?? []).join(" ")}`.toLowerCase().includes(search)),
+      (c) =>
+        (kind === "all" || c.chatType === kind) &&
+        // A provider's end-user id (channel.chat.person) starts with the chat's ref.
+        (!search || `${c.profile?.title ?? ""} ${c.chat} ${(c.speakers ?? []).join(" ")}`.toLowerCase().includes(search) || search.startsWith(c.ref)),
     );
     count.textContent = `${shown.length} 个`;
     fill(
@@ -62,7 +65,7 @@ export async function renderChats(main) {
       }, label),
     ),
   );
-  const filter = h("input", { id: "chat-search", type: "search", placeholder: "搜索备注名、群友或 ID", onInput: (e) => ((search = e.target.value.trim().toLowerCase()), draw()) });
+  const filter = h("input", { id: "chat-search", type: "search", placeholder: "搜索备注名、群友、ID，或粘贴安全标识", onInput: (e) => ((search = e.target.value.trim().toLowerCase()), draw()) });
 
   fill(
     main,

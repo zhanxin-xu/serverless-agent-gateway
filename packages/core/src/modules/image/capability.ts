@@ -11,6 +11,8 @@ export interface ImageRequest {
   n?: number;
   /** The caller's time budget. */
   timeoutMs: number;
+  /** The person it's drawn for, opaque and stable (llm/end-user.ts): the provider's per-user abuse identity. */
+  endUser?: string;
 }
 
 export interface ImageResult {

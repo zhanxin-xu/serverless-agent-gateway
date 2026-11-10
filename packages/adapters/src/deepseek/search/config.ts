@@ -10,4 +10,8 @@ export const deepseekConfig = {
   get baseUrl() {
     return SEARCH_DEEPSEEK.value("base_url").replace(/\/+$/, "");
   },
+  /** The body override, merged into both calls' bodies last (overrideBody). */
+  get extraBody() {
+    return SEARCH_DEEPSEEK.json("extra_body");
+  },
 };

@@ -4,7 +4,7 @@
  * or draw like them. The response reports tokens, not money, so a call's cost
  * is estimated from the instance's prices.
  */
-import type { ImageBackend, ImageRequest } from "@gateway/core";
+import { overrideBody, type ImageBackend, type ImageRequest } from "@gateway/core";
 import type { ImagesConfig, ImagePrices } from "./config.js";
 
 /** Lossless, so output_compression (JPEG / WebP only) doesn't apply; previews are made from it. */
@@ -51,10 +51,9 @@ export function openaiImagesClient(config: ImagesConfig): ImageBackend {
   return {
     async generate(request: ImageRequest) {
       const edit = request.references.length > 0;
-      const body = {
+      const body = overrideBody({
         model: config.model,
         ...(config.quality ? { quality: config.quality } : {}),
-        ...config.extraBody,
         output_format: OUTPUT_FORMAT,
         prompt: request.prompt,
         size: sizeFor(request.aspectRatio),
@@ -63,7 +62,7 @@ export function openaiImagesClient(config: ImagesConfig): ImageBackend {
         ...(request.n !== undefined ? { n: request.n } : {}),
         // OpenAI's per-user abuse identity: a provider that flags misuse acts on this person, not the whole key.
         ...(request.endUser ? { safety_identifier: request.endUser } : {}),
-      };
+      }, config.extraBody);
       const res = await fetch(`${config.baseUrl}/images/${edit ? "edits" : "generations"}`, {
         method: "POST",
         headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },

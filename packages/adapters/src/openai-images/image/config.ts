@@ -42,7 +42,7 @@ export function imagesConfig(instance: ImagesInstance) {
     get quality() {
       return s.value("quality");
     },
-    /** Merged into every request body, e.g. {"moderation":"low"}. */
+    /** The body override, merged in last (overrideBody), e.g. {"moderation":"low"}. */
     get extraBody() {
       return s.json("extra_body");
     },

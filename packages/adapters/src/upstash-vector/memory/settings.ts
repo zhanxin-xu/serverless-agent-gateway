@@ -1,6 +1,7 @@
 // Settings of the Upstash Vector memory provider. Named as Vercel's Upstash integration injects them
 // (UPSTASH_VECTOR_REST_*), not MEMORY_UPSTASH_…: connecting the integration fills them in.
-import type { ConfigDecl } from "@gateway/core";
+import { bodyOverrideSetting, type ConfigDecl } from "@gateway/core";
+import { BODY_OVERRIDE } from "./config.js";
 
 export const CONFIG: ConfigDecl = {
   group: {
@@ -13,5 +14,6 @@ export const CONFIG: ConfigDecl = {
   settings: [
     { key: "UPSTASH_VECTOR_REST_URL", group: "memory.upstash", label: "REST URL", kind: "url" },
     { key: "UPSTASH_VECTOR_REST_TOKEN", group: "memory.upstash", label: "REST Token", kind: "secret" },
+    bodyOverrideSetting(BODY_OVERRIDE, "memory.upstash", '{"includeVectors":false}', "写入、查询、删除都会合并。"),
   ],
 };

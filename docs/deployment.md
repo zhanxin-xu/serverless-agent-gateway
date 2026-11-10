@@ -30,7 +30,7 @@ Vercel 部署的是部署包 `packages/vercel/`：它的 `api/` 目录下的文�
 
 **在管理端改的配置 30 秒内生效**，不用重新部署。**直接改环境变量后要重新部署**，已经在运行的部署不会读到新值。可以在 Deployments 页面对最新一次部署点 Redeploy，或者再运行一次 `npx vercel --prod`。
 
-**敏感变量读不出来。** 标记为 Sensitive 的变量保存后无法再查看原值，修改时只能整段重写。像 `MODEL_EXTRA_BODY` 这种不含密钥的配置，建议存成普通变量（CLI 加 `--no-sensitive`），方便以后查看和修改。
+**敏感变量读不出来。** 标记为 Sensitive 的变量保存后无法再查看原值，修改时只能整段重写。像 `MODEL_OPENROUTER_EXTRA_BODY` 这种不含密钥的配置，建议存成普通变量（CLI 加 `--no-sensitive`），方便以后查看和修改。
 
 ## 函数区域
 

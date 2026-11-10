@@ -12,6 +12,27 @@
 
 实现的配置名是 `模块_实例_字段`，例如 `MODEL_OPENROUTER_API_KEY`、`IMAGE_OPENROUTER_API_KEY`、`SEARCH_DEEPSEEK_API_KEY`。用哪个实例由模块的 `*_PROVIDER` 选，只有一个配好时不用选。例外是集成自动注入的变量（Upstash 的 `UPSTASH_VECTOR_REST_*`）：沿用集成给的名字。
 
+## 请求体覆盖
+
+每个发 JSON 请求的实例都有一项 `模块_实例_EXTRA_BODY`（管理端里叫“请求体覆盖”）：模型、画图、语音、搜索、长期记忆。它是一个 JSON 对象，在请求发出前的最后一步，按层级合并进最终的请求体：
+
+- 对象遇到对象：逐个键合并，一层层往下；
+- 其他值（字符串、数字、数组）：整个替换；
+- `null`：删掉这个字段。
+
+任何字段都能改，网关自己生成的字段（消息、工具、用户标识、`include`）也一样，改坏了请求会出错。比如：
+
+```bash
+# 让 OpenAI 存下请求，在后台 Logs 里能看到（对话内容会在 OpenAI 保存 30 天）
+MODEL_OPENAI_EXTRA_BODY='{"store":true}'
+# 在 pi-ai 的推理参数上只改强度，其余保留
+MODEL_OPENAI_EXTRA_BODY='{"reasoning":{"effort":"high"}}'
+# 不发旧的 user 字段，只留 safety_identifier
+MODEL_OPENAI_EXTRA_BODY='{"user":null}'
+```
+
+JSON 写错或不是对象时，调用会报错。实现在 `packages/core/src/modules/shared/body.ts`，各适配器发请求前调用它。
+
 ## 模型
 
 模型模块的实现是 pi-ai：通过 [pi-ai](https://github.com/earendil-works/pi) 支持四种接口协议。Vercel 部署组合了这些实例：
@@ -33,7 +54,7 @@
 | `MODEL_{实例}_MODEL` | 模型 ID，格式以服务商为准（OpenRouter 是 `厂商/模型`） |
 | `MODEL_{实例}_API` | 接口协议：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai` |
 | `MODEL_{实例}_BASE_URL` | 协议的根地址，不含接口路径。OpenAI 两种填到 `/v1`，Anthropic 不带 `/v1`，Gemini 带版本 |
-| `MODEL_{实例}_EXTRA_BODY` | JSON 对象，合并进每次请求的请求体，见下文 |
+| `MODEL_{实例}_EXTRA_BODY` | 请求体覆盖，见下文和[请求体覆盖](#请求体覆盖) |
 | `MODEL_{实例}_EXTRA_HEADERS` | JSON 对象，作为额外的请求头，例如 `{"X-Title":"my-bot"}` |
 | `MODEL_{实例}_MAX_OUTPUT_TOKENS` | 单次最多输出（含思维链）。不填时只有 Anthropic 带上限（它必须有，用 32000） |
 | `MODEL_{实例}_PRICE_INPUT` / `_PRICE_CACHED` / `_PRICE_OUTPUT` | 美元 / 百万 token。服务不在响应里报花费时，用它们估算每个聊天的花费（每群额度按它算）。OpenRouter 会报花费，可以不填 |
@@ -47,18 +68,18 @@
 | `MODEL_DAILY_BUDGET_USD` | 空（不限） | 模型每天最多花多少美元，所有聊天加起来，不管用哪个实例，见[花费上限](#花费上限) |
 | `MODEL_MONTHLY_BUDGET_USD` | 空（不限） | 每月最多花多少美元 |
 
-`MODEL_{实例}_EXTRA_BODY` 按所选协议的字段名写，思维链也在这里开：
+`MODEL_{实例}_EXTRA_BODY` 按所选协议的字段名写，覆盖的是 pi-ai 生成的请求，思维链也在这里开：
 
 ```bash
 # OpenRouter：锁定供应商、禁止回退、推理强度
 MODEL_OPENROUTER_EXTRA_BODY='{"provider":{"only":["openai"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}'
 # Anthropic：自适应思考
 MODEL_ANTHROPIC_EXTRA_BODY='{"thinking":{"type":"adaptive"}}'
-# Gemini：合并进请求的 config
-MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
+# Gemini：覆盖的是 SDK 的请求 { model, contents, config }，生成参数在 config 里
+MODEL_GEMINI_EXTRA_BODY='{"config":{"thinkingConfig":{"includeThoughts":true}}}'
 ```
 
-消息、系统提示、工具、工具选择、用户标识（`safety_identifier`、`user`）由网关生成，写进来会报错。JSON 写错时调用也会报错。
+消息、系统提示、工具、工具选择、用户标识（`safety_identifier`、`user`）由网关生成，覆盖它们要自己保证请求还对。
 
 换实例、协议、服务地址或模型后，之前的思维链不再回传（只保留文字和工具调用），提示词缓存从头开始。
 
@@ -123,6 +144,7 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `SUPABASE_URL` | 空 | Supabase 项目地址，Vercel Marketplace 集成会自动注入 |
 | `SUPABASE_SECRET_KEY` | 空 | 服务端密钥（`sb_secret_…`），集成会自动注入 |
 | `UPSTASH_VECTOR_REST_URL` / `UPSTASH_VECTOR_REST_TOKEN` | 空 | Upstash Vector，用于长期记忆；为空时记忆工具不启用 |
+| `MEMORY_UPSTASH_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，写入、查询、删除都合并 |
 
 没配置 Supabase 时退化为内存存储：单实例能用，但多实例之间历史不共享，锁、去重和采样也会失效。Supabase 需要先执行 [`packages/adapters/src/supabase/schema.sql`](../packages/adapters/src/supabase/schema.sql)，见[部署文档](deployment.md#存储supabase)。聊天数据保留多久见[数据保留](deployment.md#存储supabase)。
 
@@ -157,6 +179,7 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 |---|---|---|
 | `SEARCH_DEEPSEEK_API_KEY` | 空 | 搜索模块的 DeepSeek 实现：启用 `web_search`、`web_fetch`、`get_search_balance` |
 | `SEARCH_DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek 接口地址 |
+| `SEARCH_DEEPSEEK_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，搜索和抓取两个接口都合并，例如 `{"count":8}` |
 | `SANDBOX_VERCEL_ENABLED` | 自动 | 部署在 Vercel 上或本地有 `VERCEL_OIDC_TOKEN` 时自动启用；设为 `0` 关闭，设为 `1` 强制启用 |
 | `SANDBOX_VERCEL_REGION` | `iad1` | 沙盒和工作区盘所在的区域。盘建好以后区域不能再改，请在第一次使用前设置 |
 | `SANDBOX_COMMAND_TIMEOUT_SECONDS` | `60` | 单条 `bash` 命令的时间上限，临近函数时限时会自动缩短 |
@@ -177,7 +200,7 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `IMAGE_OPENROUTER_MODEL` | `openai/gpt-image-2.6-sunburst` | 图像模型 |
 | `IMAGE_OPENROUTER_QUALITY` | `low` | 对应接口的 `quality`：`auto`、`low`、`medium`、`high`、`xhigh`、`max`。只能在这里设，模型不能自己调高，因为它决定价格 |
 | `IMAGE_OPENROUTER_RESOLUTION` | 空（不发） | 对应接口的 `resolution`：`512`、`768`、`1K`、`1.5K`、`2K`、`4K`，只对支持它的模型有用（看 OpenRouter `GET /api/v1/images/models` 里模型的 `supported_parameters`）。默认的 gpt-image 系列**不支持**，发了也会被忽略，按画幅出约 1024px 的图（1024×1024、1024×1536、1536×1024）。结果都会再缩到 1920×1080 以内（横竖都算）再保存 |
-| `IMAGE_OPENROUTER_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"provider":{"options":{"openai":{"moderation":"low"}}}}` |
+| `IMAGE_OPENROUTER_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，例如 `{"provider":{"options":{"openai":{"moderation":"low"}}}}` |
 | `IMAGE_OPENROUTER_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒），临近函数时限时会自动缩短 |
 
 ### OpenAI
@@ -190,7 +213,7 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `IMAGE_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 填到 `/v1` 为止 |
 | `IMAGE_OPENAI_MODEL` | `gpt-image-2.6-sunburst` | 图像模型 |
 | `IMAGE_OPENAI_QUALITY` | `low` | 对应接口的 `quality`，只能在这里设 |
-| `IMAGE_OPENAI_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"moderation":"low"}` |
+| `IMAGE_OPENAI_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，例如 `{"moderation":"low"}` |
 | `IMAGE_OPENAI_PRICES` | `{"text_input":5,"image_input":8,"image_output":30}` | 美元 / 百万 token。接口只返回 token 数，花费按它估算。默认是 gpt-image-2.6 的标价 |
 | `IMAGE_OPENAI_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒） |
 
@@ -217,5 +240,5 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `VOICE_OPENROUTER_SING_REFERENCE_AUDIO` | 空 | 可选：同一个声音**唱歌**的参考音频（文件或 https 链接）。设置后模型多一个音色 `self_sing` 可选 |
 | `VOICE_OPENROUTER_SING_REFERENCE_TEXT` | 空 | 唱歌参考音频里唱的词 |
 | `VOICE_OPENROUTER_INSTRUCTIONS` | 空 | 对应接口的 `instructions`：每条语音都带的语气，例如 `软萌可爱的小女孩`。模型调用时给的 `instructions` 会接在后面 |
-| `VOICE_OPENROUTER_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"speed":1.1}` |
+| `VOICE_OPENROUTER_EXTRA_BODY` | 空 | [请求体覆盖](#请求体覆盖)，例如 `{"speed":1.1}` |
 | `VOICE_OPENROUTER_TIMEOUT_MS` | `120000` | 单次请求的超时时间（毫秒），临近函数时限时会自动缩短 |

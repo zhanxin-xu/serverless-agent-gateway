@@ -16,21 +16,12 @@
  * The provider is defined once and composed per endpoint (piAiChatModel), each
  * instance with its own settings and key.
  */
-import {
-  chatModelCapability,
-  ModelCallError,
-  notReady,
-  READY,
-  type AssistantMessage,
-  type ChatModel,
-  type LlmRequest,
-  type Provider,
-} from "@gateway/core";
+import { chatModelCapability, ModelCallError, notReady, READY, type AssistantMessage, type ChatModel, type LlmRequest, type Provider, overrideBody } from "@gateway/core";
 import type { Api, AssistantMessage as PiAssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import { piAiConfig, type PiAiConfig, type PiAiInstance } from "./config.js";
 import { callError } from "./errors.js";
-import { checkedExtraBody, PROTOCOLS } from "./protocols.js";
+import { PROTOCOLS } from "./protocols.js";
 import { chatModelSettings } from "./settings.js";
 
 /** Anthropic requires an output cap; without MODEL_MAX_OUTPUT_TOKENS it gets this one. */
@@ -65,9 +56,9 @@ function answer(message: PiAssistantMessage, timeoutMs: number, timedOut: boolea
 async function complete(config: PiAiConfig, request: LlmRequest): Promise<AssistantMessage> {
   const { api, apiKey, extraHeaders, maxOutputTokens } = config;
   const protocol = PROTOCOLS[api];
-  let extra: Record<string, unknown>;
+  let override: Record<string, unknown>;
   try {
-    extra = checkedExtraBody(api, config.extraBody, config.key("extra_body"));
+    override = config.extraBody;
   } catch (err) {
     throw new ModelCallError(err instanceof Error ? err.message : String(err), false);
   }
@@ -88,7 +79,8 @@ async function complete(config: PiAiConfig, request: LlmRequest): Promise<Assist
     ...(request.cacheKey ? { sessionId: request.cacheKey } : {}),
     ...(maxOutputTokens ? { maxTokens: maxOutputTokens } : {}),
     ...(toolChoice !== undefined ? { toolChoice } : {}),
-    onPayload: (payload) => protocol.patch(payload as Record<string, unknown>, extra, { choice: request.toolChoice, endUser: request.endUser }),
+    // What the gateway adds, then the instance's override, level by level, last.
+    onPayload: (payload) => overrideBody(protocol.patch(payload as Record<string, unknown>, { choice: request.toolChoice, endUser: request.endUser }), override),
   });
   return answer(await stream.result(), request.timeoutMs, signal.aborted);
 }

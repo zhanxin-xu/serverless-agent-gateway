@@ -5,7 +5,7 @@
  *   GET  {base URL}/user/balance                           → the account's balance
  * Plain HTTP APIs, so they work for whatever model the agent uses.
  */
-import { getJson, type Balance, type SearchBackend, type SearchHit } from "@gateway/core";
+import { getJson, overrideBody, type Balance, type SearchBackend, type SearchHit } from "@gateway/core";
 import { deepseekConfig } from "./config.js";
 
 /** A call gives up after this long, or sooner when the caller's budget is shorter. */
@@ -31,12 +31,12 @@ interface DeepSeekBalance {
   balance_infos?: Array<{ currency: string; total_balance: string; granted_balance: string; topped_up_balance: string }>;
 }
 
-async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
-  const { apiKey, baseUrl } = deepseekConfig;
+async function post<T>(path: string, body: Record<string, unknown>, timeoutMs: number): Promise<T> {
+  const { apiKey, baseUrl, extraBody } = deepseekConfig;
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(overrideBody(body, extraBody)),
     signal: AbortSignal.timeout(Math.min(TIMEOUT_MS, timeoutMs)),
   });
   const text = await res.text();

@@ -3,17 +3,17 @@
  * model, so raw text goes in (`/upsert-data`, `/query-data`) and no embedding
  * API of our own is needed.
  */
-import type { MemoryHit, MemoryMetadata, VectorMemory } from "@gateway/core";
+import { overrideBody, type MemoryHit, type MemoryMetadata, type VectorMemory } from "@gateway/core";
 import { upstashConfig } from "./config.js";
 
 const TIMEOUT_MS = 15_000;
 
-async function vectorApi<T>(path: string, body: unknown, method = "POST"): Promise<T> {
-  const { url, token } = upstashConfig;
+async function vectorApi<T>(path: string, body: Record<string, unknown>, method = "POST"): Promise<T> {
+  const { url, token, extraBody } = upstashConfig;
   const res = await fetch(`${url}/${path}`, {
     method,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(overrideBody(body, extraBody)),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const data = (await res.json().catch(() => ({}))) as { result?: T; error?: string };

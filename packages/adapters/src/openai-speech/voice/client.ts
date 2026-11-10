@@ -4,7 +4,7 @@
  * so it stays the same voice without an account-side voice. What the model
  * may write depends on the speech model (dialects.ts).
  */
-import { bundledDataUrl, type SpeechBackend, type VoiceChoice } from "@gateway/core";
+import { bundledDataUrl, type SpeechBackend, type VoiceChoice, overrideBody } from "@gateway/core";
 import type { SpeechConfig } from "./config.js";
 import { kindOf } from "./dialects.js";
 
@@ -90,16 +90,15 @@ export const openaiSpeechClient = (speechConfig: SpeechConfig): SpeechBackend =>
         : voice === "self_sing"
           ? await references(speechConfig.singReferenceAudio, speechConfig.singReferenceText, speechConfig.key("sing_reference_audio"))
           : undefined;
-    const body = {
+    const body = overrideBody({
       model,
-      ...extraBody,
       input: sing ? kind.sing.input(text) : text,
       response_format: "pcm",
       ...(voice === "none" && providerVoice ? { voice: providerVoice } : {}),
       ...(instructions ? { instructions } : {}),
       ...(speed !== undefined && kind.speed ? { speed } : {}),
       ...(refs ? { input_references: refs } : {}),
-    };
+    }, extraBody);
     const res = await fetch(`${baseUrl}/audio/speech`, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },

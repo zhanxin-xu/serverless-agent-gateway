@@ -1,4 +1,4 @@
-import type { ConfigDecl } from "@gateway/core";
+import { bodyOverrideSetting, type ConfigDecl } from "@gateway/core";
 import type { PiAiInstance } from "./config.js";
 import { piAiConfig } from "./config.js";
 import { PROTOCOLS } from "./protocols.js";
@@ -44,17 +44,14 @@ export function chatModelSettings(instance: PiAiInstance): ConfigDecl {
       },
       { key: key("api_key"), group, label: "API Key", kind: "secret" },
       { key: key("model"), group, label: "模型", kind: "text", ...(instance.model ? { default: instance.model } : {}) },
-      {
-        key: key("extra_body"),
+      bodyOverrideSetting(
+        key("extra_body"),
         group,
-        label: "额外请求参数",
-        kind: "json",
-        help:
-          "按所选协议的字段名合并进每次请求体，思维链也在这里开，例如 OpenRouter 的 " +
-          '{"provider":{"only":["openai"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}、' +
-          'Anthropic 的 {"thinking":{"type":"adaptive"}}；Gemini 合并进请求的 config，例如 {"thinkingConfig":{"includeThoughts":true}}。' +
-          "消息、系统提示、工具和工具选择由网关生成，不能在这里设。",
-      },
+        'OpenRouter 的 {"provider":{"only":["openai"],"allow_fallbacks":false},"reasoning":{"effort":"high"}}、' +
+          'OpenAI 的 {"store":true}（请求留在 OpenAI 后台的 Logs 里，内容存 30 天）、Anthropic 的 {"thinking":{"type":"adaptive"}}、' +
+          'Gemini 的 {"config":{"thinkingConfig":{"includeThoughts":true}}}。',
+        "字段名按所选协议，思维链也在这里开。",
+      ),
       { key: key("extra_headers"), group, label: "额外请求头", kind: "json", help: '例如 {"X-Title":"my-bot"}' },
       {
         key: key("max_output_tokens"),

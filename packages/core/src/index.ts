@@ -62,6 +62,7 @@ export type {
 
 // ── Helpers adapters share ──
 export { getJson } from "./modules/shared/http.js";
+export { bodyOverrideSetting, overrideBody } from "./modules/shared/body.js";
 export { bundledDataUrl } from "./media/assets.js";
 
 // ── Channels: what a channel adapter implements ──

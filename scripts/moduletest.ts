@@ -269,6 +269,22 @@ await test("a chat's switches: disabledModules, module ids only", () => {
   );
 });
 
+await test("body override: merged level by level, last; an array or a value replaces, null removes; nothing changed in place", async () => {
+  const { overrideBody } = await import("../packages/core/src/modules/shared/body.js");
+  const body = { model: "m", include: ["a"], reasoning: { effort: "low", summary: "auto" }, user: "u", nested: { keep: 1 } };
+  const override = { reasoning: { effort: "high" }, include: ["b"], user: null, store: true, nested: { add: { deep: 2 } } };
+  const result = overrideBody(body, override);
+  assert.deepEqual(result, { model: "m", include: ["b"], reasoning: { effort: "high", summary: "auto" }, nested: { keep: 1, add: { deep: 2 } }, store: true });
+  assert.deepEqual(body.reasoning, { effort: "low", summary: "auto" }, "the body isn't changed");
+  (result.nested as any).add.deep = 3;
+  assert.equal(override.nested.add.deep, 2, "nor the override");
+  assert.deepEqual(overrideBody({ a: 1 }, { a: { b: 1 } }), { a: { b: 1 } }, "an object over a value replaces it");
+  // Every instance that sends a JSON body has one, with the same label.
+  for (const key of ["MODEL_OPENAI_EXTRA_BODY", "IMAGE_OPENROUTER_EXTRA_BODY", "IMAGE_OPENAI_EXTRA_BODY", "VOICE_OPENROUTER_EXTRA_BODY", "SEARCH_DEEPSEEK_EXTRA_BODY", "MEMORY_UPSTASH_EXTRA_BODY"]) {
+    assert.equal(settingDef(key)?.label, "请求体覆盖", key);
+  }
+});
+
 await test("settings: each module brings its own, the catalog collects them, switches and provider choices included", () => {
   const groups = settingGroups();
   const ids = new Set(groups.map((g) => g.id));

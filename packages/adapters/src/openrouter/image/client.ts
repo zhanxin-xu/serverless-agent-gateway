@@ -1,5 +1,5 @@
 /** OpenRouter's Image API: POST {base URL}/images; its key's limits from GET /key. */
-import type { ImageBackend } from "@gateway/core";
+import { overrideBody, type ImageBackend } from "@gateway/core";
 import { keyBalance, keyReport } from "../key.js";
 import { openrouterImagesConfig } from "./config.js";
 
@@ -14,11 +14,10 @@ interface ImagesResponse {
 export const openrouterImagesClient: ImageBackend = {
   async generate(request) {
     const { apiKey, baseUrl, model, quality, resolution, extraBody, timeoutMs } = openrouterImagesConfig;
-    const body = {
+    const body = overrideBody({
       model,
       quality,
       ...(resolution ? { resolution } : {}),
-      ...extraBody,
       output_format: OUTPUT_FORMAT,
       prompt: request.prompt,
       ...(request.references.length ? { input_references: request.references.map((url) => ({ type: "image_url", image_url: { url } })) } : {}),
@@ -27,7 +26,7 @@ export const openrouterImagesClient: ImageBackend = {
       ...(request.n !== undefined ? { n: request.n } : {}),
       // OpenRouter's per-user identity, which it turns into the upstream one (OpenAI's safety_identifier).
       ...(request.endUser ? { user: request.endUser } : {}),
-    };
+    }, extraBody);
     const res = await fetch(`${baseUrl}/images`, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },

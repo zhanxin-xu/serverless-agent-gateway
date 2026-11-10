@@ -83,8 +83,8 @@ const RESPONSES_USAGE = { input_tokens: 100, input_tokens_details: { cached_toke
 const reasoning = { type: "reasoning", id: "rs_1", summary: [{ type: "summary_text", text: "想想" }], encrypted_content: "ENC" };
 const fnCall = { type: "function_call", id: "fc_1", call_id: "call_1", name: "send_message", arguments: '{"text":"hi"}' };
 
-await test("responses: tool choice forms, the extra body, the identity", async () => {
-  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"reasoning":{"effort":"high"},"include":["x"]}' });
+await test("responses: tool choice forms, the body override, the identity", async () => {
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"reasoning":{"effort":"high"},"store":true}' });
   reply = () => responsesStream([reasoning, fnCall], RESPONSES_USAGE);
   await complete([user("hi")], { tool: "send_message" });
   await complete([user("hi")], "none");
@@ -92,8 +92,9 @@ await test("responses: tool choice forms, the extra body, the identity", async (
   assert.equal(seen[0]!.url, "https://or.example.com/api/v1/responses");
   assert.deepEqual(forced.tool_choice, { type: "function", name: "send_message" });
   assert.equal(none.tool_choice, "none");
-  assert.deepEqual(forced.reasoning, { effort: "high" }, "the extra body's reasoning, not pi-ai's");
-  assert.deepEqual(forced.include, ["x", "reasoning.encrypted_content"], "the extra include kept, the encrypted reasoning always asked for");
+  assert.deepEqual(forced.reasoning, { effort: "high" }, "the override's reasoning");
+  assert.equal(forced.store, true, "pi-ai's store: false overridden (the calls show in the provider's logs)");
+  assert.deepEqual(forced.include, ["reasoning.encrypted_content"], "the encrypted reasoning asked for");
   assert.deepEqual([forced.safety_identifier, forced.user], [END_USER, END_USER], "the person it answers: OpenAI's field and OpenRouter's");
   assert.deepEqual(model.identity(), { api: "openai-responses", provider: "https://or.example.com/api/v1", model: "openai/gpt-x" });
 });
@@ -137,10 +138,18 @@ await test("responses: failures are classified (rate limit and 5xx transient, cr
   assert.ok(broke instanceof OutOfCreditError && !broke.transient);
   const bad = await fail(400, "invalid tool schema");
   assert.ok(!(bad instanceof OutOfCreditError) && !bad.transient);
-  process.env.MODEL_TEST_EXTRA_BODY = '{"tools":[]}';
-  await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient && /MODEL_TEST_EXTRA_BODY 不能设置 tools/.test(err.message));
-  process.env.MODEL_TEST_EXTRA_BODY = '{"user":"someone"}';
-  await assert.rejects(complete([user("hi")]), /MODEL_TEST_EXTRA_BODY 不能设置 user/, "the per-user identity is the gateway's");
+  // The override has the last word, on the fields the gateway builds too: null removes, an array replaces.
+  process.env.MODEL_TEST_EXTRA_BODY = '{"user":null,"include":["x"],"text":{"verbosity":"low"}}';
+  reply = () => responsesStream([fnCall], RESPONSES_USAGE);
+  seen.length = 0;
+  await complete([user("hi")]);
+  const overridden = seen[0]!.body;
+  assert.equal(overridden.user, undefined);
+  assert.equal(overridden.safety_identifier, END_USER, "what it doesn't name stays");
+  assert.deepEqual(overridden.include, ["x"]);
+  assert.equal(overridden.text.verbosity, "low");
+  process.env.MODEL_TEST_EXTRA_BODY = "[1]";
+  await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient && /must be a JSON object/.test(err.message));
 });
 
 await test("responses: a call that outlasts its time is a transient failure", async () => {
@@ -181,7 +190,7 @@ await test("completions: system message, tools and tool choice; DeepSeek's reaso
   assert.equal(req.url, "https://api.deepseek.com/chat/completions");
   assert.equal(req.body.messages[0].content, "SYS");
   assert.equal(req.body.tool_choice, "required");
-  assert.deepEqual(req.body.thinking, { type: "enabled" }, "extra body merged");
+  assert.deepEqual(req.body.thinking, { type: "enabled" }, "the body override merged");
   assert.deepEqual([req.body.safety_identifier, req.body.user], [END_USER, END_USER]);
   assert.deepEqual(req.body.tools.map((t: any) => t.function.name), ["send_message", "end_turn"]);
   assert.deepEqual(first.content[0], { type: "thinking", thinking: "先想", thinkingSignature: "reasoning_content" });
@@ -261,8 +270,8 @@ await test("anthropic: thinking (signed and redacted) goes back unchanged with i
 
 // ── Google Gemini ──
 
-await test("gemini: system instruction, tools, ANY (narrowed to one function when forced), the extra body in config", async () => {
-  configure("google-generative-ai", "https://gem.example/v1beta", "gemini-x", { EXTRA_BODY: '{"thinkingConfig":{"includeThoughts":true}}' });
+await test("gemini: system instruction, tools, ANY (narrowed to one function when forced), the body override into the SDK's config", async () => {
+  configure("google-generative-ai", "https://gem.example/v1beta", "gemini-x", { EXTRA_BODY: '{"config":{"thinkingConfig":{"includeThoughts":true}}}' });
   reply = () => geminiStream([{ text: "好" }], { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 });
   await complete([user("hi")]);
   await complete([user("hi")], { tool: "send_message" });
@@ -271,7 +280,7 @@ await test("gemini: system instruction, tools, ANY (narrowed to one function whe
   assert.equal(required!.body.systemInstruction.parts[0].text, "SYS");
   assert.deepEqual(required!.body.tools[0].functionDeclarations.map((f: any) => f.name), ["send_message", "end_turn"]);
   assert.deepEqual(required!.body.toolConfig, { functionCallingConfig: { mode: "ANY" } });
-  assert.deepEqual(forced!.body.toolConfig, { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["send_message"] } });
+  assert.deepEqual(forced!.body.toolConfig, { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["send_message"] } }, "merged level by level: the tool config stays");
   assert.deepEqual(required!.body.generationConfig.thinkingConfig, { includeThoughts: true });
   assert.ok(!JSON.stringify(required!.body).includes(END_USER), "Gemini takes no per-user identity: none is sent");
 });

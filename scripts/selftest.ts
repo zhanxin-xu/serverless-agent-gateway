@@ -1830,6 +1830,7 @@ await test("generate_image through OpenAI's own Image API: generations or edits,
   process.env.SANDBOX_VERCEL_ENABLED = "1";
   process.env.IMAGE_OPENAI_API_KEY = "oai-img-key";
   process.env.IMAGE_OPENAI_BASE_URL = "https://oai.example.com/v1";
+  process.env.IMAGE_OPENAI_EXTRA_BODY = '{"moderation":"low","quality":"high"}';
   const sharp = (await import("sharp")).default;
   try {
     const ws = fakeWorkspaces();
@@ -1849,8 +1850,10 @@ await test("generate_image through OpenAI's own Image API: generations or edits,
     assert.equal(req.headers.get("authorization"), "Bearer oai-img-key");
     assert.deepEqual(
       [req.body.model, req.body.quality, req.body.output_format, req.body.size, req.body.images],
-      ["gpt-image-2.6-sunburst", "low", "png", "1360x768", undefined],
+      ["gpt-image-2.6-sunburst", "high", "png", "1360x768", undefined],
+      "the override's quality wins over the setting's",
     );
+    assert.equal(req.body.moderation, "low");
     assert.equal(req.body.safety_identifier, ctx.chat.endUser, "OpenAI gets the person's id as is");
     assert.equal(req.body.user, undefined);
     assert.match(drawn, /^generated 1 image\(s\), cost \$0\.061/);
@@ -1869,6 +1872,7 @@ await test("generate_image through OpenAI's own Image API: generations or edits,
     delete process.env.SANDBOX_VERCEL_ENABLED;
     delete process.env.IMAGE_OPENAI_API_KEY;
     delete process.env.IMAGE_OPENAI_BASE_URL;
+    delete process.env.IMAGE_OPENAI_EXTRA_BODY;
     imageResponse = undefined;
   }
 });

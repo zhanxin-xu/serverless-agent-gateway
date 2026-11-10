@@ -26,7 +26,7 @@ export const openrouterImagesConfig = {
   get resolution() {
     return IMAGE_OPENROUTER.value("resolution");
   },
-  /** Extra request body fields, e.g. {"provider":{"options":{"openai":{"moderation":"low"}}}}. */
+  /** The body override, merged in last (overrideBody), e.g. {"provider":{"options":{"openai":{"moderation":"low"}}}}. */
   get extraBody() {
     return IMAGE_OPENROUTER.json("extra_body");
   },

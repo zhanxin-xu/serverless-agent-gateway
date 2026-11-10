@@ -1,5 +1,5 @@
 // Settings of an OpenAI Image API provider instance, each named IMAGE_{ID}_{FIELD}.
-import type { ConfigDecl } from "@gateway/core";
+import { bodyOverrideSetting, type ConfigDecl } from "@gateway/core";
 import { DEFAULT_PRICES, imagesConfig, type ImagesInstance } from "./config.js";
 
 export function imagesSettings(instance: ImagesInstance): ConfigDecl {
@@ -20,7 +20,7 @@ export function imagesSettings(instance: ImagesInstance): ConfigDecl {
         options: ["auto", "low", "medium", "high", "xhigh", "max"].map((v) => ({ value: v, label: v })),
         help: "决定价格，由这里定，不让模型选。xhigh 和 max 只有 2.5 之后的 sunburst / flare 支持。",
       },
-      { key: key("extra_body"), group, label: "额外请求参数", kind: "json", help: '合并进每次请求体，例如 {"moderation":"low"}。' },
+      bodyOverrideSetting(key("extra_body"), group, '{"moderation":"low"}'),
       {
         key: key("prices"),
         group,

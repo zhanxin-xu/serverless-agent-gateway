@@ -1,5 +1,5 @@
 // Settings of an OpenAI-compatible speech instance; the voice to clone defaults to the persona's.
-import { persona, type ConfigDecl } from "@gateway/core";
+import { bodyOverrideSetting, persona, type ConfigDecl } from "@gateway/core";
 import { speechConfig, type SpeechInstance } from "./config.js";
 
 /** An instance's settings, each named VOICE_{ID}_{FIELD}. */
@@ -31,7 +31,7 @@ export function speechSettings(instance: SpeechInstance): ConfigDecl {
       { key: key("sing_reference_audio"), group, label: "唱歌参考音频", kind: "text", help: "同一个声音唱歌的片段，提供给模型作为音色 self_sing。" },
       { key: key("sing_reference_text"), group, label: "唱歌参考的文字", kind: "textarea" },
       { key: key("instructions"), group, label: "固定语气指示", kind: "text", help: "每句话都带上的 instructions，例如“软萌可爱的小女孩”。" },
-      { key: key("extra_body"), group, label: "额外请求参数", kind: "json", help: '例如 {"speed":1.1}' },
+      bodyOverrideSetting(key("extra_body"), group, '{"speed":1.1}'),
       { key: key("timeout_ms"), group, label: "超时（毫秒）", kind: "int", default: "120000" },
     ],
   };

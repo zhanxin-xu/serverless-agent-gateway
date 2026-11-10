@@ -1,5 +1,5 @@
 // Settings of the OpenRouter Image API provider.
-import type { ConfigDecl } from "@gateway/core";
+import { bodyOverrideSetting, type ConfigDecl } from "@gateway/core";
 import { IMAGE_OPENROUTER } from "./config.js";
 
 const key = IMAGE_OPENROUTER.key;
@@ -36,7 +36,7 @@ export const CONFIG: ConfigDecl = {
       options: [{ value: "", label: "不发送" }, ...["512", "768", "1K", "1.5K", "2K", "4K"].map((v) => ({ value: v, label: v }))],
       help: "只对支持这个参数的模型有用；默认的 gpt-image 不支持，总是约 1024px。",
     },
-    { key: key("extra_body"), group, label: "额外请求参数", kind: "json", help: '例如 {"provider":{"options":{"openai":{"moderation":"low"}}}}' },
+    bodyOverrideSetting(key("extra_body"), group, '{"provider":{"options":{"openai":{"moderation":"low"}}}}'),
     { key: key("timeout_ms"), group, label: "超时（毫秒）", kind: "int", default: "180000" },
   ],
 };

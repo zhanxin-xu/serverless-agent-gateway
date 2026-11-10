@@ -38,7 +38,7 @@ export { imageCapability } from "./modules/image/capability.js";
 export type { ImageBackend } from "./modules/image/capability.js";
 export { speechCapability } from "./modules/voice/capability.js";
 export type { SpeechBackend, VoiceChoice } from "./modules/voice/capability.js";
-export { chatModelCapability, currentModelIdentity } from "./modules/model/capability.js";
+export { chatModelCapability } from "./modules/model/capability.js";
 export type { ChatModel, ModelAccount } from "./modules/model/capability.js";
 
 // ── Model messages: what a chat model provider takes and returns ──

@@ -121,17 +121,19 @@ await test("turning one module off leaves every other section as it was", () => 
 
 await test("the chat model: one provider per endpoint, each with its own key; the one in use is chosen", async () => {
   const model = MODULES.find((m) => m.id === "model")!;
-  const { currentModelIdentity } = await import("../packages/core/src/modules/model/capability.js");
+  const { use } = await import("../packages/core/src/modules/capability.js");
+  const { chatModelCapability } = await import("../packages/core/src/modules/model/capability.js");
+  const modelIdentity = () => use(chatModelCapability).identity();
   assert.deepEqual(
     model.capability!.providers.map((p) => p.id),
     ["openrouter", "openai", "anthropic", "gemini", "deepseek", "custom"],
   );
-  assert.equal(currentModelIdentity()!.provider, "https://openrouter.ai/api/v1", "only OpenRouter has a key: it's used");
+  assert.equal(modelIdentity().provider, "https://openrouter.ai/api/v1", "only OpenRouter has a key: it's used");
   await withEnv({ MODEL_ANTHROPIC_API_KEY: "ak", MODEL_ANTHROPIC_MODEL: "claude-x" }, async () => {
     const status = moduleStatus(model);
     assert.ok(!status.ok && /有 2 个可用的聊天模型（OpenRouter、Anthropic），请在配置页选一个/.test(status.reason), JSON.stringify(status));
     await withEnv({ MODEL_PROVIDER: "anthropic" }, () => {
-      assert.deepEqual(currentModelIdentity(), { api: "anthropic-messages", provider: "https://api.anthropic.com", model: "claude-x" });
+      assert.deepEqual(modelIdentity(), { api: "anthropic-messages", provider: "https://api.anthropic.com", model: "claude-x" });
       assert.equal(process.env.MODEL_OPENROUTER_API_KEY, "k", "switching keeps the other instance's settings");
     });
   });

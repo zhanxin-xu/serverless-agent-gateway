@@ -24,12 +24,6 @@ import {
  */
 const LOG_FUNCTIONS = new Set(["chat_ingest", "chat_open", "chat_append", "chat_trim", "admin_events", "admin_append"]);
 
-/** What gateway_info reports: the schema version, and whether events wait for a data migration. */
-export interface GatewayInfo {
-  schemaVersion: number | null;
-  legacyEvents?: boolean;
-}
-
 /** Supabase, with a secret key (sb_secret_…) in the `apikey` header. Every function returns JSON. */
 export class PostgresStore implements Store {
   /** The schema check, once it passed (per instance, so a cold start checks once). */
@@ -42,8 +36,8 @@ export class PostgresStore implements Store {
 
   /** Throws SchemaOutdatedError until the tables are this code's version; checked again after a failure. */
   ready(): Promise<void> {
-    this.current ??= this.info().then(
-      ({ schemaVersion }) => {
+    this.current ??= this.schemaVersion().then(
+      (schemaVersion) => {
         if (schemaVersion !== SCHEMA_VERSION) throw new SchemaOutdatedError(`schema version ${schemaVersion ?? "none"}, need ${SCHEMA_VERSION}`);
       },
     );
@@ -51,16 +45,6 @@ export class PostgresStore implements Store {
       this.current = undefined;
       throw err;
     });
-  }
-
-  /** The schema's version and pending migration; schemaVersion null when there are no tables. */
-  async info(): Promise<GatewayInfo> {
-    try {
-      return await this.rpc<GatewayInfo>("gateway_info", {});
-    } catch (err) {
-      if (err instanceof SchemaOutdatedError) return { schemaVersion: null };
-      throw err;
-    }
   }
 
   private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
@@ -173,7 +157,12 @@ export class PostgresStore implements Store {
   }
 
   async schemaVersion() {
-    return (await this.info()).schemaVersion;
+    try {
+      return (await this.rpc<{ schemaVersion: number | null }>("gateway_info", {})).schemaVersion;
+    } catch (err) {
+      if (err instanceof SchemaOutdatedError) return null;
+      throw err;
+    }
   }
 
   chats(day: string) {

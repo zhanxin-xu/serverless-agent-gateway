@@ -331,7 +331,9 @@ const { getStore, resetStore } = await import("../packages/core/src/store/index.
 const { PostgresStore, supabaseConfig } = await import("../packages/adapters/src/supabase/index.js");
 const qqHint = (await import("../packages/adapters/src/qq/index.js")).qqAdapter.promptHint!;
 const { config } = await import("../packages/core/src/config.js");
-const { currentModelIdentity } = await import("../packages/core/src/modules/model/capability.js");
+const { chatModelCapability } = await import("../packages/core/src/modules/model/capability.js");
+const { use } = await import("../packages/core/src/modules/capability.js");
+const modelIdentity = () => use(chatModelCapability).identity();
 const { settingJson } = await import("../packages/core/src/config.js");
 const { setWorkspaceFactory } = await import("../packages/core/src/modules/sandbox/workspace.js");
 const { attachmentFileName } = await import("../packages/core/src/modules/sandbox/tools.js");
@@ -427,7 +429,7 @@ await test("calculator", () => {
 });
 
 await test("config: extra body / base url parsing", () => {
-  assert.equal(currentModelIdentity()!.provider, "https://gw.example.com/api/v1");
+  assert.equal(modelIdentity().provider, "https://gw.example.com/api/v1");
   const saved = process.env.MODEL_OPENROUTER_EXTRA_BODY;
   process.env.MODEL_OPENROUTER_EXTRA_BODY = "{bad";
   assert.throws(() => settingJson("MODEL_OPENROUTER_EXTRA_BODY"), /MODEL_OPENROUTER_EXTRA_BODY is not valid JSON/);
@@ -2101,7 +2103,7 @@ const { deepseekConfig } = await import("../packages/adapters/src/deepseek/searc
 await test("settings: the console's values win over the environment; secrets only leave the server masked", async () => {
   try {
     await saveSettings({ MODEL_OPENROUTER_MODEL: "x/console-model", SEARCH_DEEPSEEK_API_KEY: "ds-from-console-123" });
-    assert.equal(currentModelIdentity()!.model, "x/console-model");
+    assert.equal(modelIdentity().model, "x/console-model");
     assert.equal(deepseekConfig.apiKey, "ds-from-console-123");
     const view = (await describeSettings()).values.find((v) => v.key === "SEARCH_DEEPSEEK_API_KEY")!;
     assert.deepEqual([view.source, view.value], ["db", "ds-fro…-123"], "a masked preview");
@@ -2114,7 +2116,7 @@ await test("settings: the console's values win over the environment; secrets onl
     await assert.rejects(saveSettings({ NOT_A_SETTING: "x" }), /NOT_A_SETTING/);
 
     await saveSettings({ MODEL_OPENROUTER_MODEL: null, SEARCH_DEEPSEEK_API_KEY: "" });
-    assert.equal(currentModelIdentity()!.model, "openai/gpt-6-luna", "cleared: back to the environment");
+    assert.equal(modelIdentity().model, "openai/gpt-6-luna", "cleared: back to the environment");
     assert.equal(deepseekConfig.apiKey, "ds-key");
     assert.equal((await describeSettings()).values.find((v) => v.key === "QQ_APP_SECRET")!.source, "env", "not in the console: the environment's");
   } finally {
@@ -2178,7 +2180,7 @@ await test("deploying before the database upgrade: the bot keeps the log untouch
   const before = llmCalls;
   try {
     await refreshSettings({ force: true });
-    assert.equal(currentModelIdentity()!.model, "openai/gpt-6-luna", "settings come from the environment");
+    assert.equal(modelIdentity().model, "openai/gpt-6-luna", "settings come from the environment");
     const res = await handleWebhook(groupAt("GOLD", "o1", " 在吗"), "qq");
     assert.equal(res.status, 503, "not ACKed: QQ delivers it again after the upgrade");
     const http = await httpCall("first", "oldschema");

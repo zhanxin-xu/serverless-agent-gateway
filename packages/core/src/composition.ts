@@ -72,9 +72,9 @@ export interface HandoffRequest {
 /** The store's own setup (create or upgrade its tables), for the console. */
 export interface Database {
   status(): Promise<DatabaseStatus>;
-  /** Create or upgrade the tables, and move any data an upgrade needs moved (idempotent). */
+  /** Create or upgrade the tables (idempotent). */
   apply(): Promise<void>;
-  /** The SQL to run next by hand (an upgrade may take more than one step: run, check, run what comes next). */
+  /** The SQL, for people to run by hand. */
   schema(): Promise<string>;
 }
 

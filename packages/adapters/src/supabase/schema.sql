@@ -357,21 +357,9 @@ language sql immutable set search_path = '' as $$
   select (extract(epoch from t) * 1000)::bigint;
 $$;
 
--- An assistant/message still holding Responses API output items, or a summary with Responses usage.
-create or replace function gateway.has_legacy_events() returns boolean
-language sql stable set search_path = '' as $$
-  select exists (
-    select from gateway.events
-    where (type = 'assistant/message' and data ? 'output')
-       or (type = 'compaction/summary' and data -> 'usage' ? 'input_tokens'));
-$$;
-
--- legacyEvents: events still in the format before version 6, waiting for gateway.migrate_events_v6.
 create or replace function public.gateway_info() returns jsonb
 language sql stable security definer set search_path = '' as $$
-  select jsonb_build_object(
-    'schemaVersion', (select value::int from gateway.meta where key = 'schema_version'),
-    'legacyEvents', gateway.has_legacy_events());
+  select jsonb_build_object('schemaVersion', (select value::int from gateway.meta where key = 'schema_version'));
 $$;
 
 -- Settings: [{key, value, updatedAt}].
@@ -554,167 +542,6 @@ begin
 end;
 $$;
 
--- ── Upgrades ──
-
--- The version this schema.sql brings, once no data waits for a migration. Keep in step with
--- SCHEMA_VERSION in src/store/types.ts.
-create or replace function gateway.mark_schema_current() returns void
-language sql set search_path = '' as $$
-  insert into gateway.meta (key, value) values ('schema_version', '7')
-    on conflict (key) do update set value = excluded.value;
-$$;
-
--- Settings that were renamed, old name → name now: version 6 (the chat model's settings no
--- longer named after the Responses API) and 7 (every provider's settings named after its
--- module and instance, MODEL_OPENROUTER_API_KEY…, so each instance has its own key). Where two
--- old names lead to one, rank 1 (the newer) wins. The console's upgrade also moves environment
--- variables still under an old name into the console's settings (the Supabase adapter's database.ts).
-create or replace function gateway.renamed_settings() returns table (old_key text, new_key text, rank int)
-language sql immutable set search_path = '' as $$
-  values
-    ('MODEL_API', 'MODEL_OPENROUTER_API', 1), ('MODEL_BASE_URL', 'MODEL_OPENROUTER_BASE_URL', 1),
-    ('MODEL_API_KEY', 'MODEL_OPENROUTER_API_KEY', 1), ('MODEL_ID', 'MODEL_OPENROUTER_MODEL', 1),
-    ('MODEL_EXTRA_BODY', 'MODEL_OPENROUTER_EXTRA_BODY', 1), ('MODEL_EXTRA_HEADERS', 'MODEL_OPENROUTER_EXTRA_HEADERS', 1),
-    ('MODEL_MAX_OUTPUT_TOKENS', 'MODEL_OPENROUTER_MAX_OUTPUT_TOKENS', 1), ('MODEL_PRICE_INPUT', 'MODEL_OPENROUTER_PRICE_INPUT', 1),
-    ('MODEL_PRICE_CACHED', 'MODEL_OPENROUTER_PRICE_CACHED', 1), ('MODEL_PRICE_OUTPUT', 'MODEL_OPENROUTER_PRICE_OUTPUT', 1),
-    ('OPENAI_RESPONSES_BASE_URL', 'MODEL_OPENROUTER_BASE_URL', 2), ('OPENAI_RESPONSES_API_KEY', 'MODEL_OPENROUTER_API_KEY', 2),
-    ('OPENAI_RESPONSES_MODEL', 'MODEL_OPENROUTER_MODEL', 2), ('OPENAI_RESPONSES_EXTRA_BODY', 'MODEL_OPENROUTER_EXTRA_BODY', 2),
-    ('OPENAI_RESPONSES_EXTRA_HEADERS', 'MODEL_OPENROUTER_EXTRA_HEADERS', 2), ('OPENAI_RESPONSES_TIMEOUT_MS', 'MODEL_TIMEOUT_MS', 2),
-    ('IMAGE_API_KEY', 'IMAGE_OPENROUTER_API_KEY', 1), ('IMAGE_BASE_URL', 'IMAGE_OPENROUTER_BASE_URL', 1),
-    ('IMAGE_MODEL', 'IMAGE_OPENROUTER_MODEL', 1), ('IMAGE_QUALITY', 'IMAGE_OPENROUTER_QUALITY', 1),
-    ('IMAGE_RESOLUTION', 'IMAGE_OPENROUTER_RESOLUTION', 1), ('IMAGE_EXTRA_BODY', 'IMAGE_OPENROUTER_EXTRA_BODY', 1),
-    ('IMAGE_TIMEOUT_MS', 'IMAGE_OPENROUTER_TIMEOUT_MS', 1), ('TTS_API_KEY', 'VOICE_OPENROUTER_API_KEY', 1),
-    ('TTS_BASE_URL', 'VOICE_OPENROUTER_BASE_URL', 1), ('TTS_MODEL', 'VOICE_OPENROUTER_MODEL', 1),
-    ('TTS_VOICE', 'VOICE_OPENROUTER_VOICE', 1), ('TTS_REFERENCE_AUDIO', 'VOICE_OPENROUTER_REFERENCE_AUDIO', 1),
-    ('TTS_REFERENCE_TEXT', 'VOICE_OPENROUTER_REFERENCE_TEXT', 1), ('TTS_SING_REFERENCE_AUDIO', 'VOICE_OPENROUTER_SING_REFERENCE_AUDIO', 1),
-    ('TTS_SING_REFERENCE_TEXT', 'VOICE_OPENROUTER_SING_REFERENCE_TEXT', 1), ('TTS_INSTRUCTIONS', 'VOICE_OPENROUTER_INSTRUCTIONS', 1),
-    ('TTS_EXTRA_BODY', 'VOICE_OPENROUTER_EXTRA_BODY', 1), ('TTS_TIMEOUT_MS', 'VOICE_OPENROUTER_TIMEOUT_MS', 1),
-    ('DEEPSEEK_API_KEY', 'SEARCH_DEEPSEEK_API_KEY', 1), ('DEEPSEEK_BASE_URL', 'SEARCH_DEEPSEEK_BASE_URL', 1),
-    ('SANDBOX_ENABLED', 'SANDBOX_VERCEL_ENABLED', 1), ('SANDBOX_REGION', 'SANDBOX_VERCEL_REGION', 1);
-$$;
-
-do $$
-begin
-  insert into gateway.settings (key, value, updated_at)
-    select distinct on (r.new_key) r.new_key, s.value, s.updated_at
-    from gateway.settings s join gateway.renamed_settings() r on s.key = r.old_key
-    order by r.new_key, r.rank
-    on conflict (key) do nothing;
-  delete from gateway.settings s using gateway.renamed_settings() r where s.key = r.old_key;
-  -- Providers chosen by their old ids.
-  update gateway.settings set value = case value
-      when 'pi-ai' then 'openrouter' when 'openrouter-images' then 'openrouter' when 'openai-speech' then 'openrouter'
-      when 'upstash-vector' then 'upstash' when 'vercel-sandbox' then 'vercel' end
-    where key in ('MODEL_PROVIDER', 'IMAGE_PROVIDER', 'VOICE_PROVIDER', 'MEMORY_PROVIDER', 'SANDBOX_PROVIDER')
-      and value in ('pi-ai', 'openrouter-images', 'openai-speech', 'upstash-vector', 'vercel-sandbox');
-end;
-$$;
-
--- Version 6: the model's messages are no longer tied to the OpenAI Responses API.
---
--- Responses API usage → the gateway's (src/llm/types.ts Usage): input without the cached tokens,
--- the cost as billed when the provider reported it.
-create or replace function gateway.legacy_usage(u jsonb) returns jsonb
-language sql immutable set search_path = '' as $$
-  select jsonb_build_object(
-    'input', greatest(t.input - t.cached, 0), 'output', t.output, 'cacheRead', t.cached, 'cacheWrite', 0,
-    'totalTokens', t.input + t.output,
-    'cost', jsonb_build_object('input', 0, 'output', 0, 'cacheRead', 0, 'cacheWrite', 0,
-      'total', coalesce(t.cost, 0), 'totalFromProvider', t.cost is not null))
-    || case when t.reasoning is null then '{}'::jsonb else jsonb_build_object('reasoning', t.reasoning) end
-  from (select
-    coalesce((u ->> 'input_tokens')::numeric, 0) as input,
-    coalesce((u -> 'input_tokens_details' ->> 'cached_tokens')::numeric, 0) as cached,
-    coalesce((u ->> 'output_tokens')::numeric, 0) as output,
-    (u -> 'output_tokens_details' ->> 'reasoning_tokens')::numeric as reasoning,
-    case when jsonb_typeof(u -> 'cost') = 'number' then (u ->> 'cost')::numeric end as cost) t;
-$$;
-
--- A function call's arguments (a JSON string) as an object; {} when they aren't one.
-create or replace function gateway.legacy_arguments(p_arguments text) returns jsonb
-language plpgsql immutable set search_path = '' as $$
-declare
-  parsed jsonb;
-begin
-  parsed := p_arguments::jsonb;
-  return case when jsonb_typeof(parsed) = 'object' then parsed else '{}'::jsonb end;
-exception when others then
-  return '{}'::jsonb;
-end;
-$$;
-
--- A tool call's id: the call id, and the output item's id after a "|", as pi-ai writes it.
-create or replace function gateway.legacy_call_id(item jsonb) returns text
-language sql immutable set search_path = '' as $$
-  select (item ->> 'call_id') || coalesce('|' || (item ->> 'id'), '');
-$$;
-
--- One Responses API output item → a content block, the way pi-ai reads the same item off the stream
--- (so it is sent back the same way): the whole reasoning item is its signature. Other items: null.
-create or replace function gateway.legacy_block(item jsonb) returns jsonb
-language sql immutable set search_path = '' as $$
-  select case item ->> 'type'
-    when 'message' then jsonb_strip_nulls(jsonb_build_object(
-      'type', 'text',
-      'text', coalesce((select string_agg(c ->> 'text', '') from jsonb_array_elements(coalesce(item -> 'content', '[]')) c
-        where c ->> 'type' = 'output_text'), ''),
-      'textSignature', case when item ? 'id' then (jsonb_strip_nulls(jsonb_build_object(
-        'v', 1, 'id', item ->> 'id', 'phase', item ->> 'phase')))::text end))
-    when 'reasoning' then jsonb_build_object(
-      'type', 'thinking',
-      'thinking', coalesce(
-        (select string_agg(x ->> 'text', E'\n\n') from jsonb_array_elements(coalesce(item -> 'summary', '[]')) x),
-        (select string_agg(x ->> 'text', '') from jsonb_array_elements(coalesce(item -> 'content', '[]')) x), ''),
-      'thinkingSignature', item::text)
-    when 'function_call' then jsonb_build_object(
-      'type', 'toolCall', 'id', gateway.legacy_call_id(item), 'name', item ->> 'name',
-      'arguments', gateway.legacy_arguments(item ->> 'arguments'))
-  end;
-$$;
-
--- Move the events written before version 6 to the new format, then mark the schema current.
--- Every legacy assistant message came from the Responses API; p_provider and p_model are the
--- chat model's identity now (the gateway passes them, see the Supabase adapter's database.ts),
--- so the replay data in them is sent back as long as that identity doesn't change.
-create or replace function gateway.migrate_events_v6(p_api text, p_provider text, p_model text) returns jsonb
-language plpgsql set search_path = '' as $$
-declare
-  messages int;
-  tool_events int;
-  summaries int;
-begin
-  -- Tool calls are now known by "call_id|item id": their markers and results follow.
-  create temp table call_ids on commit drop as
-    select distinct e.chat, item ->> 'call_id' as old_id, gateway.legacy_call_id(item) as new_id
-    from gateway.events e, jsonb_array_elements(e.data -> 'output') item
-    where e.type = 'assistant/message' and e.data ? 'output' and item ->> 'type' = 'function_call';
-  update gateway.events e set data = jsonb_set(e.data, '{callId}', to_jsonb(c.new_id))
-    from call_ids c
-    where e.chat = c.chat and e.type in ('tool/call', 'tool/result') and e.data ->> 'callId' = c.old_id
-      and c.old_id <> c.new_id;
-  get diagnostics tool_events = row_count;
-
-  update gateway.events e set data = (e.data - 'output' - 'usage') || jsonb_build_object('message', jsonb_build_object(
-    'role', 'assistant',
-    'content', coalesce((select jsonb_agg(b order by n) from jsonb_array_elements(e.data -> 'output') with ordinality as o(item, n),
-      lateral gateway.legacy_block(o.item) b where b is not null), '[]'::jsonb),
-    'api', p_api, 'provider', p_provider, 'model', p_model,
-    'usage', gateway.legacy_usage(coalesce(e.data -> 'usage', '{}')),
-    'stopReason', case when exists (select from jsonb_array_elements(e.data -> 'output') i where i ->> 'type' = 'function_call')
-      then 'toolUse' else 'stop' end,
-    'timestamp', gateway.epoch_ms(e.time)))
-  where e.type = 'assistant/message' and e.data ? 'output';
-  get diagnostics messages = row_count;
-
-  update gateway.events set data = jsonb_set(data, '{usage}', gateway.legacy_usage(data -> 'usage'))
-  where type = 'compaction/summary' and data -> 'usage' ? 'input_tokens';
-  get diagnostics summaries = row_count;
-
-  perform gateway.mark_schema_current();
-  return jsonb_build_object('messages', messages, 'toolEvents', tool_events, 'summaries', summaries);
-end;
-$$;
-
 -- ── Housekeeping ──
 
 -- Chats quiet for p_days go away with everything they own; retries are only
@@ -777,14 +604,9 @@ exception when others then
 end;
 $$;
 
--- Current, unless events in an older format wait for gateway.migrate_events_v6 (which marks it then).
-do $$
-begin
-  if not gateway.has_legacy_events() then
-    perform gateway.mark_schema_current();
-  end if;
-end;
-$$;
+-- Keep in step with SCHEMA_VERSION in src/store/types.ts.
+insert into gateway.meta (key, value) values ('schema_version', '7')
+  on conflict (key) do update set value = excluded.value;
 
 -- Let the Data API see new functions right away.
 notify pgrst, 'reload schema';

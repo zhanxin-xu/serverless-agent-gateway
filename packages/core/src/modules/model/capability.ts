@@ -1,6 +1,6 @@
 /** The chat model: the interface every model provider implements, and the providers. */
 import type { AssistantMessage, LlmRequest, ModelIdentity } from "../../llm/types.js";
-import { providersOf, select } from "../capability.js";
+import { providersOf } from "../capability.js";
 import type { Balance, Capability } from "../types.js";
 
 /**
@@ -32,10 +32,4 @@ export const chatModelCapability: Capability<ChatModel> = {
  */
 export interface ModelAccount {
   balance(key: { baseUrl: string; apiKey: string; headers: Record<string, string> }): Promise<Balance>;
-}
-
-/** The identity calls go to now; undefined while no provider is usable. */
-export function currentModelIdentity(): ModelIdentity | undefined {
-  const selection = select(chatModelCapability);
-  return selection.ok ? selection.provider.create().identity() : undefined;
 }

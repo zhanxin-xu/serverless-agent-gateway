@@ -22,7 +22,7 @@ npm run dev                  # 本地跑 Vercel 部署包：http://localhost:300
 
 ```bash
 npm test             # 离线测试：端到端、模块、四种模型协议，所有外部接口都已经 mock
-npm run test:store   # 存储契约测试和数据迁移测试（迁移测试需要 TEST_DATABASE_URL）
+npm run test:store   # 存储契约测试
 npm run typecheck
 ```
 
@@ -39,7 +39,7 @@ TEST_DATABASE_URL=postgresql:///gateway_test npm test
 ## 提交代码
 
 1. Fork 仓库并新建分支。
-2. 修改代码，**同时在 `scripts/selftest.ts`（存储相关的在 `scripts/storetest.ts`，表结构升级在 `scripts/migrationtest.ts`）里补上或更新测试**。
+2. 修改代码，**同时在 `scripts/selftest.ts`（存储相关的在 `scripts/storetest.ts`）里补上或更新测试**。
 3. 确认 `npm run typecheck`、`npm run build`、`npm test` 和 `npm run test:store` 都通过。CI 会在每个 Pull Request 上自动运行，并且带一个真实的 Postgres。
 4. 改了行为或配置的话，同步更新 `docs/`、`README.md` 和 `.env.example`。
 5. 提交 Pull Request，说明改了什么、为什么改。

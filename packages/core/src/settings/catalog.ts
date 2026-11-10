@@ -9,11 +9,13 @@
  *
  * The core settings (the agent, the console) are listed here. Everything else
  * comes from the deployment's composition (src/composition.ts): each module's
- * and its providers' (Module.config, Provider.config), and each channel's
+ * and its providers' (Module.config, with a metered module's budgets,
+ * Provider.config), and each channel's
  * (ChannelAdapter.config). Collected on first
  * use after compose(), not on import: config.ts reads this, and modules read config.ts.
  */
 import { channels, modules, providers } from "../composition.js";
+import { budgetSettings } from "../modules/spend.js";
 import type { Module } from "../modules/types.js";
 
 export type SettingKind = "text" | "textarea" | "secret" | "url" | "int" | "number" | "json" | "enum";
@@ -136,6 +138,11 @@ function catalog(): Catalog {
     if (m.config) {
       groups.push({ ...m.config.group, module: m.id });
       settings.push(...m.config.settings);
+    }
+    // A module whose calls cost money gets budgets in its own group (src/modules/spend.ts).
+    if (m.capability?.meter) {
+      if (!m.config) throw new Error(`module ${m.id} is metered, so it needs a settings group for its budgets`);
+      settings.push(...budgetSettings(m.id, m.config.group.id));
     }
     const toggle = switchSetting(m);
     if (toggle) {

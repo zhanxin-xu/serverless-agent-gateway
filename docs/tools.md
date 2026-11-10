@@ -13,7 +13,7 @@
 | 模型 | `get_llm_key_limit` | 查询聊天模型 Key 的额度和用量 | 模型实现能查余额（Vercel 部署：OpenRouter） |
 | 搜索 | `web_search` / `web_fetch` | 联网搜索、抓取网页正文 | 搜索服务配置好了（DeepSeek：`SEARCH_DEEPSEEK_API_KEY`） |
 | | `get_search_balance` | 查询搜索账户的余额 | 搜索服务能查余额（DeepSeek 能） |
-| 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_OPENROUTER_API_KEY`），且沙盒开着 |
+| 画图 | `generate_image` | 画图、按参考图改图 | 画图服务配置好了（`IMAGE_OPENROUTER_API_KEY` 或 `IMAGE_OPENAI_API_KEY`），且沙盒开着 |
 | | `get_image_key_limit` | 查询画图 Key 的额度和用量；和模型共用一个 Key 时直接说明 | 同上 |
 | 语音 | `send_voice` | 用大肥鱼的声音发一条语音 | 语音服务配置好了（`VOICE_OPENROUTER_API_KEY`） |
 | 长期记忆 | `remember` / `recall` / `forget` | 长期记忆 | 记忆存储配置好了（Upstash Vector） |
@@ -52,7 +52,7 @@
 
 ## 画图
 
-`generate_image` 的第一个实现是 OpenRouter 的 Image API（`POST /images`），默认模型 `openai/gpt-image-2.6-sunburst`，配置见[配置参考](configuration.md#画图)。模块在 [`packages/core/src/modules/image/`](../packages/core/src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 [`packages/adapters/src/openrouter/image/`](../packages/adapters/src/openrouter/image/)。画图模块依赖沙盒模块。
+`generate_image` 有两个实现：OpenRouter 的 Image API（`POST /images`，默认模型 `openai/gpt-image-2.6-sunburst`）和 OpenAI 官方的 Image API（`POST /images/generations`、`/images/edits`，默认模型 `gpt-image-2.6-sunburst`），配置见[配置参考](configuration.md#画图)。模块在 [`packages/core/src/modules/image/`](../packages/core/src/modules/image/)：形象参考图、工作区里的参考图和结果的保存在模块里，请求接口在 [`packages/adapters/src/openrouter/image/`](../packages/adapters/src/openrouter/image/) 和 [`packages/adapters/src/openai-images/`](../packages/adapters/src/openai-images/)。画图模块依赖沙盒模块。
 
 | 参数 | 说明 |
 |---|---|

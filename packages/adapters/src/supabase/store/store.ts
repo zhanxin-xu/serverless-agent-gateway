@@ -156,6 +156,14 @@ export class PostgresStore implements Store {
     return this.rpc<Record<string, UsageCounts>>("usage_day", { p_day: day });
   }
 
+  async addSpend(module: string, day: string, counts: UsageCounts) {
+    await this.rpc("spend_add", { p_module: module, p_day: day, p_counts: counts });
+  }
+
+  spend(fromDay: string, toDay: string) {
+    return this.rpc<Array<{ module: string; day: string; counts: UsageCounts }>>("spend_list", { p_from: fromDay, p_to: toDay });
+  }
+
   async schemaVersion() {
     try {
       return (await this.rpc<{ schemaVersion: number | null }>("gateway_info", {})).schemaVersion;

@@ -24,6 +24,17 @@ export const chatModelCapability: Capability<ChatModel> = {
   get providers() {
     return providersOf<ChatModel>(this.id);
   },
+  // What a call cost: the provider's bill where it reports one, else its estimate from the model's prices.
+  meter: (model, gate) => ({
+    identity: () => model.identity(),
+    ...(model.balance ? { balance: () => model.balance!() } : {}),
+    async complete(request) {
+      await gate.check();
+      const message = await model.complete(request);
+      await gate.record(message.usage.cost.total);
+      return message;
+    },
+  }),
 };
 
 /**

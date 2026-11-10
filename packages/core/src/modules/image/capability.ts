@@ -1,5 +1,6 @@
 /** Image generation: the interface every image provider implements, and the providers. */
 import { providersOf } from "../capability.js";
+import { BudgetUsedError } from "../spend.js";
 import type { Balance, Capability } from "../types.js";
 
 export interface ImageRequest {
@@ -36,4 +37,20 @@ export const imageCapability: Capability<ImageBackend> = {
   get providers() {
     return providersOf<ImageBackend>(this.id);
   },
+  // What a call cost, where the service reports it; otherwise it counts 0.
+  meter: (backend, gate) => ({
+    ...(backend.balance ? { balance: () => backend.balance!() } : {}),
+    async generate(request) {
+      try {
+        await gate.check();
+      } catch (err) {
+        // The tool fails with this; the model tells them.
+        if (err instanceof BudgetUsedError) throw new Error(`${err.message}. Tell them in your own words, don't retry.`);
+        throw err;
+      }
+      const result = await backend.generate(request);
+      await gate.record(result.cost ?? 0);
+      return result;
+    },
+  }),
 };

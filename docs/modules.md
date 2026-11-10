@@ -22,12 +22,14 @@
 | 长期记忆 `memory` | | 记忆存储 | Upstash Vector | — | `remember` `recall` `forget` | — |
 | 搜索 `search` | | 搜索服务 | DeepSeek | — | `web_search` `web_fetch` `get_search_balance` | 搜索（次） |
 | 沙盒 `sandbox` | | 沙盒服务 | Vercel Sandbox | — | `bash` `read_file` `write_file` `send_file` `save_attachment` | — |
-| 画图 `image` | | 画图服务 | OpenRouter Image API | 沙盒 | `generate_image` `get_image_key_limit` | 画图（张） |
+| 画图 `image` | | 画图服务 | OpenRouter Image API、OpenAI Image API | 沙盒 | `generate_image` `get_image_key_limit` | 画图（张） |
 | 语音 `voice` | | 语音服务 | OpenAI 兼容语音接口 | — | `send_voice` | 语音（条） |
 
 核心模块不能关；依赖能力的核心模块只有模型，它是新手引导的第一步（`setup: "required"`），没配好整个机器人都不工作。
 
 **实现可以组合多次**：一个实现（比如 pi-ai、OpenAI 兼容语音）由部署按不同的服务地址组合成几个实例，每个实例有自己的配置和 Key，配置名是 `模块_实例_字段`（`MODEL_ANTHROPIC_API_KEY`）。Key 跟着实例走，不按厂商合并：同一家的模型和画图可以用两个 Key。
+
+**花费上限归各自的模块**：能力声明了 `meter`（每次调用花了多少钱怎么读）的模块，自动多两项设置 `{模块}_DAILY_BUDGET_USD`、`{模块}_MONTHLY_BUDGET_USD`。`use()` 拿到的客户端每次调用前检查、调用后记账，按模块算，不管用哪个实例（`packages/core/src/modules/spend.ts`）。现在模型和画图声明了，见[花费上限](configuration.md#花费上限)。
 
 **余额归各自的模块**：模型 key 由“模型”模块的 `get_llm_key_limit` 查，画图 key 由“画图”模块的 `get_image_key_limit` 查，搜索余额由“搜索”模块的 `get_search_balance` 查，只有能查余额的实现才提供。几个模块的实现用的是同一个 Key 时（实现声明 `billedTo`，core 比较 Key 的哈希，不看是哪家），工具结果注明共用，管理端总览只显示一格（`packages/core/src/modules/balance.ts`）。
 

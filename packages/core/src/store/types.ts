@@ -108,7 +108,7 @@ export interface ChatStore {
 // Separate interfaces, so each part of the gateway depends only on what it uses.
 
 /** The schema version this code expects; a store with tables keeps its setup (Database) in step with it. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * The store's tables are older than this code (`detail`: what's missing or
@@ -151,6 +151,17 @@ export interface UsageStore {
   addUsage(chat: string, day: string, counts: UsageCounts): Promise<void>;
   usage(chat: string, fromDay: string, toDay: string): Promise<Array<{ day: string; counts: UsageCounts }>>;
   usageOfDay(day: string): Promise<Record<string, UsageCounts>>;
+}
+
+/**
+ * What each module spent from its service, across every chat, per UTC day
+ * (src/modules/spend.ts): the counters are its calls and their cost.
+ */
+export interface SpendStore {
+  /** `day` is a UTC date, "YYYY-MM-DD". */
+  addSpend(module: string, day: string, counts: UsageCounts): Promise<void>;
+  /** Every module's days from `fromDay` to `toDay`. */
+  spend(fromDay: string, toDay: string): Promise<Array<{ module: string; day: string; counts: UsageCounts }>>;
 }
 
 export interface ChatSummary {
@@ -213,4 +224,4 @@ export interface ConsoleStore {
 }
 
 /** Everything one backend provides. */
-export type Store = ChatStore & SettingsStore & ProfileStore & UsageStore & ConsoleStore;
+export type Store = ChatStore & SettingsStore & ProfileStore & UsageStore & SpendStore & ConsoleStore;

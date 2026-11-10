@@ -7,6 +7,7 @@
 import { basicsModule, chatModule, compose, imageModule, isComposed, memoryModule, MemoryStore, modelModule, sandboxModule, searchModule, voiceModule } from "@gateway/core";
 import { deepseekProvider } from "@gateway/adapters/deepseek";
 import { httpAdapter } from "@gateway/adapters/http";
+import { openaiImagesProvider } from "@gateway/adapters/openai-images";
 import { openaiSpeechProvider } from "@gateway/adapters/openai-speech";
 import { openrouterAccount, openrouterImagesProvider } from "@gateway/adapters/openrouter";
 import { piAiChatModel } from "@gateway/adapters/pi-ai";
@@ -55,6 +56,14 @@ export function composeVercel(): void {
       upstashVectorProvider,
       vercelSandboxProvider,
       openrouterImagesProvider,
+      // OpenAI's own Image API: safety_identifier reaches OpenAI as is; the cost is estimated from its token prices.
+      openaiImagesProvider({
+        id: "openai",
+        label: "OpenAI Image API",
+        help: "OpenAI 官方的图像接口（POST /images/generations、/images/edits），直接用 OpenAI 的 Key。按 token 计费，按价格表估算花费。",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-image-2.6-sunburst",
+      }),
       openaiSpeechProvider({
         id: "openrouter",
         label: "OpenRouter",

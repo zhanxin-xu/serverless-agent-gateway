@@ -43,6 +43,8 @@ export class MemoryStore implements Store {
   private profiles = new Map<string, Record<string, unknown>>();
   /** chat → day → counts */
   private usageDays = new Map<string, Map<string, UsageCounts>>();
+  /** By module, then day. */
+  private spendDays = new Map<string, Map<string, UsageCounts>>();
   private logEntries: AdminLogEntry[] = [];
   private loginFailureTimes = new Map<string, number[]>();
 
@@ -223,6 +225,23 @@ export class MemoryStore implements Store {
       .filter(([day]) => day >= fromDay && day <= toDay)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([day, counts]) => ({ day, counts: { ...counts } }));
+  }
+
+  async addSpend(module: string, day: string, counts: UsageCounts) {
+    const days = this.spendDays.get(module) ?? new Map<string, UsageCounts>();
+    this.spendDays.set(module, days);
+    const total = days.get(day) ?? {};
+    for (const [k, v] of Object.entries(counts)) total[k] = (total[k] ?? 0) + v;
+    days.set(day, total);
+  }
+
+  async spend(fromDay: string, toDay: string) {
+    return [...this.spendDays].flatMap(([module, days]) =>
+      [...days]
+        .filter(([day]) => day >= fromDay && day <= toDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, counts]) => ({ module, day, counts: { ...counts } })),
+    );
   }
 
   async usageOfDay(day: string) {

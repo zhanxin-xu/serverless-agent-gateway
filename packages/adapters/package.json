@@ -31,6 +31,11 @@
       "types": "./dist/pi-ai/index.d.ts",
       "default": "./dist/pi-ai/index.js"
     },
+    "./openai-images": {
+      "source": "./src/openai-images/index.ts",
+      "types": "./dist/openai-images/index.d.ts",
+      "default": "./dist/openai-images/index.js"
+    },
     "./openai-speech": {
       "source": "./src/openai-speech/index.ts",
       "types": "./dist/openai-speech/index.d.ts",

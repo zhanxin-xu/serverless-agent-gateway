@@ -92,6 +92,10 @@ export function memoryRpc(store: MemoryStore): Rpc {
         return store.usage(a.p_chat, a.p_from, a.p_to);
       case "usage_day":
         return store.usageOfDay(a.p_day);
+      case "spend_add":
+        return store.addSpend(a.p_module, a.p_day, a.p_counts);
+      case "spend_list":
+        return store.spend(a.p_from, a.p_to);
       case "admin_chats":
         return store.chats(a.p_day);
       case "admin_chat":

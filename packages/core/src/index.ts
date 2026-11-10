@@ -35,7 +35,7 @@ export type { SandboxBackend } from "./modules/sandbox/capability.js";
 export { WORKDIR } from "./modules/sandbox/paths.js";
 export type { Workspace } from "./modules/sandbox/workspace.js";
 export { imageCapability } from "./modules/image/capability.js";
-export type { ImageBackend } from "./modules/image/capability.js";
+export type { ImageBackend, ImageRequest, ImageResult } from "./modules/image/capability.js";
 export { speechCapability } from "./modules/voice/capability.js";
 export type { SpeechBackend, VoiceChoice } from "./modules/voice/capability.js";
 export { chatModelCapability } from "./modules/model/capability.js";

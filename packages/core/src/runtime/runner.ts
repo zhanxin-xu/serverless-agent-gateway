@@ -18,7 +18,8 @@
  *
  * Per chat (chats/): the profile adds to the system prompt, picks the tools
  * and sets the ambient interval; a turn doesn't start once today's cost quota
- * is used up; and after each turn its usage is added up from the log.
+ * is used up (nor once the model module's budget across every chat is,
+ * modules/spend.ts); and after each turn its usage is added up from the log.
  */
 import type { ChannelAdapter } from "../channels/types.js";
 import { host } from "../composition.js";
@@ -34,6 +35,9 @@ import { recoverOpenTurn, unfinishedTurn } from "../conversation/recovery.js";
 import { Session } from "../conversation/session.js";
 import { getStore, LockLostError, type ChatStore } from "../store/index.js";
 import { Toolset } from "../modules/registry.js";
+import { budgetRefusal } from "../modules/capability.js";
+import { chatModelCapability } from "../modules/model/capability.js";
+import { BudgetUsedError, type BudgetRefusal } from "../modules/spend.js";
 import { assemble } from "../prompt/assemble.js";
 import { makeToolContext } from "./context.js";
 import { RunLock } from "./lock.js";
@@ -58,6 +62,9 @@ export function outOfCreditText(resetsAt?: number): string {
 /** What an @ or a DM gets once the chat's daily cost quota is used up. */
 const quotaUsedText = (scene: "群聊" | "私聊") =>
   `${scene === "群聊" ? "这个群" : "这里"}今天的额度用完了，${beijingTime(nextDayStart())} 恢复。`;
+
+/** What an @ or a DM gets once the model module's budget (every chat's together) is used up. */
+export const budgetUsedText = (r: BudgetRefusal) => `${r.period === "day" ? "今天" : "这个月"}的额度用完了，${beijingTime(r.resetsAt)} 恢复。`;
 
 export interface RunOptions {
   /** Sync channels: replies are collected here instead of sent. */
@@ -186,11 +193,16 @@ async function drain(
       const direct = trigger === "direct";
       turnState.turn = undefined;
       const today = await usageToday(chatKey);
-      if (costQuotaUsed(profile, today)) {
-        // Like running out of credit: those who called hear about it once per batch, the rest wait for tomorrow.
-        console.warn(`[runner] ${chatKey}: daily cost quota used up (${direct ? "told the chat" : "ambient, skipped"})`);
+      // The chat's own cost quota, then the model's budget across every chat (src/modules/spend.ts).
+      const quotaUsed = costQuotaUsed(profile, today);
+      const budget = quotaUsed ? undefined : await budgetRefusal(chatModelCapability);
+      if (quotaUsed || budget) {
+        // Like running out of credit: those who called hear about it once per batch, the rest wait for it to reset.
+        const what = budget ? `the ${budget.module} module's ${budget.period === "day" ? "daily" : "monthly"} budget` : "daily cost quota";
+        console.warn(`[runner] ${chatKey}: ${what} used up (${direct ? "told the chat" : "ambient, skipped"})`);
         if (direct && (await outbox.canReply(pending.at(-1)!.seq))) {
-          await ctx.send({ kind: "text", text: quotaUsedText(ctx.chat.scene) }, pending.at(-1)!.seq).catch(() => {});
+          const text = budget ? budgetUsedText(budget) : quotaUsedText(ctx.chat.scene);
+          await ctx.send({ kind: "text", text }, pending.at(-1)!.seq).catch(() => {});
         }
         await session.setCursor(pending.at(-1)!.seq);
         continue;
@@ -258,7 +270,11 @@ async function drain(
       } catch (err) {
         if (err instanceof LockLostError) throw err;
         await session.setCursor(pending.at(-1)!.seq);
-        if (err instanceof OutOfCreditError) {
+        if (err instanceof BudgetUsedError) {
+          // Used up during the turn (the check before it saw a little less): the same as before a turn.
+          console.warn(`[runner] turn ${turn} for ${chatKey}: ${err.message} (${direct ? "told the chat" : "ambient, skipped"})`);
+          if (direct) await ctx.send({ kind: "text", text: budgetUsedText(err.refusal) }).catch(() => {});
+        } else if (err instanceof OutOfCreditError) {
           // Not a bug: one line, and only those who called the bot hear about it.
           console.warn(`[runner] turn ${turn} for ${chatKey}: model out of credit (${direct ? "told the chat" : "ambient, skipped"}): ${err.message}`);
           if (direct) await ctx.send({ kind: "text", text: outOfCreditText(err.resetsAt) }).catch(() => {});

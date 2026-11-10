@@ -1,8 +1,10 @@
-/** The overview page: what's left on each module's service, today's usage, recent problems; and the admin log. */
+/** The overview page: what's left on each module's service, what each metered module spent against its budgets, today's usage, recent problems; and the admin log. */
 import { channels } from "../../composition.js";
 import { utcDay } from "../../chats/day.js";
 import { getStore, type UsageCounts } from "../../store/index.js";
 import { balanceGroups } from "../../modules/balance.js";
+import { activeModules } from "../../modules/registry.js";
+import { spendReport } from "../../modules/spend.js";
 import type { Route } from "../http.js";
 
 const DAY_MS = 86_400_000;
@@ -34,9 +36,13 @@ export const overviewRoutes: Route[] = [
           ];
         }),
       );
-      const [today, problems] = await Promise.all([store.usageOfDay(utcDay()), store.problems(Date.now() - DAY_MS, 20)]);
+      const [today, problems, spend] = await Promise.all([store.usageOfDay(utcDay()), store.problems(Date.now() - DAY_MS, 20), spendReport()]);
       return {
         balances,
+        // Every chat together, per metered module that's on (or spent this month, or has a budget), against its budgets (src/modules/spend.ts).
+        spend: spend.filter(
+          (s) => activeModules().some((m) => m.id === s.module) || s.month > 0 || s.dailyBudget !== undefined || s.monthlyBudget !== undefined,
+        ),
         today: { total: sum(today), chats: Object.keys(today).length },
         problems,
         channels: channels().map((c) => ({ name: c.name, configured: c.isConfigured() })),

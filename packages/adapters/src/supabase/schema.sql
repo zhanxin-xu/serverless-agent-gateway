@@ -17,6 +17,8 @@
 --   gateway.chat_profiles  per-chat settings: name, reply mode, quotas, tools.
 --                          Not tied to sessions, so they outlive an expired chat.
 --   gateway.usage_daily    per-chat counters per UTC day (turns, tokens, cost…).
+--   gateway.spend_daily    per module (model, image), across every chat: calls
+--                          and cost per UTC day, for its budgets.
 --   gateway.admin_log      what admins changed or sent.
 --
 -- The tables live in a private schema the Data API doesn't expose, with RLS on.
@@ -330,6 +332,14 @@ create table if not exists gateway.usage_daily (
 );
 create index if not exists usage_daily_day on gateway.usage_daily (day);
 
+create table if not exists gateway.spend_daily (
+  module text not null, -- the module's id: model, image…
+  day date not null, -- UTC, like usage_daily
+  counts jsonb not null, -- {"calls": 12, "cost_usd": 0.31}; numbers add up
+  primary key (module, day)
+);
+create index if not exists spend_daily_day on gateway.spend_daily (day);
+
 create table if not exists gateway.admin_log (
   id bigint generated always as identity primary key,
   time timestamptz not null default now(),
@@ -349,6 +359,7 @@ alter table gateway.meta enable row level security;
 alter table gateway.settings enable row level security;
 alter table gateway.chat_profiles enable row level security;
 alter table gateway.usage_daily enable row level security;
+alter table gateway.spend_daily enable row level security;
 alter table gateway.admin_log enable row level security;
 alter table gateway.admin_login_failures enable row level security;
 
@@ -424,6 +435,25 @@ create or replace function public.usage_list(p_chat text, p_from date, p_to date
 language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(jsonb_build_object('day', day, 'counts', counts) order by day), '[]'::jsonb)
   from gateway.usage_daily where chat = p_chat and day between p_from and p_to;
+$$;
+
+-- Add p_counts to a module's counters for p_day, key by key.
+create or replace function public.spend_add(p_module text, p_day date, p_counts jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into gateway.spend_daily as s (module, day, counts) values (p_module, p_day, p_counts)
+    on conflict (module, day) do update set counts = (
+      select coalesce(jsonb_object_agg(k, coalesce((s.counts ->> k)::numeric, 0) + coalesce((p_counts ->> k)::numeric, 0)), '{}'::jsonb)
+      from jsonb_object_keys(s.counts || p_counts) as k);
+  return 'true'::jsonb;
+end;
+$$;
+
+-- Every module's counters from p_from to p_to: [{module, day, counts}].
+create or replace function public.spend_list(p_from date, p_to date) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object('module', module, 'day', day, 'counts', counts) order by module, day), '[]'::jsonb)
+  from gateway.spend_daily where day between p_from and p_to;
 $$;
 
 -- Every chat's counters for one day: {chat: counts}.
@@ -546,7 +576,7 @@ $$;
 
 -- Chats quiet for p_days go away with everything they own; retries are only
 -- tracked for an hour; images no event references are dropped after a day.
--- Usage and the admin log are kept 180 days. Chat profiles stay until an admin deletes them.
+-- Usage, spend and the admin log are kept 180 days. Chat profiles stay until an admin deletes them.
 create or replace function public.gateway_expire(p_days int default 7) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -558,6 +588,7 @@ begin
   delete from gateway.images i where i.created_at < now() - interval '1 day' and not exists (
     select from gateway.events e where e.chat = i.chat and e.data -> 'images' ? i.key);
   delete from gateway.usage_daily where day < current_date - 180;
+  delete from gateway.spend_daily where day < current_date - 180;
   delete from gateway.admin_log where time < now() - interval '180 days';
   delete from gateway.admin_login_failures where time < now() - interval '1 day';
   return jsonb_build_object('sessions', sessions_deleted);
@@ -577,6 +608,7 @@ begin
     'image_put(text,text,text)', 'image_get(text[])', 'gateway_expire(int)',
     'gateway_info()', 'settings_list()', 'settings_put(jsonb)', 'profile_get(text)', 'profile_put(text,jsonb)',
     'usage_add(text,date,jsonb)', 'usage_list(text,date,date)', 'usage_day(date)',
+    'spend_add(text,date,jsonb)', 'spend_list(date,date)',
     'admin_chats(date)', 'admin_chat(text,date)', 'admin_has_chats()', 'admin_events(text,bigint,int)', 'admin_append(text,jsonb)', 'admin_unlock(text)',
     'admin_problems(bigint,int)', 'admin_log_add(text,text,jsonb)', 'admin_log_list(int)',
     'admin_login_failures(text,boolean,int)'
@@ -605,7 +637,7 @@ end;
 $$;
 
 -- Keep in step with SCHEMA_VERSION in src/store/types.ts.
-insert into gateway.meta (key, value) values ('schema_version', '7')
+insert into gateway.meta (key, value) values ('schema_version', '8')
   on conflict (key) do update set value = excluded.value;
 
 -- Let the Data API see new functions right away.

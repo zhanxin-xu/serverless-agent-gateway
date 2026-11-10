@@ -44,6 +44,8 @@
 |---|---|---|
 | `MODEL_PROVIDER` | 空 | 用哪个实例。只有一个配好时不用填 |
 | `MODEL_TIMEOUT_MS` | `280000` | 单次模型请求的超时上限（毫秒）。运行中还会按函数剩余时间缩短（剩余时间减 20 秒），取两者较小的 |
+| `MODEL_DAILY_BUDGET_USD` | 空（不限） | 模型每天最多花多少美元，所有聊天加起来，不管用哪个实例，见[花费上限](#花费上限) |
+| `MODEL_MONTHLY_BUDGET_USD` | 空（不限） | 每月最多花多少美元 |
 
 `MODEL_{实例}_EXTRA_BODY` 按所选协议的字段名写，思维链也在这里开：
 
@@ -61,6 +63,26 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 换实例、协议、服务地址或模型后，之前的思维链不再回传（只保留文字和工具调用），提示词缓存从头开始。
 
 **余额**：实例知道自己是哪家时用自己的 Key 去查（Vercel 部署里只有 `openrouter` 能查）。两个模块用的是同一个 Key 时，总览只显示一格，工具结果会注明和哪个模块共用。
+
+## 花费上限
+
+模型和画图各有一份花费上限，所有聊天加起来算，不管用的是哪个实例；在管理端模块页里各自模块的设置里填：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `MODEL_DAILY_BUDGET_USD` / `IMAGE_DAILY_BUDGET_USD` | 空（不限） | 每天最多花多少美元，北京时间 08:00（UTC 0 点）重置。填 0 等于停用 |
+| `MODEL_MONTHLY_BUDGET_USD` / `IMAGE_MONTHLY_BUDGET_USD` | 空（不限） | 每月最多花多少美元，每月 1 日北京时间 08:00 重置 |
+
+每次调用结束后，把它花的钱记到这个模块当天的账上（`gateway.spend_daily`），管理端总览每个模块一格，显示今天和本月花了多少、上限多少。用完以后：
+
+- **模型**：不再开始新的一轮。被 @ 或私聊时回一句“今天（这个月）的额度用完了，几点恢复”，没 @ 的消息不插话。和每个聊天自己的花费额度用完时一样。一轮进行到一半用完了，也是这样结束。
+- **画图**：`generate_image` 直接报错，不发请求，由模型自己告诉对方。
+
+这是网关自己的限额，不是服务商的：
+
+- **金额是估算的。** 服务商在响应里报了金额就用它（OpenRouter 会报，但用 BYOK 自己的 Key 时报 $0）；没报时，模型按 pi-ai 的价格表估，OpenAI 画图按 `IMAGE_OPENAI_PRICES` 的 token 单价估；两样都没有的调用记 0。
+- **可能略超。** 调用结束后才记账，几个调用同时在跑时，都会在额度用完之前放行；每个函数实例还会缓存最多 15 秒的账。
+- **管不了网关之外的调用。** Key 泄露后别人直接拿去用，这里看不到，要靠服务商那边：OpenAI 项目的余额（关掉自动充值）、模型白名单和速率限制。
 
 ## Agent
 
@@ -125,7 +147,7 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `MODEL_PROVIDER` | `openrouter`、`openai`、`anthropic`、`gemini`、`deepseek`、`custom` | 模型，见上文 |
 | `SEARCH_PROVIDER` | `deepseek` | 搜索模块（`web_search`、`web_fetch`） |
 | `VOICE_PROVIDER` | `openrouter` | 语音模块（`send_voice`） |
-| `IMAGE_PROVIDER` | `openrouter` | 画图模块（`generate_image`） |
+| `IMAGE_PROVIDER` | `openrouter`、`openai` | 画图模块（`generate_image`） |
 | `MEMORY_PROVIDER` | `upstash` | 长期记忆模块。记忆存在服务那边，换实现后旧记忆看不到 |
 | `SANDBOX_PROVIDER` | `vercel` | 沙盒模块。工作区文件存在服务那边，换实现后旧文件看不到 |
 
@@ -142,7 +164,11 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 
 ## 画图
 
-画图模块的 OpenRouter 实现（实例 `openrouter`，`POST {IMAGE_OPENROUTER_BASE_URL}/images`）。配置了 `IMAGE_OPENROUTER_API_KEY` 并且沙盒模块开着时才启用（生成的图要存进工作区，再用 `send_file` 发出去）。变量名后半段和接口字段一致。
+画图模块有两个实现：OpenRouter（实例 `openrouter`）和 OpenAI 官方（实例 `openai`），用哪个由 `IMAGE_PROVIDER` 选，只配了一个时不用选。花费上限 `IMAGE_DAILY_BUDGET_USD`、`IMAGE_MONTHLY_BUDGET_USD` 见[花费上限](#花费上限)。
+
+### OpenRouter
+
+实例 `openrouter`，`POST {IMAGE_OPENROUTER_BASE_URL}/images`。配置了 `IMAGE_OPENROUTER_API_KEY` 并且沙盒模块开着时才启用（生成的图要存进工作区，再用 `send_file` 发出去）。变量名后半段和接口字段一致。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -153,6 +179,27 @@ MODEL_GEMINI_EXTRA_BODY='{"thinkingConfig":{"includeThoughts":true}}'
 | `IMAGE_OPENROUTER_RESOLUTION` | 空（不发） | 对应接口的 `resolution`：`512`、`768`、`1K`、`1.5K`、`2K`、`4K`，只对支持它的模型有用（看 OpenRouter `GET /api/v1/images/models` 里模型的 `supported_parameters`）。默认的 gpt-image 系列**不支持**，发了也会被忽略，按画幅出约 1024px 的图（1024×1024、1024×1536、1536×1024）。结果都会再缩到 1920×1080 以内（横竖都算）再保存 |
 | `IMAGE_OPENROUTER_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"provider":{"options":{"openai":{"moderation":"low"}}}}` |
 | `IMAGE_OPENROUTER_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒），临近函数时限时会自动缩短 |
+
+### OpenAI
+
+实例 `openai`，OpenAI 官方的 Image API：没有参考图时 `POST {IMAGE_OPENAI_BASE_URL}/images/generations`，有参考图时 `POST /images/edits`（参考图以 URL 或 data URL 发送，最多 16 张）。用户标识作为 `safety_identifier` 原样发给 OpenAI（走 OpenRouter 时它会换成自己的哈希）。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `IMAGE_OPENAI_API_KEY` | 空 | OpenAI 的 API Key，不设置时不启用这个实例 |
+| `IMAGE_OPENAI_BASE_URL` | `https://api.openai.com/v1` | 填到 `/v1` 为止 |
+| `IMAGE_OPENAI_MODEL` | `gpt-image-2.6-sunburst` | 图像模型 |
+| `IMAGE_OPENAI_QUALITY` | `low` | 对应接口的 `quality`，只能在这里设 |
+| `IMAGE_OPENAI_EXTRA_BODY` | 空 | JSON 对象，合并进请求体，例如 `{"moderation":"low"}` |
+| `IMAGE_OPENAI_PRICES` | `{"text_input":5,"image_input":8,"image_output":30}` | 美元 / 百万 token。接口只返回 token 数，花费按它估算。默认是 gpt-image-2.6 的标价 |
+| `IMAGE_OPENAI_TIMEOUT_MS` | `180000` | 单次请求的超时时间（毫秒） |
+
+画幅（`aspect_ratio`）换成约一百万像素、宽高都是 16 的倍数的 `size`，比如 16:9 是 `1360x768`；`auto` 让模型自己定（有参考图时跟着参考图）。结果同样缩到 1920×1080 以内再保存。
+
+### 两个实现共用的
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
 | `IMAGE_SELF_REFERENCE` | `assets/persona/dafeiyu.webp` | 大肥鱼的形象图：部署包里的文件路径（相对 `packages/vercel/`）或 https 链接，画她自己时作为参考图（`include_self`）。填 `none` 关闭。新文件要放进 `packages/vercel/assets/`（`vercel.json` 会整个打包），体积尽量小 |
 
 ## 语音

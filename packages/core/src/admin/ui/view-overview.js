@@ -17,6 +17,21 @@ function balanceTile(b) {
   );
 }
 
+/** What one provider instance spent today and this month, against its budgets (src/modules/spend.ts). */
+function spendTile(s) {
+  const limit = (used, budget) => (budget === undefined ? fmtUsd(used) : `${fmtUsd(used)} / ${fmtUsd(budget)}`);
+  const ratio = s.dailyBudget !== undefined ? (s.dailyBudget ? s.day / s.dailyBudget : 1) : s.monthlyBudget !== undefined ? (s.monthlyBudget ? s.month / s.monthlyBudget : 1) : undefined;
+  const used = (s.dailyBudget !== undefined && s.day >= s.dailyBudget) || (s.monthlyBudget !== undefined && s.month >= s.monthlyBudget);
+  return h(
+    "div",
+    { class: "tile" },
+    h("span", { class: "k" }, `${s.label} 今日花费`, used ? [" ", pill("bad", "已到上限")] : null),
+    h("span", { class: "v" }, limit(s.day, s.dailyBudget)),
+    ratio !== undefined ? meter(ratio) : null,
+    h("span", { class: "s" }, `${fmtInt(s.calls)} 次调用 · 本月 ${limit(s.month, s.monthlyBudget)}${s.dailyBudget === undefined && s.monthlyBudget === undefined ? " · 没设上限" : ""}`),
+  );
+}
+
 export async function renderOverview(main, _args, app) {
   const body = h("div", { class: "stack" });
   fill(main, h("header", { class: "page-head" }, h("h1", null, "总览"), h("p", { class: "muted" }, "花费、额度和最近出的问题。每天北京时间 08:00 重置。")), body);
@@ -32,6 +47,7 @@ export async function renderOverview(main, _args, app) {
         "div",
         { class: "tiles" },
         o.balances.map(balanceTile),
+        o.spend.map(spendTile),
         h(
           "div",
           { class: "tile" },

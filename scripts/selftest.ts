@@ -248,6 +248,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
   if (url === "https://gw.example.com/api/v1/responses") return fakeResponses(body);
   if (url === "https://img.example.com/api/v1/images") return imageResponse!();
+  if (url.startsWith("https://oai.example.com/v1/images/")) return imageResponse!();
   if (url === "https://tts.example.com/api/v1/audio/speech") return ttsResponse();
   if (url === "https://img.example.com/api/v1/key") {
     return Response.json({
@@ -1787,6 +1788,19 @@ await test("generate_image: workspace references become data URLs; results cappe
     assert.match(await runTool("generate_image", '{"prompt":"x","n":11}', ctx), /^Error: n is 1 to 10/);
     imageResponse = () => Response.json({ error: { message: "rejected by the safety system" } }, { status: 400 });
     assert.match(await runTool("generate_image", '{"prompt":"x"}', ctx), /^Error: image API HTTP 400: .*safety system/);
+
+    // The image service's budget, across every chat: each call's reported cost adds up; once used up, nothing is sent.
+    const day = new Date().toISOString().slice(0, 10);
+    const spent = (await getStore().spend(day, day)).find((r) => r.module === "image")!.counts;
+    assert.ok(spent.cost_usd! >= 0.011 * 3 && spent.calls! >= 3, "each image call's reported cost (a failed call costs nothing and isn't counted)");
+    process.env.IMAGE_DAILY_BUDGET_USD = "0.01";
+    calls.length = 0;
+    assert.match(
+      await runTool("generate_image", '{"prompt":"x"}', ctx),
+      /^Error: the image module's daily budget \(\$0\.01\) is used up; it resets at 北京时间 \d+月\d+日 08:00\. Tell them in your own words, don't retry\.$/,
+    );
+    assert.equal(calls.filter((c) => c.url.endsWith("/images")).length, 0, "refused before the call");
+    delete process.env.IMAGE_DAILY_BUDGET_USD;
   } finally {
     delete process.env.SANDBOX_VERCEL_ENABLED;
     delete process.env.IMAGE_OPENROUTER_API_KEY;
@@ -1794,6 +1808,69 @@ await test("generate_image: workspace references become data URLs; results cappe
     imageResponse = undefined;
   }
   assert.ok(!activeTools().some((t) => t.name === "generate_image"), "off without IMAGE_OPENROUTER_API_KEY");
+});
+
+await test("generate_image through OpenAI's own Image API: generations or edits, the size from the aspect ratio, safety_identifier, the cost from the tokens", async () => {
+  const { costOf, sizeFor } = await import("../packages/adapters/src/openai-images/image/client.js");
+  assert.equal(sizeFor(undefined), "auto");
+  assert.equal(sizeFor("auto"), "auto");
+  assert.equal(sizeFor("1:1"), "1024x1024");
+  for (const ratio of ["3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"]) {
+    const [w, h] = sizeFor(ratio).split("x").map(Number);
+    const [a, b] = ratio.split(":").map(Number);
+    assert.ok(w! % 16 === 0 && h! % 16 === 0, `${ratio}: multiples of 16`);
+    assert.ok(Math.abs(w! / h! - a! / b!) < 0.03, `${ratio}: ${w}x${h}`);
+    assert.ok(Math.abs((w! * h!) / (1024 * 1024) - 1) < 0.05, `${ratio}: about a megapixel`);
+  }
+  const prices = { text_input: 5, image_input: 8, image_output: 30 };
+  assert.equal(costOf(undefined, prices), undefined);
+  assert.ok(Math.abs(costOf({ input_tokens: 1100, input_tokens_details: { text_tokens: 100, image_tokens: 1000 }, output_tokens: 1756 }, prices)! - 0.06118) < 1e-9);
+  assert.ok(Math.abs(costOf({ input_tokens: 100, output_tokens: 1000 }, prices)! - 0.0305) < 1e-9, "no split: priced as text");
+
+  process.env.SANDBOX_VERCEL_ENABLED = "1";
+  process.env.IMAGE_OPENAI_API_KEY = "oai-img-key";
+  process.env.IMAGE_OPENAI_BASE_URL = "https://oai.example.com/v1";
+  const sharp = (await import("sharp")).default;
+  try {
+    const ws = fakeWorkspaces();
+    ws.files.set("/workspace/inbox/7-photo.jpg", await sharp({ create: { width: 40, height: 30, channels: 3, background: "#cc9966" } }).jpeg().toBuffer());
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#336699" } }).png().toBuffer();
+    imageResponse = () =>
+      Response.json({
+        created: 1,
+        data: [{ b64_json: png.toString("base64") }],
+        output_format: "png",
+        usage: { input_tokens: 1100, input_tokens_details: { text_tokens: 100, image_tokens: 1000 }, output_tokens: 1756 },
+      });
+    const ctx = { ...noCtx, images: [] as import("../packages/core/src/llm/types.js").ImageContent[] };
+    const drawn = await runTool("generate_image", JSON.stringify({ prompt: "一只猫", aspect_ratio: "16:9" }), ctx);
+    let req = calls.find((c) => c.url.startsWith("https://oai.example.com/"))!;
+    assert.equal(req.url, "https://oai.example.com/v1/images/generations", "no reference: generations");
+    assert.equal(req.headers.get("authorization"), "Bearer oai-img-key");
+    assert.deepEqual(
+      [req.body.model, req.body.quality, req.body.output_format, req.body.size, req.body.images],
+      ["gpt-image-2.6-sunburst", "low", "png", "1360x768", undefined],
+    );
+    assert.equal(req.body.safety_identifier, ctx.chat.endUser, "OpenAI gets the person's id as is");
+    assert.equal(req.body.user, undefined);
+    assert.match(drawn, /^generated 1 image\(s\), cost \$0\.061/);
+
+    calls.length = 0;
+    await runTool("generate_image", JSON.stringify({ prompt: "加个墨镜", input_references: ["inbox/7-photo.jpg", "https://example.com/style.png"] }), ctx);
+    req = calls.find((c) => c.url.startsWith("https://oai.example.com/"))!;
+    assert.equal(req.url, "https://oai.example.com/v1/images/edits", "references: edits");
+    assert.equal(req.body.size, "auto", "follows the reference");
+    assert.match(req.body.images[0].image_url, /^data:image\/jpeg;base64,/);
+    assert.deepEqual(req.body.images[1], { image_url: "https://example.com/style.png" });
+
+    imageResponse = () => Response.json({ error: { message: "Your request was rejected by the safety system." } }, { status: 400 });
+    assert.match(await runTool("generate_image", '{"prompt":"x"}', ctx), /^Error: image API HTTP 400: .*safety system/);
+  } finally {
+    delete process.env.SANDBOX_VERCEL_ENABLED;
+    delete process.env.IMAGE_OPENAI_API_KEY;
+    delete process.env.IMAGE_OPENAI_BASE_URL;
+    imageResponse = undefined;
+  }
 });
 
 const VOICE_ENV = ["VOICE_OPENROUTER_API_KEY", "VOICE_OPENROUTER_BASE_URL", "VOICE_OPENROUTER_INSTRUCTIONS", "VOICE_OPENROUTER_REFERENCE_AUDIO", "VOICE_OPENROUTER_REFERENCE_TEXT", "VOICE_OPENROUTER_VOICE", "VOICE_OPENROUTER_MODEL", "VOICE_OPENROUTER_SING_REFERENCE_AUDIO", "VOICE_OPENROUTER_SING_REFERENCE_TEXT"];
@@ -2295,6 +2372,50 @@ await test("usage and quotas: each turn's usage is added up per chat per day; a 
   assert.equal(llmCalls, before, "no model call");
   assert.match(sentTo("/v2/users/QUOTAUSER/messages").at(-1).content, /^这里今天的额度用完了，北京时间 \d+月\d+日 08:00 恢复。$/);
   await saveChatProfile("qq:c2c:QUOTAUSER", {});
+});
+
+await test("budgets: model calls add up per module across chats; a used-up daily or monthly budget stops turns", async () => {
+  const { BudgetUsedError, resetSpendCache, spendGate, spendReport } = await import("../packages/core/src/modules/spend.js");
+  resetSpendCache();
+  const day = utcDay();
+  const spentCalls = async () => (await getStore().spend(day, day)).find((r) => r.module === "model")?.counts.calls ?? 0;
+  const before = await spentCalls();
+  await handleWebhook(c2c("budget-1", "你好", "BUDGETUSER"), "qq");
+  await drain();
+  assert.ok(llmCalls > 0);
+  assert.equal((await spentCalls()) - before, llmCalls, "every call of the turn, recorded for the model module");
+
+  const sent = () => sentTo("/v2/users/BUDGETUSER/messages").at(-1).content;
+  try {
+    process.env.MODEL_DAILY_BUDGET_USD = "0";
+    const calls0 = llmCalls;
+    await handleWebhook(c2c("budget-2", "还在吗", "BUDGETUSER"), "qq");
+    await drain();
+    assert.equal(llmCalls, calls0, "no model call");
+    assert.match(sent(), /^今天的额度用完了，北京时间 \d+月\d+日 08:00 恢复。$/);
+    await assert.rejects(spendGate("model").check(), BudgetUsedError, "a call refused mid-turn ends it the same way");
+
+    delete process.env.MODEL_DAILY_BUDGET_USD;
+    process.env.MODEL_MONTHLY_BUDGET_USD = "5";
+    await getStore().addSpend("model", day, { cost_usd: 5 });
+    resetSpendCache();
+    await handleWebhook(c2c("budget-3", "这个月呢", "BUDGETUSER"), "qq");
+    await drain();
+    assert.equal(llmCalls, calls0);
+    assert.match(sent(), /^这个月的额度用完了，北京时间 \d+月1日 08:00 恢复。$/);
+    const report = (await spendReport()).find((s) => s.module === "model")!;
+    assert.equal(report.monthlyBudget, 5);
+    assert.ok(report.day >= 5 && report.month >= 5 && report.calls >= llmCalls);
+
+    delete process.env.MODEL_MONTHLY_BUDGET_USD;
+    await handleWebhook(c2c("budget-4", "现在呢", "BUDGETUSER"), "qq");
+    await drain();
+    assert.ok(llmCalls > calls0, "no budget, no limit");
+  } finally {
+    delete process.env.MODEL_DAILY_BUDGET_USD;
+    delete process.env.MODEL_MONTHLY_BUDGET_USD;
+    resetSpendCache();
+  }
 });
 
 await test("usage and quotas: tool calls are counted from the log; a used-up tool quota refuses the tool; disabled tools aren't offered", async () => {

@@ -18,6 +18,7 @@
  *   apply(ctx) → ctx.tools.register / ctx.systemPrompt.section
  *                       tools, section
  */
+import type { SpendGate } from "./spend.js";
 import type { PromptSectionContext } from "../prompt/types.js";
 import type { SettingDef, SettingGroup } from "../settings/catalog.js";
 import type { Tool } from "./tool.js";
@@ -92,6 +93,12 @@ export interface Capability<Impl> {
   readonly providers: Provider<Impl>[];
   /** Its data lives with the provider, so switching providers loses sight of it (docs/design/modules.md 9.6). */
   stateful?: true;
+  /**
+   * Its calls cost money: wrap a client so each call goes through the gate
+   * (check before, record what it cost after). Its module then gets daily
+   * and monthly budgets (src/modules/spend.ts).
+   */
+  meter?(client: Impl, gate: SpendGate): Impl;
 }
 
 export interface Provider<Impl> {

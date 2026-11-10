@@ -207,6 +207,17 @@ async function contract(name: string, store: Store) {
       { day: "2026-11-06", counts: { turns: 3, cost_usd: 0.5, images: 1 } },
     ]);
     assert.deepEqual((await store.usageOfDay("2026-11-06"))["qq:u1"], { turns: 3, cost_usd: 0.5, images: 1 });
+
+    await store.addSpend("model", "2026-11-05", { calls: 1, cost_usd: 0.25 });
+    await store.addSpend("model", "2026-11-06", { calls: 1, cost_usd: 0.5 });
+    await store.addSpend("model", "2026-11-06", { calls: 2, cost_usd: 0.125 });
+    await store.addSpend("image", "2026-11-06", { calls: 1 });
+    const spent = (await store.spend("2026-11-06", "2026-11-06")).sort((a, b) => a.module.localeCompare(b.module));
+    assert.deepEqual(spent, [
+      { module: "image", day: "2026-11-06", counts: { calls: 1 } },
+      { module: "model", day: "2026-11-06", counts: { calls: 3, cost_usd: 0.625 } },
+    ]);
+    assert.equal((await store.spend("2026-11-01", "2026-11-30")).length, 3, "a month: every module's days in it");
   });
 
   await test("admin: chats list, recent events, unlocked append, unlock, problems", async () => {

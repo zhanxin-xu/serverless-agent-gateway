@@ -298,6 +298,11 @@ await test("settings: each module brings its own, the catalog collects them, swi
   assert.equal(new Set(settingDefs().map((d) => d.key)).size, settingDefs().length, "no key twice");
   assert.equal(groups.find((g) => g.id === "llm")!.module, "model", "the model module's own settings (which provider, the call timeout)");
   assert.equal(settingDef("MODEL_OPENROUTER_API_KEY")!.group, "model.openrouter", "the endpoint, key and model come with the provider instance");
+  // A metered module gets budgets in its own group, whichever provider serves it; the others get none.
+  assert.equal(settingDef("MODEL_DAILY_BUDGET_USD")!.group, "llm");
+  assert.equal(settingDef("MODEL_MONTHLY_BUDGET_USD")!.kind, "number");
+  assert.equal(settingDef("IMAGE_DAILY_BUDGET_USD")!.group, MODULES.find((m) => m.id === "image")!.config!.group.id);
+  assert.equal(settingDef("SEARCH_DAILY_BUDGET_USD"), undefined, "search calls don't report a cost");
   assert.deepEqual(groups.find((g) => g.id === "model.openrouter")!.provider, { capability: "chat-model", id: "openrouter" });
   assert.equal(settingDef("MODEL_ANTHROPIC_API_KEY")!.group, "model.anthropic", "each instance has its own key");
   assert.equal(settingDef("IMAGE_OPENROUTER_API_KEY")!.group, "image.openrouter", "the same vendor in another module: another key");

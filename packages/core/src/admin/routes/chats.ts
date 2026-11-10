@@ -3,7 +3,7 @@ import { chatRef } from "../../llm/end-user.js";
 import { channel as channelNamed, host } from "../../composition.js";
 import { daysBefore, utcDay } from "../../chats/day.js";
 import { historyAfter, historyBefore } from "../../chats/history.js";
-import { ambientInterval, parseProfile, profileChoices, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
+import { ambientInterval, chatEnabled, parseProfile, profileChoices, replyMode, saveChatProfile, validateProfile } from "../../chats/profile.js";
 import { quotaPolicy } from "../../chats/usage.js";
 import { config } from "../../config.js";
 import { arrivedMidStep, modelSees } from "../../conversation/derive.js";
@@ -44,6 +44,7 @@ function view(c: ChatSummary) {
     channel,
     channelLabel: adapter?.label ?? channel,
     profile,
+    enabled: chatEnabled(profile),
     mode,
     modeLabel: profileChoices().modes.find((o) => o.value === mode)?.label ?? mode,
     ambientIntervalSeconds: ambientInterval(profile),

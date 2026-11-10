@@ -99,8 +99,8 @@ function renderHistory(body, chat, info) {
 
 function renderComposer(chat, info, onSent) {
   let mode = "say";
-  // A record-only or blocked chat never answers, so there's no one to whisper to.
-  const canWhisper = info.mode === "normal" || info.mode === "mention";
+  // A switched-off, record-only or blocked chat never answers, so there's no one to whisper to.
+  const canWhisper = info.enabled && (info.mode === "normal" || info.mode === "mention");
   const text = h("textarea", { id: "compose", rows: 2, placeholder: `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` });
   const windowLine = h("span", { class: "window" });
   let state = info.replyWindow;
@@ -118,7 +118,7 @@ function renderComposer(chat, info, onSent) {
         type: "button",
         class: value === mode ? "on" : "",
         disabled: value === "whisper" && !canWhisper,
-        title: value === "whisper" && !canWhisper ? `这个聊天是“${info.modeLabel}”，她不会回复` : null,
+        title: value === "whisper" && !canWhisper ? (info.enabled ? `这个聊天是“${info.modeLabel}”，她不会回复` : "这个聊天关掉了，她不会回复") : null,
         onClick(e) {
           mode = value;
           for (const b of seg.children) b.classList.toggle("on", b === e.currentTarget);
@@ -470,6 +470,7 @@ function renderSettings(body, chat, info, app) {
   const field = (id, label, input, help, key = id) =>
     h("div", { class: "field" }, h("label", { for: `profile-${id}` }, label), input, help ? h("p", { class: "help" }, help) : null, errorSlot(key));
 
+  const enabled = h("input", { id: "profile-enabled", type: "checkbox", checked: p.enabled !== false });
   const title = h("input", { id: "profile-title", type: "text", value: p.title ?? "", maxlength: 60, placeholder: "比如：技术交流群" });
   const mode = h(
     "select",
@@ -494,6 +495,7 @@ function renderSettings(body, chat, info, app) {
     for (const slot of Object.values(errors)) slot.hidden = true;
     const profile = {
       title: title.value,
+      enabled: enabled.checked,
       mode: mode.value || null,
       ambientIntervalSeconds: interval.value.trim() || null,
       disabledModules: tools.filter((t) => !t.box.checked).map((t) => t.id),
@@ -524,6 +526,13 @@ function renderSettings(body, chat, info, app) {
       h(
         "div",
         { class: "stack" },
+        h(
+          "div",
+          { class: "field" },
+          h("label", { class: "check", for: "profile-enabled" }, enabled, "处理这个聊天的消息"),
+          h("p", { class: "help" }, "关掉后，这个聊天发来的消息一律跳过：不记录、不回复，下面的回复方式保留，重新打开后照旧。"),
+          errorSlot("enabled"),
+        ),
         field("title", "备注名", title, "平台不提供群名时，起个好认的名字。"),
         field("mode", "回复方式", mode, "正常：被 @ 必回，平时偶尔插话。只回 @：不插话。只记录：一律不回，消息留作上下文。屏蔽：连记录都不存。"),
         field("interval", "插话频率（秒）", interval, "群里没 @ 的消息，每这么多秒最多给她看一次。0 = 不插话。"),

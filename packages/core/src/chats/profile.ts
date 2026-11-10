@@ -1,6 +1,6 @@
 /**
  * A chat's own settings, set in the admin console (gateway.chat_profiles):
- * a name for people, how the bot replies there, how often it may chime in,
+ * a name for people, whether the bot handles it at all, how it replies there, how often it may chime in,
  * which modules are off, extra instructions, and daily quotas.
  *
  * Read on every message, so each instance keeps profiles for CACHE_MS; a
@@ -40,6 +40,12 @@ const isReplyMode = (value: unknown): value is ReplyMode => replyModes().include
 
 export interface ChatProfile {
   title?: string;
+  /**
+   * False: the chat is switched off. Its messages are dropped as they arrive,
+   * not even logged, whatever its mode, which is kept for when it's switched
+   * back on. Unset: on (only `false` is stored).
+   */
+  enabled?: false;
   /** Unset: CHAT_DEFAULT_MODE. */
   mode?: ReplyMode;
   /** Unset: AGENT_AMBIENT_INTERVAL_SECONDS. */
@@ -66,6 +72,10 @@ export function validateProfile(input: unknown): { profile: ChatProfile } | { er
   if (raw.title !== undefined && raw.title !== null && raw.title !== "") {
     if (typeof raw.title !== "string" || raw.title.trim().length > MAX_TITLE) errors.title = `最多 ${MAX_TITLE} 个字`;
     else profile.title = raw.title.trim();
+  }
+  if (raw.enabled !== undefined && raw.enabled !== null) {
+    if (typeof raw.enabled !== "boolean") errors.enabled = "要是 true 或 false";
+    else if (!raw.enabled) profile.enabled = false;
   }
   if (raw.mode !== undefined && raw.mode !== null && raw.mode !== "") {
     if (!isReplyMode(raw.mode)) errors.mode = `只能是 ${replyModes().join("、")}`;
@@ -114,6 +124,9 @@ export function parseProfile(stored: unknown): ChatProfile {
   const retry = validateProfile(raw);
   return "profile" in retry ? retry.profile : {};
 }
+
+/** Whether the chat's messages are handled at all (ChatProfile.enabled). */
+export const chatEnabled = (p: ChatProfile): boolean => p.enabled !== false;
 
 /** The chat's mode, else CHAT_DEFAULT_MODE; an environment value that isn't a mode counts as "normal". */
 export function replyMode(p: ChatProfile): ReplyMode {

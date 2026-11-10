@@ -5,8 +5,8 @@ import { pill } from "./dom.js";
 /** The color of each reply mode's pill. */
 const MODE_COLORS = { normal: "ok", mention: "info", record: "mute", block: "bad" };
 
-/** The chat's reply mode as a pill: "正常", "只回 @"… */
-export const modePill = (c) => pill(MODE_COLORS[c.mode] ?? "mute", c.modeLabel ?? c.mode);
+/** The chat's reply mode as a pill: "正常", "只回 @"…; "已关闭" when the chat is switched off. */
+export const modePill = (c) => (c.enabled === false ? pill("bad", "已关闭") : pill(MODE_COLORS[c.mode] ?? "mute", c.modeLabel ?? c.mode));
 
 /** "QQ 群", "Telegram 私聊". */
 export const chatKind = (c) => `${c.channelLabel ?? c.channel}${c.chatType === "group" ? " 群" : c.chatType === "private" ? " 私聊" : ""}`;

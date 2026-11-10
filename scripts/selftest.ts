@@ -2222,6 +2222,24 @@ await test("deploying before the database upgrade: the bot keeps the log untouch
   }
 });
 
+await test("chat profiles: a switched-off chat drops its messages, whatever its mode, until switched back on", async () => {
+  await saveChatProfile("qq:group:GOFF", { enabled: false, mode: "normal" });
+  await handleWebhook(groupAt("GOFF", "o1", " 在吗"), "qq");
+  await handleWebhook(c2c("o2", "在吗", "OFFUSER"), "qq");
+  await saveChatProfile("qq:c2c:OFFUSER", { enabled: false });
+  await handleWebhook(c2c("o3", "还在吗", "OFFUSER"), "qq");
+  await drain();
+  assert.equal((await events("qq:group:GOFF")).length, 0, "switched off: not even logged, whatever the mode");
+  assert.equal((await events("qq:c2c:OFFUSER")).filter((e) => e.type === "user/message").length, 1, "only what came before it was switched off");
+  const offCalls = llmCalls;
+  const { whisper } = await import("../packages/core/src/admin/chat-actions.js");
+  await assert.rejects(whisper("qq:group:GOFF", "说点什么", "https://bot.example.com", () => {}), /关掉了/, "no one would answer a whisper");
+  await saveChatProfile("qq:group:GOFF", { mode: "normal" });
+  await handleWebhook(groupAt("GOFF", "o4", " 现在呢"), "qq");
+  await drain();
+  assert.ok(llmCalls > offCalls, "switched back on: answered as before");
+});
+
 await test("chat profiles: block drops, record keeps quiet context, mention never chimes in, the chat's prompt is added", async () => {
   await saveChatProfile("qq:group:GBLOCK", { mode: "block" });
   await handleWebhook(groupAt("GBLOCK", "k1", " 在吗"), "qq");

@@ -9,7 +9,7 @@
  */
 import crypto from "node:crypto";
 import { messageHeader, senderLabel } from "../channels/format.js";
-import { ambientInterval, chatProfile, replyMode } from "../chats/profile.js";
+import { ambientInterval, chatEnabled, chatProfile, replyMode } from "../chats/profile.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
 import { host } from "../composition.js";
 import type { NewEvent } from "../conversation/events.js";
@@ -57,12 +57,12 @@ export interface HandleOptions {
 
 /**
  * Ingress for one inbound message. Returns "duplicate" for a platform retry,
- * "ignored" when the chat is blocked, "recorded" when the message was only
+ * "ignored" when the chat is switched off or blocked, "recorded" when the message was only
  * logged, "busy" when another run holds the chat (it will see the message),
  * or "handled" after running the agent.
  *
- * The chat's profile decides what happens (chats/profile.ts): blocked chats
- * are dropped, record-only chats log quiet messages that never wake the agent,
+ * The chat's profile decides what happens (chats/profile.ts): switched-off
+ * and blocked chats are dropped, record-only chats log quiet messages that never wake the agent,
  * and the ambient interval is the chat's own.
  */
 export async function handleMessage(
@@ -77,6 +77,10 @@ export async function handleMessage(
   const direct = message.mode !== "ambient";
   const meta: ChatMeta = { channel: message.channel, conversationId: message.conversationId, chatType: message.chatType, origin: opts.origin };
   const profile = await chatProfile(chat);
+  if (!chatEnabled(profile)) {
+    console.log(`[ingress] ${chat} is switched off, dropped ${message.eventId}`);
+    return "ignored";
+  }
   const mode = replyMode(profile);
   if (mode === "block") {
     console.log(`[ingress] ${chat} is blocked, dropped ${message.eventId}`);

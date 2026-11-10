@@ -13,7 +13,7 @@
 import crypto from "node:crypto";
 import { channel } from "../composition.js";
 import type { ChannelAdapter, InboundMessage } from "../channels/types.js";
-import { chatProfile, replyMode } from "../chats/profile.js";
+import { chatEnabled, chatProfile, replyMode } from "../chats/profile.js";
 import { isEvent, isWhisper, type SessionEvent } from "../conversation/events.js";
 import { chatPeople } from "../conversation/people.js";
 import { deliverOutgoing } from "../runtime/deliver.js";
@@ -128,8 +128,10 @@ export async function say(chat: string, text: string): Promise<{ seq: number; st
  */
 export async function whisper(chat: string, text: string, origin: string, background: (p: Promise<unknown>) => void): Promise<{ eventId: string }> {
   const body = checkText(text);
-  // A record-only or blocked chat would log the whisper and never answer it.
-  if (["record", "block"].includes(replyMode(await chatProfile(chat)))) {
+  // A switched-off chat would drop the whisper; a record-only or blocked one would never answer it.
+  const profile = await chatProfile(chat);
+  if (!chatEnabled(profile)) throw new HttpError(409, "这个聊天关掉了，不处理消息。先在“设置与额度”里打开");
+  if (["record", "block"].includes(replyMode(profile))) {
     throw new HttpError(409, "这个聊天设成了只记录或屏蔽，她不会回复。先在“设置与额度”里改回正常或只回 @");
   }
   const c = await openChat(chat, origin);

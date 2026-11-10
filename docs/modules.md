@@ -123,7 +123,7 @@ packages/adapters/src/<厂商>/          一家厂商（适配器层）
 | 序号 | 段落 | 内容 |
 |---|---|---|
 | 0 | `persona` | 人设：身份、长相、性格、说话方式、底线（组合里的 `Persona.prompt`） |
-| 1000 | `rules` | 业务规则：每一轮怎么决策、你看到的信息（`packages/core/src/prompt/rules.ts`） |
+| 1000 | `rules` | 业务规则：每一轮怎么决策、红线（谁要都不做的事）、你看到的信息（`packages/core/src/prompt/rules.ts`） |
 | 2000 | `scene` | 私聊或群聊 |
 | 3000 | `channel` | 渠道格式（QQ：纯文本……） |
 | 5000–7999 | `module:<id>` | 每个开启的模块一段，位置由模块自己定 |

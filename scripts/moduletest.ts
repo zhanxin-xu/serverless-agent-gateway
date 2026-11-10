@@ -255,6 +255,9 @@ await test("meters count only their own tools, under counters usage_daily alread
 await test("a chat's switches: disabledModules, module ids only", () => {
   assert.deepEqual(parseProfile({ disabledModules: ["voice"] }), { disabledModules: ["voice"] });
   assert.deepEqual(parseProfile({ title: "x" }), { title: "x" });
+  assert.deepEqual(parseProfile({ enabled: true, title: "x" }), { title: "x" }, "on is the default, not stored");
+  assert.deepEqual(parseProfile({ enabled: false }), { enabled: false });
+  assert.deepEqual(parseProfile({ enabled: "no", title: "x" }), { title: "x" }, "a malformed switch leaves the chat on");
   assert.deepEqual(parseProfile({ disabledModules: ["nope"], title: "x" }), { title: "x" }, "an unknown module drops the switches only");
   assert.deepEqual(
     profileChoices().features.map((f) => f.value),

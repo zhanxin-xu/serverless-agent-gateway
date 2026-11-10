@@ -12,7 +12,7 @@
 `src/agent/system-prompt.ts` 里的 `SYSTEM_PROMPT` 把三类东西写在一起：
 
 - 人设：身份、长相、性格、说话方式、底线。
-- 业务规则：每一轮怎么决策、你看到的信息。
+- 业务规则：每一轮怎么决策、红线、你看到的信息。
 - 每个工具的用法：记忆的档案写法、画图的自拍流程、语音的 Fish/Seed 语法、沙盒的附件流程……
 
 后果：
@@ -180,7 +180,7 @@ export interface Assembly {
 | 序号 | 段落名 | 内容 | 来源 |
 |---|---|---|---|
 | 0 | `persona` | 身份、长相、性格与雷点、说话方式、底线 | `prompt/persona.ts` |
-| 1000 | `rules` | 每一轮怎么决策、怎么用工具干活、你看到的信息 | `prompt/rules.ts` |
+| 1000 | `rules` | 每一轮怎么决策、怎么用工具干活、红线、你看到的信息 | `prompt/rules.ts` |
 | 2000 | `scene` | 这个聊天：私聊或群聊二选一 | `prompt/rules.ts` |
 | 3000 | `channel` | 渠道格式（QQ：纯文本……） | `ChannelAdapter.promptHint` |
 | 5000 | `module:chat` | 发消息、reply_to / quote、@#编号、表情包 | 核心模块 |

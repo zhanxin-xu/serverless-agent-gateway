@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-11-10",
+  "updated_at": "2026-11-11",
   "sources": [
     {
       "name": "curated",
@@ -10,13 +10,13 @@
       "name": "langfuse",
       "repo": "langfuse/langfuse",
       "path": "worker/src/constants/default-model-prices.json",
-      "commit": "95563ada75635e643aa247ec3fb896d5101b1029"
+      "commit": "29671385dd239d6308ba009e04d08eee9c3961ed"
     },
     {
       "name": "litellm",
       "repo": "BerriAI/litellm",
       "path": "model_prices_and_context_window.json",
-      "commit": "d1a0cc6b24e9911e71481ae83231f842c565656f"
+      "commit": "4b498d1bba768bd81e4a434a14ea7ae2870dd01f"
     }
   ],
   "models": [
@@ -3238,6 +3238,90 @@
             "cache_read": 0.25,
             "cache_write_5m": 12.5,
             "cache_write_1h": 20.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-fable-5-2",
+      "match": "(?i)^((anthropic/)?claude-fable-5-2|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-fable-5-2(-v1(:0)?)?)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "claude-fable-5-2"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 8.0,
+            "output": 40.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 10.0,
+            "cache_write_1h": 16.0
+          }
+        },
+        {
+          "name": "fast/priority",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "fast"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 16.0,
+            "output": 80.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 20.0,
+            "cache_write_1h": 32.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "claude-mythos-5-2",
+      "match": "(?i)^((anthropic/)?claude-mythos-5-2|(eu\\.|us\\.|apac\\.|au\\.|jp\\.|global\\.)?anthropic\\.claude-mythos-5-2(-v1(:0)?)?)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "claude-mythos-5-2"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 8.0,
+            "output": 40.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 10.0,
+            "cache_write_1h": 16.0
+          }
+        },
+        {
+          "name": "fast/priority",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "fast"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 16.0,
+            "output": 80.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 20.0,
+            "cache_write_1h": 32.0
           }
         }
       ]

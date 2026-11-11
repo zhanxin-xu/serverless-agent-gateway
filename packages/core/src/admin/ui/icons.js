@@ -10,7 +10,12 @@ const PATHS = {
   setup: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"],
   logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "m16 17 5-5-5-5", "M21 12H9"],
   back: ["m15 18-6-6 6-6"],
-  copy: ["M9 9h11v11H9z", "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"],
+  search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "m21 21-4.3-4.3"],
+  refresh: ["M21 12a9 9 0 1 1-2.64-6.36", "M21 3v6h-6"],
+  // The three appearances: follow the system, light, dark.
+  auto: ["M3 4h18v12H3z", "M8 20h8", "M12 16v4"],
+  light: ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 2v2", "M12 20v2", "m4.9 4.9 1.4 1.4", "m17.7 17.7 1.4 1.4", "M2 12h2", "M20 12h2", "m4.9 19.1 1.4-1.4", "m17.7 6.3 1.4-1.4"],
+  dark: ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"],
 };
 
 /** An icon as an <svg> element; decorative (hidden from screen readers). */

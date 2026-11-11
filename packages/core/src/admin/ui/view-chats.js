@@ -1,58 +1,58 @@
 // Every chat the bot has seen, most recently active first.
 import { api } from "./api.js";
-import { every, fill, fmtAgo, fmtInt, fmtUsd, h, meter, pill } from "./dom.js";
+import { ago, every, fill, fmtInt, fmtUsd, h, meter, pageHead, pill } from "./dom.js";
+import { icon } from "./icons.js";
 import { chatKind, chatName, modePill, speakersText } from "./labels.js";
 
 function quotaCell(c) {
   const limit = c.profile?.quota?.cost_usd;
   const spent = c.usage?.cost_usd ?? 0;
-  if (limit === undefined) return h("span", { class: "muted" }, spent ? fmtUsd(spent) : "不限");
-  return h("div", { class: "quota-cell" }, meter(limit ? spent / limit : 1), h("span", { class: "muted" }, spent >= limit ? "用完了" : `${fmtUsd(spent)} / ${fmtUsd(limit)}`));
+  if (limit === undefined) return h("span", { class: spent ? "" : "faint" }, spent ? fmtUsd(spent) : "—");
+  return h("div", { class: "cell-meter" }, meter(limit ? spent / limit : 1), h("span", null, spent >= limit ? "用完了" : `${fmtUsd(spent)} / ${fmtUsd(limit)}`));
 }
+
+// What was being looked for survives a visit to one chat and back.
+let kind = "all";
+let search = "";
 
 export async function renderChats(main) {
   let chats = [];
-  let kind = "all";
-  let search = "";
   const tbody = h("tbody");
-  const count = h("span", { class: "muted" });
+  const count = h("span", { class: "faint small" });
 
   const draw = () => {
+    const q = search.trim().toLowerCase();
     const shown = chats.filter(
       (c) =>
         (kind === "all" || c.chatType === kind) &&
         // A provider's end-user id (channel.chat.person) starts with the chat's ref.
-        (!search || `${c.profile?.title ?? ""} ${c.chat} ${(c.speakers ?? []).join(" ")}`.toLowerCase().includes(search) || search.startsWith(c.ref)),
+        (!q || `${c.profile?.title ?? ""} ${c.chat} ${(c.speakers ?? []).join(" ")}`.toLowerCase().includes(q) || q.startsWith(c.ref)),
     );
-    count.textContent = `${shown.length} 个`;
+    count.textContent = shown.length === chats.length ? `${chats.length} 个聊天` : `${shown.length} / ${chats.length} 个聊天`;
     fill(
       tbody,
       shown.length
-        ? shown.map((c) =>
-            h(
+        ? shown.map((c) => {
+            const href = `#/chat/${encodeURIComponent(c.chat)}/history`;
+            const speakers = c.chatType === "group" ? speakersText(c) : "";
+            return h(
               "tr",
-              { class: "clickable", onClick: () => (location.hash = `#/chat/${encodeURIComponent(c.chat)}/history`) },
-              h(
-                "td",
-                null,
-                h("a", { href: `#/chat/${encodeURIComponent(c.chat)}/history` }, h("b", null, chatName(c))),
-                c.chatType === "group" && speakersText(c) ? h("div", { class: "small" }, `最近：${speakersText(c)}`) : null,
-                h("div", { class: "muted mono small" }, c.chat),
-              ),
+              { class: "clickable", onClick: (e) => e.target.closest("a") || (location.hash = href) },
+              h("td", null, h("a", { class: "name", href }, chatName(c)), h("span", { class: "sub" }, speakers ? `最近：${speakers}` : h("span", { class: "mono" }, c.chat))),
               h("td", { class: "nowrap" }, chatKind(c)),
-              h("td", null, modePill(c), c.locked ? [" ", pill("info", "运行中")] : null),
+              h("td", { class: "nowrap" }, modePill(c), c.locked ? [" ", pill("info", "运行中")] : null),
               h("td", { class: "num" }, fmtInt(c.usage?.turns)),
               h("td", null, quotaCell(c)),
-              h("td", { class: "nowrap" }, fmtAgo(c.lastActiveAt)),
-            ),
-          )
-        : h("tr", null, h("td", { colspan: 6, class: "muted" }, chats.length ? "没有符合条件的聊天" : "还没有聊天。给机器人发条消息试试。")),
+              h("td", { class: "faint" }, ago(c.lastActiveAt)),
+            );
+          })
+        : h("tr", null, h("td", { colspan: 6, class: "empty" }, chats.length ? "没有符合条件的聊天。" : "还没有聊天。给机器人发条消息试试。")),
     );
   };
 
   const seg = h(
     "span",
-    { class: "seg", role: "group" },
+    { class: "seg", role: "group", "aria-label": "聊天类型" },
     [["all", "全部"], ["group", "群聊"], ["private", "私聊"]].map(([value, label]) =>
       h("button", {
         type: "button",
@@ -65,15 +65,15 @@ export async function renderChats(main) {
       }, label),
     ),
   );
-  const filter = h("input", { id: "chat-search", type: "search", placeholder: "搜索备注名、群友、ID，或粘贴安全标识", onInput: (e) => ((search = e.target.value.trim().toLowerCase()), draw()) });
+  const filter = h("input", { id: "chat-search", type: "search", value: search, placeholder: "搜备注名、群友、ID，或粘贴安全标识", "aria-label": "搜索聊天", onInput: (e) => ((search = e.target.value), draw()) });
 
   fill(
     main,
-    h("header", { class: "page-head" }, h("h1", null, "聊天"), h("p", { class: "muted" }, "平台不提供群名或昵称时，群下面列出最近说话的人；也可以在聊天的“设置与额度”里填备注名。")),
-    h("div", { class: "row between" }, h("div", { class: "row" }, seg, filter), count),
+    pageHead({ title: "聊天", sub: "平台不提供群名或昵称时，群下面列出最近说话的人；也可以在聊天的“设置与额度”里起个备注名。" }),
+    h("div", { class: "row between" }, h("div", { class: "row" }, seg, h("label", { class: "search" }, icon("search", 15), filter)), count),
     h(
       "div",
-      { class: "table-wrap" },
+      { class: "table-wrap wide" },
       h(
         "table",
         null,

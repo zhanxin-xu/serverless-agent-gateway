@@ -1,98 +1,120 @@
-// The overview: what's left on each module's service, today's usage across chats, recent problems.
+// The overview: today's usage across chats, what each metered module spent against its
+// budgets, what's left on each service, the channels, and recent problems.
 import { api } from "./api.js";
-import { every, fill, fmtAgo, fmtInt, fmtTokens, fmtUsd, h, meter, pill } from "./dom.js";
+import { ago, empty, every, fill, fmtClock, fmtInt, fmtTokens, fmtUsd, h, meter, notice, pageHead, pill, section } from "./dom.js";
+import { icon } from "./icons.js";
+import { setupProgress } from "./view-setup.js";
 
 const REASONS = { error: "出错", unreachable: "平台连不上", "max-steps": "步数用完" };
 
-/** What's left on one key or account, and which modules spend from it (src/modules/balance.ts). */
-function balanceTile(b) {
-  if (b.error) return h("div", { class: "tile" }, h("span", { class: "k" }, b.label), pill("bad", "查询失败"), h("span", { class: "s" }, b.error));
-  return h(
-    "div",
-    { class: "tile" },
-    h("span", { class: "k" }, b.label),
-    h("span", { class: "v" }, b.value),
-    b.used !== undefined ? meter(b.used) : null,
-    b.detail ? h("span", { class: "s" }, b.detail) : null,
-  );
+const stat = (k, v, s) => h("div", { class: "stat" }, h("span", { class: "k" }, k), h("span", { class: "v" }, v), s ? h("span", { class: "s" }, s) : null);
+
+const table = (head, rows) =>
+  h("div", { class: "table-wrap" }, h("table", null, h("thead", null, h("tr", null, head.map((c) => (typeof c === "string" ? h("th", null, c) : c)))), h("tbody", null, rows)));
+
+/** Spent against a budget: a bar and "$0.42 / $5.00"; just the amount where there's no budget. */
+function spent(used, budget) {
+  if (budget === undefined) return h("span", { class: "num" }, fmtUsd(used), h("span", { class: "faint" }, " · 没设上限"));
+  const full = used >= budget;
+  return h("div", { class: "cell-meter" }, meter(budget ? used / budget : 1), h("span", null, `${fmtUsd(used)} / ${fmtUsd(budget)}`, full ? [" ", pill("bad", "已到上限")] : null));
 }
 
-/** What one provider instance spent today and this month, against its budgets (src/modules/spend.ts). */
-function spendTile(s) {
-  const limit = (used, budget) => (budget === undefined ? fmtUsd(used) : `${fmtUsd(used)} / ${fmtUsd(budget)}`);
-  const ratio = s.dailyBudget !== undefined ? (s.dailyBudget ? s.day / s.dailyBudget : 1) : s.monthlyBudget !== undefined ? (s.monthlyBudget ? s.month / s.monthlyBudget : 1) : undefined;
-  const used = (s.dailyBudget !== undefined && s.day >= s.dailyBudget) || (s.monthlyBudget !== undefined && s.month >= s.monthlyBudget);
-  return h(
-    "div",
-    { class: "tile" },
-    h("span", { class: "k" }, `${s.label} 今日花费`, used ? [" ", pill("bad", "已到上限")] : null),
-    h("span", { class: "v" }, limit(s.day, s.dailyBudget)),
-    ratio !== undefined ? meter(ratio) : null,
-    h("span", { class: "s" }, `${fmtInt(s.calls)} 次调用 · 本月 ${limit(s.month, s.monthlyBudget)}${s.dailyBudget === undefined && s.monthlyBudget === undefined ? " · 没设上限" : ""}`),
+/** What one metered module spent today and this month, every chat together (src/modules/spend.ts). */
+const spendRow = (s) =>
+  h(
+    "tr",
+    null,
+    h("td", null, h("a", { class: "name", href: `#/modules/${s.module}` }, s.label)),
+    h("td", null, spent(s.day, s.dailyBudget)),
+    h("td", null, spent(s.month, s.monthlyBudget)),
+    h("td", { class: "num" }, fmtInt(s.calls)),
+    h("td", { class: "num" }, h("a", { href: `#/modules/${s.module}/${s.module.toUpperCase()}_DAILY_BUDGET_USD` }, "设上限")),
   );
-}
+
+/** What's left on one key or account, and which modules spend from it (src/modules/balance.ts). */
+const balanceRow = (b) =>
+  h(
+    "tr",
+    null,
+    h("td", null, h("b", null, b.label)),
+    b.error
+      ? h("td", { colspan: 2 }, pill("bad", "查询失败"), " ", h("span", { class: "muted" }, b.error))
+      : [h("td", null, b.used !== undefined ? h("div", { class: "cell-meter" }, meter(b.used), h("span", null, b.value)) : h("span", { class: "num" }, b.value)), h("td", { class: "muted" }, b.detail ?? "")],
+  );
 
 export async function renderOverview(main, _args, app) {
   const body = h("div", { class: "stack" });
-  fill(main, h("header", { class: "page-head" }, h("h1", null, "总览"), h("p", { class: "muted" }, "花费、额度和最近出的问题。每天北京时间 08:00 重置。")), body);
+  const updated = h("span");
+  const refresh = h("button", { type: "button", class: "icon-btn", title: "刷新", "aria-label": "刷新" }, icon("refresh"));
+  fill(main, pageHead({ title: "总览", sub: "今天的用量、花费上限和最近出的问题。每天北京时间 08:00 重置。", actions: [updated, refresh] }), body);
 
   const render = async () => {
     const o = await api.get("overview");
+    const status = app.status;
     const t = o.today.total;
+    const input = t.input_tokens ?? 0;
     // Each metered module's counter (src/modules: Module.meter).
-    const meters = (app.status?.modules ?? []).filter((m) => m.meter).map((m) => m.meter);
+    const meters = (status?.modules ?? []).filter((m) => m.meter).map((m) => m.meter);
+    const labels = new Map((status?.channels ?? []).map((c) => [c.name, c.label]));
+    const progress = setupProgress(status);
+    updated.textContent = `更新于 ${fmtClock(Date.now())}`;
     fill(
       body,
-      h(
-        "div",
-        { class: "tiles" },
-        o.balances.map(balanceTile),
-        o.spend.map(spendTile),
+      progress.required ? notice("warn", "还没配置完，机器人现在收不到或回不了消息。", h("a", { class: "btn btn-small", href: "#/setup" }, "继续配置")) : null,
+      section(
+        "今天",
+        `${o.today.chats} 个聊天有动静`,
         h(
           "div",
-          { class: "tile" },
-          h("span", { class: "k" }, "今日轮次"),
-          h("span", { class: "v" }, fmtInt(t.turns)),
-          h("span", { class: "s" }, `${o.today.chats} 个聊天 · 估算 ${fmtUsd(t.cost_usd)} · 输入 ${fmtTokens(t.input_tokens)}（缓存 ${fmtTokens(t.cached_tokens)}）`),
+          { class: "stats" },
+          stat("轮次", fmtInt(t.turns)),
+          stat("模型花费", fmtUsd(t.cost_usd), "按调用估算"),
+          stat("输入 token", fmtTokens(input), `其中缓存 ${fmtTokens(t.cached_tokens)}`),
+          stat("缓存命中", input ? [((100 * (t.cached_tokens ?? 0)) / input).toFixed(1), h("small", null, " %")] : "—"),
+          meters.map((m) => stat(m.label, fmtInt(t[m.key]))),
         ),
-        meters.length
-          ? h(
-              "div",
-              { class: "tile" },
-              h("span", { class: "k" }, "今日模块用量"),
-              h("span", { class: "v" }, meters.map((m) => `${fmtInt(t[m.key])}`).join(" / ")),
-              h("span", { class: "s" }, meters.map((m) => m.label).join(" / ")),
-            )
-          : null,
       ),
-      h("div", { class: "row" }, o.channels.map((c) => pill(c.configured ? "ok" : "mute", `${c.name} ${c.configured ? "已接入" : "未配置"}`))),
-      h("h2", null, "最近 24 小时的问题"),
-      o.problems.length
-        ? h(
-            "div",
-            { class: "table-wrap" },
+      o.spend.length
+        ? section("花费上限", "所有聊天合计，到了上限就停", table(["模块", "今日", "本月", h("th", { class: "num" }, "今日调用"), ""], o.spend.map(spendRow)))
+        : null,
+      o.balances.length ? section("余额", null, table(["服务", "剩余", "说明"], o.balances.map(balanceRow))) : null,
+      section(
+        "渠道",
+        null,
+        table(
+          ["渠道", "状态", ""],
+          o.channels.map((c) =>
             h(
-              "table",
+              "tr",
               null,
-              h("thead", null, h("tr", null, h("th", null, "时间"), h("th", null, "聊天"), h("th", null, "情况"))),
-              h(
-                "tbody",
-                null,
-                o.problems.map((p) =>
-                  h(
-                    "tr",
-                    null,
-                    h("td", { class: "nowrap" }, fmtAgo(p.time)),
-                    h("td", null, h("a", { href: `#/chat/${encodeURIComponent(p.chat)}/events` }, p.chat)),
-                    h("td", null, pill(p.reason === "error" ? "bad" : "warn", REASONS[p.reason] ?? p.reason), ` 第 ${p.turn} 轮 `, h("span", { class: "muted" }, p.error ?? "")),
-                  ),
+              h("td", null, h("b", null, labels.get(c.name) ?? c.name)),
+              h("td", null, c.configured ? pill("ok", "已接入") : pill("mute", "未配置")),
+              h("td", { class: "num" }, h("a", { href: `#/config/${c.name}` }, c.configured ? "查看" : "去配置")),
+            ),
+          ),
+        ),
+      ),
+      section(
+        "最近 24 小时的问题",
+        o.problems.length ? `${o.problems.length} 个` : null,
+        o.problems.length
+          ? table(
+              ["时间", "聊天", "情况"],
+              o.problems.map((p) =>
+                h(
+                  "tr",
+                  null,
+                  h("td", null, ago(p.time)),
+                  h("td", null, h("a", { href: `#/chat/${encodeURIComponent(p.chat)}/events` }, p.chat)),
+                  h("td", { class: "wrap" }, pill(p.reason === "error" ? "bad" : "warn", REASONS[p.reason] ?? p.reason), ` 第 ${p.turn} 轮 `, h("span", { class: "muted" }, p.error ?? "")),
                 ),
               ),
-            ),
-          )
-        : h("p", { class: "muted" }, "没有。"),
+            )
+          : h("div", { class: "panel" }, empty("没有，一切正常。")),
+      ),
     );
   };
+  refresh.addEventListener("click", () => render().catch(() => {}));
   await render();
   return every(30_000, render);
 }

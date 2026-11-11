@@ -2,9 +2,8 @@
 // everything about it: its switch, which provider it uses and their settings, its own
 // settings, its tools and quota, and exactly what it gives the model.
 import { api } from "./api.js";
-import { fill, h, pill, toast } from "./dom.js";
-import { groupActions, loadSettings, settingsForm } from "./form.js";
-import { icon } from "./icons.js";
+import { fill, h, notice, pageHead, pill, section, switchButton, toast } from "./dom.js";
+import { focusSetting, groupActions, loadSettings, settingsForm } from "./form.js";
 
 /** On, off with the reason, or always on. */
 export function moduleState(m) {
@@ -14,65 +13,47 @@ export function moduleState(m) {
 }
 
 /** An optional module's switch: turning it off hides it from every chat (MODULE_<ID>). */
-function moduleSwitch(m, onChanged) {
-  const on = m.switch.on;
-  const btn = h(
-    "button",
-    {
-      type: "button",
-      class: `switch${on ? " on" : ""}`,
-      role: "switch",
-      "aria-checked": String(on),
-      "aria-label": `${m.label}模块开关`,
-      title: on ? "关掉后所有聊天都不提供这个模块" : "打开这个模块",
-      async onClick(e) {
-        e.stopPropagation();
-        btn.disabled = true;
-        try {
-          // Clearing the setting means on (its default).
-          await api.put("settings", { changes: { [m.switch.setting]: on ? "off" : null } });
-          toast(on ? `已关闭${m.label}` : `已打开${m.label}`);
-          await onChanged();
-        } catch (err) {
-          toast(err.message, "bad");
-          btn.disabled = false;
-        }
-      },
+const moduleSwitch = (m, onChanged) =>
+  switchButton({
+    on: m.switch.on,
+    label: `${m.label}模块开关`,
+    title: m.switch.on ? "关掉后所有聊天都不提供这个模块" : "打开这个模块",
+    async onToggle(next) {
+      // Clearing the setting means on (its default).
+      await api.put("settings", { changes: { [m.switch.setting]: next ? null : "off" } });
+      toast(next ? `已打开${m.label}` : `已关闭${m.label}`);
+      await onChanged();
     },
-    h("span", { class: "knob" }),
-  );
-  return h("span", { class: "switch-row" }, btn, h("span", { class: "small muted" }, on ? "开" : "关"));
-}
+  });
 
 // ── The list ──
 
-function card(m) {
+function moduleRow(m, reload) {
   const cap = m.capability;
   const selected = cap?.providers.find((p) => p.id === cap.selected);
+  const off = m.switch && !m.switch.on;
   return h(
     "div",
-    { class: "card" },
-    h("div", { class: "row between" }, h("h3", null, m.label, " ", moduleState(m)), h("a", { class: "btn btn-small", href: `#/modules/${m.id}` }, "配置")),
+    { class: "mod" },
+    h("div", { class: "mod-name" }, h("a", { href: `#/modules/${m.id}` }, m.label), moduleState(m), cap && selected ? h("span", { class: "faint small" }, `${cap.label}：${selected.label}`) : null),
     h("p", null, m.summary),
-    m.switch?.on && !m.ok && m.reason ? h("p", { class: "help" }, `未就绪：${m.reason}`) : null,
-    cap && selected ? h("p", { class: "help" }, `${cap.label}：${selected.label}`) : null,
+    !off && !m.ok && m.reason ? h("p", { class: "why" }, `未就绪：${m.reason}`) : null,
+    h("div", { class: "mod-end" }, m.switch ? moduleSwitch(m, reload) : null, h("a", { class: "btn btn-small", href: `#/modules/${m.id}` }, "配置")),
   );
 }
 
 async function renderList(main, app) {
   const modules = (await app.refreshStatus()).modules;
+  const reload = () => app.go("#/modules");
+  const optional = modules.filter((m) => !m.core);
   fill(
     main,
-    h(
-      "header",
-      { class: "page-head" },
-      h("h1", null, "模块"),
-      h("p", { class: "muted" }, "机器人的每样本事是一个模块：一组工具，加上告诉模型怎么用它们的一段说明。打开并配好的模块，它的工具和说明才会出现在发给模型的请求里；每个聊天还能在“设置与额度”里单独关掉。"),
-    ),
-    h("h2", null, "核心"),
-    h("div", { class: "module-grid" }, modules.filter((m) => m.core).map(card)),
-    h("h2", null, "可选"),
-    h("div", { class: "module-grid" }, modules.filter((m) => !m.core).map(card)),
+    pageHead({
+      title: "模块",
+      sub: "机器人的每样本事是一个模块：一组工具，加上告诉模型怎么用它们的一段说明。打开并配好的模块，它的工具和说明才会出现在发给模型的请求里；每个聊天还能在“设置与额度”里单独关掉。",
+    }),
+    section("核心", "少了它们机器人没法工作", h("div", { class: "panel" }, modules.filter((m) => m.core).map((m) => moduleRow(m, reload)))),
+    section("可选", `${optional.filter((m) => m.ok).length} / ${optional.length} 个已开启`, h("div", { class: "panel" }, optional.map((m) => moduleRow(m, reload)))),
   );
 }
 
@@ -105,32 +86,37 @@ function providers(m, index, status, reload) {
   const group = index.groups.find((g) => g.id === current.settings);
   const slot = h("p", { class: "check-result" });
   const form = settingsForm(index, index.keysOf(current.settings), { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) });
-  return h(
-    "section",
-    { class: "stack" },
-    h("h2", null, cap.label),
+  return section(
+    cap.label,
+    cap.providers.length > 1 ? `${cap.providers.length} 个实现可选` : null,
     h(
       "div",
-      { class: "field" },
-      h("label", { for: id }, "实现"),
-      select,
-      h("p", { class: "help" }, current.description, cap.stateful ? " 换实现后，原来实现里的数据不会跟过来。" : ""),
-      !current.available && current.reason ? h("p", { class: "field-error" }, current.reason) : null,
+      { class: "panel pad" },
+      h(
+        "div",
+        { class: "set" },
+        h(
+          "div",
+          { class: "set-row" },
+          h("div", { class: "about" }, h("label", { for: id }, "实现"), h("p", { class: "help" }, "选了立即切换，不用点保存。", cap.stateful ? "换实现后，原来实现里的数据不会跟过来。" : "")),
+          h("div", { class: "ctl" }, select, h("p", { class: "help" }, current.description), !current.available && current.reason ? h("p", { class: "field-error" }, current.reason) : null),
+        ),
+      ),
+      form.el,
+      slot,
     ),
-    form.el,
-    slot,
   );
 }
 
 /** What the module gives the model, loaded when opened. */
 function modelView(m) {
   const body = h("div", { class: "stack" });
-  const el = h("details", { class: "manual" }, h("summary", null, "看它给模型的说明和工具定义"), body);
+  const el = h("details", { class: "more" }, h("summary", null, "看它给模型的说明和工具定义"), body);
   let loaded = false;
   el.addEventListener("toggle", async () => {
     if (!el.open || loaded) return;
     loaded = true;
-    fill(body, h("p", { class: "muted" }, "加载中…"));
+    fill(body, h("p", { class: "faint" }, "加载中…"));
     try {
       const d = await api.get(`modules/${m.id}`);
       if (!d.ok) return fill(body, h("p", { class: "muted" }, "模块没开启，模型看不到它。"));
@@ -141,61 +127,71 @@ function modelView(m) {
       fill(
         body,
         sections.length
-          ? sections.map((s) => [h("h3", null, `系统提示里的段落${where[s.chatType]}`), h("pre", { class: "sql prompt-text" }, s.text)])
+          ? sections.map((s) => [h("h3", null, `系统提示里的段落${where[s.chatType]}`), h("pre", { class: "code text" }, s.text)])
           : h("p", { class: "muted" }, "它不往系统提示里加内容，工具定义自己说明用法。"),
         h("h3", null, `工具定义（${d.definitions.length} 个）`),
-        d.definitions.map((t) => h("pre", { class: "sql prompt-text code" }, JSON.stringify(t, null, 2))),
+        d.definitions.map((t) => h("pre", { class: "code wrap" }, JSON.stringify(t, null, 2))),
       );
     } catch (err) {
+      loaded = false;
       fill(body, h("p", { class: "field-error" }, err.message));
     }
   });
   return el;
 }
 
-async function renderModule(main, id, app) {
+async function renderModule(main, id, focus, app) {
   const [status, index] = [await app.refreshStatus(), await loadSettings()];
   const m = status.modules.find((x) => x.id === id);
-  if (!m) return fill(main, h("p", null, "没有这个模块。", h("a", { href: "#/modules" }, "回到模块列表")));
+  if (!m) return fill(main, notice("warn", "没有这个模块。", h("a", { class: "btn btn-small", href: "#/modules" }, "回到模块列表")));
   const byId = new Map(status.modules.map((x) => [x.id, x]));
-  const reload = () => app.go(`#/modules/${m.id}`);
+  const page = `#/modules/${m.id}`;
+  const reload = () => app.go(page);
 
   // The module's own settings, less the switch and the provider choice (they have their own controls).
   const group = m.settings ? index.groups.find((g) => g.id === m.settings) : undefined;
   const ownKeys = group ? index.keysOf(group.id).filter((k) => k !== m.switch?.setting && k !== m.capability?.setting) : [];
   const slot = h("p", { class: "check-result" });
   const own = ownKeys.length ? settingsForm(index, ownKeys, { onSaved: reload, actions: (f) => groupActions(index, group, status, f, slot) }) : null;
+  const off = m.switch && !m.switch.on;
 
   fill(
     main,
-    h(
-      "header",
-      { class: "page-head" },
-      h("p", null, h("a", { href: "#/modules" }, icon("back", 14), "模块")),
-      h("div", { class: "row between" }, h("h1", null, m.label, " ", moduleState(m)), m.switch ? moduleSwitch(m, reload) : null),
-      h("p", { class: "muted" }, m.summary),
-      m.switch?.on && !m.ok && m.reason ? h("p", { class: "help" }, `未就绪：${m.reason}`) : null,
-    ),
+    pageHead({
+      crumb: ["#/modules", "模块"],
+      title: [m.label, moduleState(m)],
+      sub: m.summary,
+      actions: m.switch ? h("label", { class: "switch-row" }, h("span", null, m.switch.on ? "已打开" : "已关闭"), moduleSwitch(m, reload)) : null,
+    }),
+    !off && !m.ok && m.reason ? notice("warn", `未就绪：${m.reason}`) : null,
     m.capability ? providers(m, index, status, reload) : null,
-    own
-      ? h("section", { class: "stack" }, h("h2", null, m.capability ? "模块设置" : "设置"), group.help ? h("p", { class: "muted" }, group.help) : null, own.el, slot)
-      : null,
-    h(
-      "section",
-      { class: "stack" },
-      h("h2", null, "工具"),
+    own ? section(m.capability ? "模块设置" : "设置", null, h("div", { class: "panel pad" }, group.help ? h("p", { class: "muted" }, group.help) : null, own.el, slot)) : null,
+    section(
+      "工具",
+      `${m.tools.filter((t) => t.offered).length} / ${m.tools.length} 个模型现在能用`,
       h(
         "div",
-        { class: "row" },
-        m.tools.map((t) => h("code", { class: "copy-value", title: t.offered ? "模型现在能用" : "模型现在用不了" }, t.offered ? t.name : `${t.name}（未提供）`)),
+        { class: "panel pad" },
+        h("div", { class: "tools" }, m.tools.map((t) => h("code", { class: `tag${t.offered ? "" : " off"}`, title: t.offered ? "模型现在能用" : "模型现在用不了" }, t.name))),
+        m.requires.length ? h("p", { class: "help" }, `需要：${m.requires.map((r) => byId.get(r)?.label ?? r).join("、")}`) : null,
+        m.meter ? h("p", { class: "help" }, `每个聊天可以在“设置与额度”里设每日额度：${m.meter.label}`) : null,
+        modelView(m),
       ),
-      m.requires.length ? h("p", { class: "help" }, `需要：${m.requires.map((r) => byId.get(r)?.label ?? r).join("、")}`) : null,
-      m.meter ? h("p", { class: "help" }, `每个聊天可以在“设置与额度”里设每日额度：${m.meter.label}`) : null,
-      modelView(m),
     ),
   );
+
+  if (focus) {
+    // Once the page is on screen: bring the setting the address names into view, then drop it from the address.
+    setTimeout(() => {
+      if (!focusSetting(focus)) {
+        const from = index.groups.find((g) => g.id === index.defs.get(focus)?.group);
+        if (from?.provider) toast(`这一项属于“${from.label}”，先在“实现”里切换到它`);
+      }
+      app.settle(page);
+    }, 0);
+  }
 }
 
-export async function renderModules(main, [id], app) {
-  return id ? renderModule(main, id, app) : renderList(main, app);
+export async function renderModules(main, [id, focus], app) {
+  return id ? renderModule(main, id, focus, app) : renderList(main, app);
 }

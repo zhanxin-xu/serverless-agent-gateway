@@ -1,6 +1,7 @@
 // One chat (#/chat/<chat>/<tab>): its history with the composer, its event log, and its settings.
 import { api, ApiError } from "./api.js";
-import { action, confirmAction, every, fill, fmtClock, fmtTime, fmtTokens, fmtUsd, h, pill, toast } from "./dom.js";
+import { action, confirmAction, copy, empty, every, fill, fmtClock, fmtDay, fmtHm, fmtTokens, fmtUsd, h, pill, section, switchButton, tabs, toast } from "./dom.js";
+import { pending } from "./form.js";
 import { icon } from "./icons.js";
 import { chatKind, chatName, modePill, speakersText } from "./labels.js";
 
@@ -16,26 +17,26 @@ export async function renderChat(main, [chat, tabId], app) {
   BOT = app.botName;
   const info = await api.get("chat", { chat });
   const tab = TABS.some(([id]) => id === tabId) ? tabId : "history";
-  const body = h("div", { class: `tab-body tab-${tab}` });
+  const href = (id) => `#/chat/${encodeURIComponent(chat)}/${id}`;
+  const body = h("div", { class: `tab-body tab-${tab}`, "data-scroll": tab === "settings" ? "" : null });
   const speakers = info.chatType === "group" ? speakersText(info) : "";
   const metaLine = [chatKind(info), chat, info.turn ? `第 ${info.turn} 轮` : "", speakers ? `最近：${speakers}` : ""].filter(Boolean).join(" · ");
-  // The page doesn't scroll: the header stays, and the tab's own list takes the rest of the height.
+  // The page doesn't scroll: the header and the tabs stay, and the tab's own list takes the rest of the height.
   main.classList.add("fill");
   fill(
     main,
-    // One thin bar: who this is on the left, the tabs on the right. The list below is the only thing that scrolls.
     h(
       "header",
       { class: "chat-head" },
-      h("a", { href: "#/chats", class: "back", title: "返回聊天列表", "aria-label": "返回聊天列表" }, icon("back", 18)),
+      h("a", { href: "#/chats", class: "icon-btn", title: "返回聊天列表", "aria-label": "返回聊天列表" }, icon("back", 18)),
       h(
         "div",
         { class: "chat-id" },
         h("div", { class: "chat-title" }, h("h1", null, chatName(info)), modePill(info), info.locked ? pill("info", "运行中") : null),
         h("p", { class: "chat-meta", title: metaLine }, metaLine),
       ),
-      h("nav", { class: "seg chat-tabs" }, TABS.map(([id, label]) => h("a", { href: `#/chat/${encodeURIComponent(chat)}/${id}`, class: id === tab ? "on" : "" }, label))),
     ),
+    tabs(TABS.map(([id, label]) => [href(id), label]), href(tab)),
     body,
   );
   if (tab === "events") return renderEvents(body, chat, info);
@@ -45,13 +46,35 @@ export async function renderChat(main, [chat, tabId], app) {
 
 // ── History and the composer ──
 
-function bubble(e) {
+/** Messages from the same sender within a few minutes read as one run: the name shows once. */
+const RUN_MS = 5 * 60_000;
+
+function bubble(e, prev) {
   if (e.role === "hint") {
-    return h("div", { class: "msg hint" }, h("span", { class: "who" }, `管理员悄悄话 · ${fmtTime(e.time)}`), h("div", { class: "b" }, e.text));
+    return h("div", { class: "msg hint" }, h("span", { class: "who" }, `管理员悄悄话 · ${fmtHm(e.time)}`), h("div", { class: "b" }, e.text));
   }
   const mine = e.role === "bot" || e.role === "admin";
   const who = e.role === "admin" ? `${BOT}（管理员代发）` : mine ? BOT : (e.sender ?? "?");
-  return h("div", { class: `msg${mine ? " bot" : ""}${e.role === "admin" ? " admin" : ""}` }, h("span", { class: "who" }, `${who} · ${fmtTime(e.time)}`), h("div", { class: "b" }, e.text));
+  const cont = prev && prev.role === e.role && prev.sender === e.sender && e.time - prev.time < RUN_MS;
+  return h(
+    "div",
+    { class: `msg${mine ? " bot" : ""}${e.role === "admin" ? " admin" : ""}${cont ? " cont" : ""}`, title: new Date(e.time).toLocaleString("zh-CN") },
+    h("span", { class: "who" }, h("b", null, who), ` ${fmtHm(e.time)}`),
+    h("div", { class: "b" }, e.text),
+  );
+}
+
+/** The messages oldest first, with a line where the day changes. */
+function thread(sorted) {
+  const out = [];
+  let prev;
+  for (const e of sorted) {
+    const newDay = !prev || new Date(prev.time).toDateString() !== new Date(e.time).toDateString();
+    if (newDay) out.push(h("div", { class: "day" }, fmtDay(e.time)));
+    out.push(bubble(e, newDay ? undefined : prev));
+    prev = e;
+  }
+  return out;
 }
 
 function renderHistory(body, chat, info) {
@@ -63,7 +86,7 @@ function renderHistory(body, chat, info) {
 
   const draw = (stick) => {
     const sorted = [...entries.values()].sort((a, b) => a.seq - b.seq);
-    fill(list, moreRow, sorted.length ? sorted.map(bubble) : h("p", { class: "muted" }, "还没有消息。"));
+    fill(list, moreRow, sorted.length ? thread(sorted) : empty("还没有消息。"));
     if (stick) list.scrollTop = list.scrollHeight;
   };
   // The newest event read so far: polling asks only for what's after it.
@@ -73,6 +96,7 @@ function renderHistory(body, chat, info) {
     through = Math.max(through, page.through);
     return page;
   };
+  more.hidden = true;
   more.addEventListener("click", async () => {
     const oldest = Math.min(...[...entries.values()].map((e) => e.seq));
     const height = list.scrollHeight;
@@ -89,10 +113,13 @@ function renderHistory(body, chat, info) {
     add(await api.get("chat/history", { chat, after: through }));
     if (entries.size !== before || stick) draw(stick || wasNear);
   };
-  api.get("chat/history", { chat, limit: 100 }).then((page) => {
-    more.hidden = !add(page).more;
-    draw(true);
-  });
+  api
+    .get("chat/history", { chat, limit: 100 })
+    .then((page) => {
+      more.hidden = !add(page).more;
+      draw(true);
+    })
+    .catch((err) => fill(list, empty(`加载失败：${err.message}`)));
   const stops = [every(4000, () => refresh(false)), composer.stop];
   return () => stops.forEach((s) => s());
 }
@@ -101,18 +128,19 @@ function renderComposer(chat, info, onSent) {
   let mode = "say";
   // A switched-off, record-only or blocked chat never answers, so there's no one to whisper to.
   const canWhisper = info.enabled && (info.mode === "normal" || info.mode === "mention");
-  const text = h("textarea", { id: "compose", rows: 2, placeholder: `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` });
+  const placeholder = () => (mode === "say" ? `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` : "告诉她要说什么、怎么说…");
+  const text = h("textarea", { id: "compose", rows: 2, placeholder: placeholder(), "aria-label": "消息" });
   const windowLine = h("span", { class: "window" });
   let state = info.replyWindow;
 
   const hint = () =>
     mode === "say"
       ? "原样发出去，记进她的上下文，她会以为是自己说的。"
-      : `写给她的指示（群里看不到），比如“提醒大家今晚 8 点开会”，她会用自己的口气说。`;
-  const help = h("p", { class: "help" }, hint());
+      : "写给她的指示（群里看不到），比如“提醒大家今晚 8 点开会”，她会用自己的口气说。";
+  const help = h("span", { class: "help" }, hint());
   const seg = h(
     "span",
-    { class: "seg", role: "group" },
+    { class: "seg", role: "group", "aria-label": "怎么发" },
     [["say", "直接发出"], ["whisper", "让她自己说"]].map(([value, label]) =>
       h("button", {
         type: "button",
@@ -122,65 +150,69 @@ function renderComposer(chat, info, onSent) {
         onClick(e) {
           mode = value;
           for (const b of seg.children) b.classList.toggle("on", b === e.currentTarget);
-          text.placeholder = mode === "say" ? `以${BOT}的身份说点什么…  @#XXXXXX 可以 @ 群友` : "告诉她要说什么、怎么说…";
+          text.placeholder = placeholder();
           help.textContent = hint();
+          text.focus();
         },
       }, label),
     ),
   );
-  const send = action("发送", async () => {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  let sending = false;
+  const send = action(["发送 ", h("span", { class: "small" }, mac ? "⌘↵" : "Ctrl ↵")], async () => {
     if (!text.value.trim()) return;
+    sending = true;
     try {
       if (mode === "say") await api.post("chat/say", { chat, text: text.value });
       else await api.post("chat/whisper", { chat, text: text.value });
+      text.value = "";
+      toast(mode === "say" ? "已发送" : "已告诉她，等她回复");
+      await pollWindow();
+      onSent();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) await pollWindow();
+      if (err instanceof ApiError && err.status === 409) await pollWindow().catch(() => {});
       throw err;
+    } finally {
+      sending = false;
+      // After action() has enabled the button again, it follows the reply window.
+      setTimeout(tick, 0);
     }
-    text.value = "";
-    toast(mode === "say" ? "已发送" : "已告诉她，等她回复");
-    await pollWindow();
-    onSent();
   }, { primary: true });
+  text.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !send.disabled) {
+      e.preventDefault();
+      send.click();
+    }
+  });
 
+  /** Whether a message can go out now, and how (the channel's reply window); the button follows. */
+  let sendable = true;
   const drawWindow = () => {
-    if (!info.canSend) {
-      fill(windowLine, pill("mute", "这个渠道不能主动发消息"));
-      send.disabled = true;
-      return;
-    }
-    if (!state?.open) {
-      fill(windowLine, pill("warn", "现在发不出去"), " ", h("span", { class: "muted" }, state?.reason ?? ""));
-      send.disabled = true;
-      return;
-    }
-    send.disabled = false;
+    sendable = false;
+    if (!info.canSend) return fill(windowLine, pill("mute", "这个渠道不能主动发消息"));
+    if (!state?.open) return fill(windowLine, pill("warn", "现在发不出去"), " ", state?.reason ?? "");
+    sendable = true;
     const left = state.closesAt ? Math.max(0, Math.floor((state.closesAt - Date.now()) / 1000)) : null;
-    if (state.push) {
-      // Past the reply window: it goes to the chat as a message of its own, if the chat allows that.
-      fill(windowLine, pill("info", "作为主动消息发出"), " ", h("span", { class: "muted" }, `回复窗口已过 · 还能发 ${state.max - state.replies} 条`));
-      return;
-    }
+    // Past the reply window: it goes to the chat as a message of its own, if the chat allows that.
+    if (state.push) return fill(windowLine, pill("info", "作为主动消息发出"), ` 回复窗口已过 · 还能发 ${state.max - state.replies} 条`);
     fill(
       windowLine,
       pill("info", `挂在第 ${state.seq} 条（${state.sender}）上`),
-      " ",
-      h("span", { class: "muted" }, `${left !== null ? `窗口剩 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} · ` : ""}还能发 ${state.max - state.replies} 条`),
+      ` ${left !== null ? `窗口剩 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} · ` : ""}还能发 ${state.max - state.replies} 条`,
     );
+  };
+  const tick = () => {
+    drawWindow();
+    // While a send is under way the button stays as action() left it: disabled.
+    if (!sending) send.disabled = !sendable;
   };
   const pollWindow = async () => {
     state = await api.get("chat/reply-window", { chat });
-    drawWindow();
+    tick();
   };
-  drawWindow();
-  const stops = [every(1000, drawWindow), every(10_000, pollWindow)];
-  const el = h(
-    "div",
-    { class: "composer" },
-    h("div", { class: "row between" }, seg, windowLine),
-    text,
-    h("div", { class: "row between" }, help, send),
-  );
+  tick();
+  const stops = [every(1000, tick), every(10_000, pollWindow)];
+  const el = h("div", { class: "composer" }, h("div", { class: "row between" }, seg, windowLine), text, h("div", { class: "row between" }, help, send));
   return { el, stop: () => stops.forEach((s) => s()) };
 }
 
@@ -243,7 +275,7 @@ function summarize(e) {
       return h("span", { class: "muted" }, d.text);
     case "assistant/message": {
       const u = d.message?.usage;
-      return [messageSummary(d.message), u ? h("span", { class: "muted" }, usageLine(u)) : null];
+      return [messageSummary(d.message), u ? h("span", { class: "faint" }, usageLine(u)) : null];
     }
     case "assistant/attempt":
       return [pill("bad", "调用失败"), ` ${d.error}`];
@@ -264,7 +296,9 @@ function summarize(e) {
   }
 }
 
-/** Events of one turn (or loose messages between turns), newest group first. */
+/** The dot before an event's type: who wrote it. */
+const typeKind = (e) => (e.type === "assistant/attempt" ? "bad" : e.type.split("/")[0]);
+
 /**
  * The events in the order the model reads them, oldest first: the compaction
  * summary first; what arrived while a step ran right after that step (the
@@ -335,49 +369,57 @@ function turnHeader(group) {
     "div",
     { class: "turn-head" },
     h("b", null, `第 ${turn} 轮`),
-    start ? ` · ${start.data.trigger === "direct" ? "被叫" : "旁观"}` : "",
-    ` · ${steps} 步 · 输入 ${fmtTokens(input)}（缓存 ${fmtTokens(cached)}）输出 ${fmtTokens(output)}`,
-    cost ? ` · ${fmtUsd(cost)}` : "",
+    start ? h("span", null, start.data.trigger === "direct" ? "被叫" : "旁观") : null,
+    h("span", null, `${steps} 步`),
+    h("span", null, `输入 ${fmtTokens(input)}（缓存 ${fmtTokens(cached)}）· 输出 ${fmtTokens(output)}`),
+    cost ? h("span", null, fmtUsd(cost)) : null,
     // Who the turn's model calls were for, as the provider saw them (a warning names them by it).
-    endUsers.length ? h("span", { class: "muted" }, ` · 安全标识 ${endUsers.join("、")}`) : "",
-    " ",
-    end ? pill(...(REASONS[end.data.reason] ?? ["mute", end.data.reason])) : pill("info", "进行中"),
+    endUsers.length ? h("span", { class: "faint", title: "发给模型服务的用户标识（安全标识）" }, `标识 ${endUsers.join("、")}`) : null,
+    h("span", { class: "end" }, end ? pill(...(REASONS[end.data.reason] ?? ["mute", end.data.reason])) : pill("info", "进行中")),
   );
 }
 
 function eventRow(e) {
-  const json = h("pre", { class: "json", hidden: true }, JSON.stringify(e, null, 2));
+  // The JSON is built when the row is first opened: a long log has thousands of lines of it.
+  const detail = h("div", { class: "json-wrap", hidden: true });
   const row = h(
     "div",
     { class: "ev", tabindex: "0", role: "button", "aria-expanded": "false" },
     h("span", { class: "seq" }, e.seq),
     h("span", { class: "time" }, fmtClock(e.time)),
-    h("span", { class: "type" }, e.type),
-    h(
-      "span",
-      { class: "what" },
-      summarize(e),
-      e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "muted small" }, " · 处理中途收到") : null,
-    ),
+    h("span", { class: `type ${typeKind(e)}` }, e.type),
+    h("span", { class: "what" }, summarize(e), e.readAfter !== undefined || e.readAfterStep ? h("span", { class: "faint small" }, " · 处理中途收到") : null),
   );
   const toggle = () => {
-    json.hidden = !json.hidden;
-    row.setAttribute("aria-expanded", String(!json.hidden));
+    if (!detail.firstChild) {
+      const text = JSON.stringify(e, null, 2);
+      const pre = h("pre", { class: "json" }, text);
+      detail.append(h("button", { type: "button", class: "btn btn-small", onClick: () => copy(text, pre) }, "复制"), pre);
+    }
+    detail.hidden = !detail.hidden;
+    row.setAttribute("aria-expanded", String(!detail.hidden));
   };
-  row.addEventListener("click", toggle);
+  row.addEventListener("click", () => getSelection()?.isCollapsed !== false && toggle());
   row.addEventListener("keydown", (ev) => (ev.key === "Enter" || ev.key === " ") && (ev.preventDefault(), toggle()));
-  return h("div", null, row, json);
+  return h("div", null, row, detail);
 }
 
 function renderEvents(body, chat, info) {
   const events = new Map();
   let session = null;
   // Oldest at the top, newest at the bottom, like a chat: scroll up for earlier turns.
-  const list = h("div", { class: "events events-log" });
+  const list = h("div", { class: "events-log" });
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 80;
-  const meta = h("span", { class: "muted" });
+  const meta = h("span");
   const more = h("button", { type: "button", class: "btn btn-small" }, "加载更早的");
   const moreRow = h("div", { class: "more-row" }, more);
+  // A row that's open stays open across redraws (the list is rebuilt every few seconds).
+  const rows = new Map();
+  const rowOf = (e) => {
+    const key = `${e.seq}:${e.readAfter ?? ""}:${e.readAfterStep ?? ""}`;
+    if (!rows.has(key)) rows.set(key, eventRow(e));
+    return rows.get(key);
+  };
 
   /** Redraw; `keep`: "bottom" to follow new events, "top-anchor" to keep the view when older ones are added above. */
   const draw = (keep = nearBottom() ? "bottom" : "stay") => {
@@ -389,9 +431,7 @@ function renderEvents(body, chat, info) {
     fill(
       list,
       moreRow,
-      groups.length
-        ? groups.map((g) => (g.lines.length ? h("section", { class: "turn" }, turnHeader(g), g.lines.map(eventRow)) : null))
-        : h("p", { class: "muted" }, "没有事件。"),
+      groups.length ? groups.map((g) => (g.lines.length ? h("section", { class: "turn" }, turnHeader(g), g.lines.map(rowOf)) : null)) : empty("没有事件。"),
     );
     if (keep === "bottom") list.scrollTop = list.scrollHeight;
     else if (keep === "top-anchor") list.scrollTop = list.scrollHeight - fromBottom;
@@ -426,10 +466,10 @@ function renderEvents(body, chat, info) {
       "div",
       { class: "toolbar" },
       h(
-        "p",
-        { class: "toolbar-text" },
+        "span",
+        null,
         meta,
-        h("span", { class: "help", title: "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组。最新的在下面，往上翻看更早的。点一行看原始 JSON，每 3 秒刷新。" }, "按模型读的顺序，每轮一组，点一行看 JSON"),
+        h("span", { class: "faint", title: "只列模型读到和写出的内容，按它读的顺序；每次 end_turn（或一轮结束）为一组。最新的在下面，往上翻看更早的。每 3 秒刷新。" }, " · 按模型读的顺序，每轮一组；点一行看原始 JSON"),
       ),
       h(
         "span",
@@ -442,6 +482,7 @@ function renderEvents(body, chat, info) {
           await api.post("chat/reset", { chat });
           toast("已重置");
           events.clear();
+          rows.clear();
           await load();
           draw();
         }),
@@ -449,7 +490,9 @@ function renderEvents(body, chat, info) {
     ),
     list,
   );
-  load().then(() => draw("bottom"));
+  load()
+    .then(() => draw("bottom"))
+    .catch((err) => fill(list, empty(`加载失败：${err.message}`)));
   return every(3000, async () => {
     if ((await load({ after: pollFrom() })) > 0) draw();
   });
@@ -460,6 +503,14 @@ function renderEvents(body, chat, info) {
 /** How today's count of a quota reads: dollars for cost, a number for the rest. */
 const showCount = (key, n) => (key === "cost_usd" ? fmtUsd(n) : String(n));
 
+/** What each reply mode does, under the choice (the labels come from the server). */
+const MODE_HELP = {
+  normal: "被 @ 必回，平时偶尔插话。",
+  mention: "只在被 @ 时回，不插话。",
+  record: "一律不回，消息留作以后的上下文。",
+  block: "不回，连记录都不存。",
+};
+
 function renderSettings(body, chat, info, app) {
   const p = info.profile ?? {};
   const { modes, features, quotas: quotaChoices } = info.choices;
@@ -467,10 +518,26 @@ function renderSettings(body, chat, info, app) {
   const today = info.usageByDay.at(-1)?.day === new Date().toISOString().slice(0, 10) ? info.usageByDay.at(-1).counts : {};
   const errors = {};
   const errorSlot = (key) => (errors[key] = h("p", { class: "field-error", hidden: true }));
-  const field = (id, label, input, help, key = id) =>
-    h("div", { class: "field" }, h("label", { for: `profile-${id}` }, label), input, help ? h("p", { class: "help" }, help) : null, errorSlot(key));
+  /** A row like the settings forms': what it is on the left, the control on the right. */
+  const row = (id, label, help, control, key = id) =>
+    h("div", { class: "set-row" }, h("div", { class: "about" }, h(id ? "label" : "span", id ? { for: `profile-${id}` } : { class: "label" }, label), help ? h("p", { class: "help" }, help) : null), h("div", { class: "ctl" }, control, errorSlot(key)));
 
-  const enabled = h("input", { id: "profile-enabled", type: "checkbox", checked: p.enabled !== false });
+  let enabledNow = p.enabled !== false;
+  const enabledText = h("span");
+  const enabled = switchButton({
+    on: enabledNow,
+    label: "处理这个聊天的消息",
+    // Not saved by the click: it's one of the form's fields, sent with "保存".
+    onToggle() {
+      enabledNow = !enabledNow;
+      enabled.classList.toggle("on", enabledNow);
+      enabled.setAttribute("aria-checked", String(enabledNow));
+      drawEnabled();
+      changed();
+    },
+  });
+  const drawEnabled = () => (enabledText.textContent = enabledNow ? "在处理" : "已关闭：消息一律跳过");
+  drawEnabled();
   const title = h("input", { id: "profile-title", type: "text", value: p.title ?? "", maxlength: 60, placeholder: "比如：技术交流群" });
   const mode = h(
     "select",
@@ -478,6 +545,10 @@ function renderSettings(body, chat, info, app) {
     h("option", { value: "", selected: !p.mode }, `跟随默认（${labelOf(info.defaults.mode)}）`),
     modes.map((o) => h("option", { value: o.value, selected: p.mode === o.value }, o.label)),
   );
+  const modeHelp = h("p", { class: "help" });
+  const drawModeHelp = () => (modeHelp.textContent = MODE_HELP[mode.value || info.defaults.mode] ?? "");
+  drawModeHelp();
+  mode.addEventListener("change", drawModeHelp);
   const interval = h("input", { id: "profile-interval", type: "text", inputmode: "numeric", value: p.ambientIntervalSeconds ?? "", placeholder: `默认 ${info.defaults.ambientIntervalSeconds}` });
   const disabled = new Set(p.disabledModules ?? []);
   const tools = features.map(({ value: id, label }) => {
@@ -487,23 +558,35 @@ function renderSettings(body, chat, info, app) {
   const prompt = h("textarea", { id: "profile-prompt", rows: 4, maxlength: 2000, placeholder: "比如：这是一个研究海洋生物的群，说话可以更学术一点。" });
   prompt.value = p.prompt ?? "";
   const quotas = quotaChoices.map(({ value: key, label }) => {
-    const input = h("input", { id: `profile-quota-${key}`, type: "text", inputmode: "decimal", value: p.quota?.[key] ?? "", placeholder: "不限" });
-    return { key, input, row: h("tr", null, h("td", null, h("label", { for: `profile-quota-${key}` }, label)), h("td", { class: "num" }, showCount(key, today[key] ?? 0)), h("td", null, input), h("td", null, errorSlot(`quota.${key}`))) };
+    const input = h("input", { id: `profile-quota-${key}`, type: "text", inputmode: "decimal", value: p.quota?.[key] ?? "", placeholder: "不限", "aria-label": `${label}上限` });
+    return { key, input, row: h("tr", null, h("td", null, h("label", { for: `profile-quota-${key}` }, label)), h("td", { class: "num" }, showCount(key, today[key] ?? 0)), h("td", null, input, errorSlot(`quota.${key}`))) };
   });
 
-  const save = action("保存", async () => {
+  /** The profile as the form has it now; what's sent, and what "changed" compares. */
+  const read = () => ({
+    title: title.value,
+    enabled: enabledNow,
+    mode: mode.value || null,
+    ambientIntervalSeconds: interval.value.trim() || null,
+    disabledModules: tools.filter((t) => !t.box.checked).map((t) => t.id),
+    prompt: prompt.value,
+    quota: Object.fromEntries(quotas.map((q) => [q.key, q.input.value.trim() || null])),
+  });
+  const flat = (profile) => ({ ...profile, quota: undefined, ...Object.fromEntries(Object.entries(profile.quota).map(([k, v]) => [`quota.${k}`, v])) });
+  const initial = flat(read());
+  const count = () => Object.entries(flat(read())).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(initial[k])).length;
+  const state = h("span", { class: "state" });
+  const bar = h("div", { class: "savebar" });
+  const changed = () => {
+    const n = count();
+    bar.classList.toggle("dirty", n > 0);
+    fill(state, n ? [`${n} 项改动没保存 `, h("button", { type: "button", class: "link", onClick: () => app.go(`#/chat/${encodeURIComponent(chat)}/settings`) }, "撤销")] : "");
+  };
+
+  const send = async () => {
     for (const slot of Object.values(errors)) slot.hidden = true;
-    const profile = {
-      title: title.value,
-      enabled: enabled.checked,
-      mode: mode.value || null,
-      ambientIntervalSeconds: interval.value.trim() || null,
-      disabledModules: tools.filter((t) => !t.box.checked).map((t) => t.id),
-      prompt: prompt.value,
-      quota: Object.fromEntries(quotas.map((q) => [q.key, q.input.value.trim() || null])),
-    };
     try {
-      await api.put("chat/profile", { chat, profile });
+      await api.put("chat/profile", { chat, profile: read() });
     } catch (err) {
       if (err instanceof ApiError) {
         for (const [key, message] of Object.entries(err.fields)) {
@@ -514,76 +597,92 @@ function renderSettings(body, chat, info, app) {
       throw err;
     }
     toast("已保存，30 秒内生效");
+  };
+  const save = action("保存", async () => {
+    if (!count()) return toast("没有改动");
+    await send();
+    pending.clear();
     app.go(`#/chat/${encodeURIComponent(chat)}/settings`);
   }, { primary: true });
+  pending.add({ count, save: send, click: () => save.click() });
 
   const maxCost = Math.max(0.0001, ...info.usageByDay.map((d) => d.counts.cost_usd ?? 0));
+  const form = h(
+    "form",
+    { class: "set", onSubmit: (e) => e.preventDefault(), onInput: changed, onChange: changed },
+    h(
+      "div",
+      { class: "set-row" },
+      h("div", { class: "about" }, h("span", { class: "label" }, "处理这个聊天的消息"), h("p", { class: "help" }, "关掉后，这个聊天发来的消息一律跳过：不记录、不回复。下面的回复方式保留，重新打开后照旧。")),
+      h("div", { class: "ctl" }, h("label", { class: "switch-row" }, enabled, enabledText), errorSlot("enabled")),
+    ),
+    row("title", "备注名", "平台不提供群名时，起个好认的名字。", title),
+    row("mode", "回复方式", null, [mode, modeHelp]),
+    row("interval", "插话频率（秒）", "群里没 @ 的消息，每这么多秒最多给她看一次。0 = 不插话。", interval),
+    row(null, "能用的模块", "关掉的模块，它的工具和说明都不会出现在这个聊天发给模型的请求里。没配置好的模块本来就不会出现，见“模块”页。", h("div", { class: "checks" }, tools.map((t) => t.el)), "disabledModules"),
+    row("prompt", "额外设定", "加在系统提示后面，只对这个聊天生效。", prompt),
+    bar,
+  );
+  fill(bar, save, h("span", { class: "spacer" }), state);
+  changed();
+
   fill(
     body,
     h(
       "div",
-      { class: "two-col" },
+      { class: "chat-settings" },
+      h("div", { class: "stack" }, form, promptPreview(chat)),
       h(
         "div",
         { class: "stack" },
-        h(
-          "div",
-          { class: "field" },
-          h("label", { class: "check", for: "profile-enabled" }, enabled, "处理这个聊天的消息"),
-          h("p", { class: "help" }, "关掉后，这个聊天发来的消息一律跳过：不记录、不回复，下面的回复方式保留，重新打开后照旧。"),
-          errorSlot("enabled"),
+        section(
+          "每日额度",
+          "北京时间 08:00 重置",
+          h(
+            "div",
+            { class: "table-wrap quota" },
+            h("table", { onInput: changed }, h("thead", null, h("tr", null, h("th", null, "项目"), h("th", { class: "num" }, "今日"), h("th", null, "上限"))), h("tbody", null, quotas.map((q) => q.row))),
+          ),
+          h("p", { class: "help" }, "模型花费用完后：被 @ 时回一句“今天的额度用完了”，平时不插话。其他额度用完时只是那个模块的工具不能用，她会自己说明。改了上限也要点左边的“保存”。"),
         ),
-        field("title", "备注名", title, "平台不提供群名时，起个好认的名字。"),
-        field("mode", "回复方式", mode, "正常：被 @ 必回，平时偶尔插话。只回 @：不插话。只记录：一律不回，消息留作上下文。屏蔽：连记录都不存。"),
-        field("interval", "插话频率（秒）", interval, "群里没 @ 的消息，每这么多秒最多给她看一次。0 = 不插话。"),
-        h(
-          "div",
-          { class: "field" },
-          h("span", { class: "label" }, "能用的模块"),
-          h("div", { class: "row" }, tools.map((t) => t.el)),
-          h("p", { class: "help" }, "关掉的模块，它的工具和说明都不会出现在这个聊天发给模型的请求里。没配置好的模块本来就不会出现，见“模块”页。"),
-          errorSlot("disabledModules"),
-        ),
-        field("prompt", "这个聊天的额外设定", prompt, "加在系统提示后面，只对这个聊天生效。"),
-      ),
-      h(
-        "div",
-        { class: "stack" },
-        h("h3", null, "每日额度", h("span", { class: "muted small" }, " 北京时间 08:00 重置")),
-        h("div", { class: "table-wrap" }, h("table", null, h("thead", null, h("tr", null, h("th", null, "项目"), h("th", { class: "num" }, "今日"), h("th", null, "上限"), h("th", null, ""))), h("tbody", null, quotas.map((q) => q.row)))),
-        h("p", { class: "help" }, "模型花费用完后：被 @ 时回一句“今天的额度用完了”，平时不插话。其他额度用完时只是那个模块的工具不能用，她会自己说明。"),
-        h("h3", null, "近 7 天模型花费"),
-        h(
-          "div",
-          { class: "bars" },
-          info.usageByDay.map((d) =>
-            h("div", { class: "bar-col", title: `${d.day}：${fmtUsd(d.counts.cost_usd ?? 0)}，${d.counts.turns ?? 0} 轮` }, h("i", { style: `height:${Math.max(2, ((d.counts.cost_usd ?? 0) / maxCost) * 100)}%` }), h("span", null, d.day.slice(5))),
+        section(
+          "近 7 天模型花费",
+          null,
+          h(
+            "div",
+            { class: "panel pad" },
+            h(
+              "div",
+              { class: "bars" },
+              info.usageByDay.map((d) =>
+                h("div", { class: "bar-col", title: `${d.day}：${fmtUsd(d.counts.cost_usd ?? 0)}，${d.counts.turns ?? 0} 轮` }, h("span", null, d.counts.cost_usd ? fmtUsd(d.counts.cost_usd) : ""), h("i", { style: `height:${Math.max(2, ((d.counts.cost_usd ?? 0) / maxCost) * 100)}%` }), h("span", null, d.day.slice(5))),
+              ),
+            ),
           ),
         ),
       ),
     ),
-    h("div", { class: "row" }, save),
-    promptPreview(chat),
   );
 }
 
 /** What the model is told and given in this chat now, section by section (GET chat/prompt), loaded when opened. */
 function promptPreview(chat) {
   const body = h("div", { class: "stack" });
-  const el = h("details", { class: "manual" }, h("summary", null, "看这个聊天的系统提示和工具（模型实际收到的）"), body);
+  const el = h("details", { class: "more" }, h("summary", null, "看这个聊天的系统提示和工具（模型实际收到的）"), body);
   let loaded = false;
   el.addEventListener("toggle", async () => {
     if (!el.open || loaded) return;
     loaded = true;
-    fill(body, h("p", { class: "muted" }, "加载中…"));
+    fill(body, h("p", { class: "faint" }, "加载中…"));
     try {
       const a = await api.get("chat/prompt", { chat });
       fill(
         body,
         h("p", { class: "help" }, `共 ${a.chars} 字，${a.sections.length} 段；开启的模块：${a.modules.join("、")}；工具 ${a.tools.length} 个：${a.tools.map((t) => t.name).join("、")}。保存设置后最多 30 秒生效。`),
-        a.sections.map((s) => [h("h3", null, s.source, " ", h("span", { class: "muted small" }, `${s.name} · ${s.text.length} 字`)), h("pre", { class: "sql prompt-text" }, s.text)]),
+        a.sections.map((s) => [h("h3", null, s.source, " ", h("span", { class: "faint small" }, `${s.name} · ${s.text.length} 字`)), h("pre", { class: "code text" }, s.text)]),
       );
     } catch (err) {
+      loaded = false;
       fill(body, h("p", { class: "field-error" }, err.message));
     }
   });

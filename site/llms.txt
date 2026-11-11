@@ -1,38 +1,84 @@
 # Serverless Agent Gateway (serverless-agent-gateway)
 
-> 部署在 Vercel Functions 上的免服务器多渠道 AI 机器人网关。支持 QQ（单聊、群聊、频道，Ed25519 验签）、Telegram Bot 与通用 HTTP Webhook 接入，基于只追加事件流（Append-only Event Log）驱动带工具调用的 Agent Loop，自带联网搜索、Upstash Vector 跨群长期记忆、Vercel Sandbox 持久化 Linux 代码沙盒、表情包与语音回复。有消息才运行，零部署与存储费用。
+> 开源的免服务器多渠道 AI 机器人网关，部署在 Vercel Functions 上。QQ（单聊、群聊、频道）、Telegram 或任意 HTTP 客户端通过 Webhook 把消息推进来，网关跑一个带工具调用的 agent loop，再从原渠道把回复发回去。自带联网搜索、跨群长期记忆、画图修图、语音回复和 Linux 代码沙盒；配置在网页管理端里填，花费可设上限，有消息才运行。
 
 - 官网：https://serverless-agent.cnday.cn/
 - 源码仓库：https://github.com/zhanxin-xu/serverless-agent-gateway
-- 开源协议：MIT License
-- 与 DeepSeek 官方无关
+- 开源协议：MIT License（只适用于代码，不适用于引用的表情包）
 - 运行环境：Vercel Functions / Node.js 24 / TypeScript 5.9
+- 存储：Supabase（事件流、会话锁、配置）；Upstash Vector（长期记忆，可选）；Vercel Sandbox（沙盒工作区，可选）
+- 实测情况：目前只有 QQ 渠道在真实环境里跑过，Telegram 和 HTTP 由离线端到端测试覆盖
+- 仓库自带示例人设「大肥鱼」（一个嘴毒、爱抬杠的群友），可以换成自己的
+- 本项目与 DeepSeek 官方无关
 
-## 核心架构与特性
+## 工作原理
 
-- **多渠道统一接入**：QQ、Telegram、HTTP 实现统一渠道适配器接口（`packages/core/src/channels/`），Webhook 验签后立即返回 200 回执，通过 `waitUntil` 在后台运行 Agent。
-- **只追加事件流（Event Log）**：每个聊天一条只追加的事件流（消息、含思维链的模型输出、工具调用与结果全量入库），模型输入从事件流推导，线上一轮对话提示词缓存命中率达 97.8% 以上；用到上下文预算（默认 20 万 token）的 80% 时自动压缩成摘要。
-- **一个聊天一个 Agent**：基于 Supabase 会话行租约锁（`packages/core/src/runtime/lock.ts`），收消息与跑 Agent 解耦；一轮在 300 秒函数时限里做不完时，带着运行锁交给 `/api/worker` 的新实例接着做，支持崩溃恢复。
-- **四种模型协议**：通过 pi-ai 支持 OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Google Gemini，默认走 OpenRouter；思维链整个回传，支持透传供应商路由与推理强度参数。
-- **内置全能工具**：
-  - 群聊交互：`send_message`（分条连发、`reply_to` 指定回复）、`send_sticker`（表情包）、`send_voice`（语音合成）、`end_turn`（主动挂断）
-  - 联网与视觉：网页搜索与抓取、图片压缩入库与多轮识图、generate_image 画图/修图
-  - 跨群长期记忆：基于 Upstash Vector 的语义检索，记录每条记忆来源
-  - 沙盒工作区：基于 Vercel Sandbox 运行 bash / Python / Node，每个聊天拥有独立持久盘
+1. **Webhook 进来，立即回执**：`POST /api/webhook/<渠道名>` 验签、解析后马上返回 200，剩下的事交给 `waitUntil` 在后台继续。
+2. **一切都写进事件流**：去重后写入这个聊天的事件流，再决定要不要唤起 agent；已经有 agent 在跑就到此为止。
+3. **一个会用工具的 agent**：每一步读事件流、调用模型、把输出和工具结果原样写回。同一个聊天同一时刻只有一个 agent 在跑（会话行上的租约锁，`packages/core/src/runtime/lock.ts`）。
+4. **从原渠道回复，然后挂断**：分几条连发、回复指定消息、发表情包，说完调用 `end_turn`。
 
-## 快速开始与最小环境变量
+每个聊天一条只追加的事件流：消息、模型输出（含思维链）、工具调用和结果全部入库，模型输入从中推导，提示词缓存持续命中（线上一轮对话的缓存命中率 97.8%）。一轮在 300 秒函数时限里做不完时，带着运行锁交给 `/api/worker` 的新函数实例接着做；函数中途被杀也能从事件流恢复。
 
-1. 部署：运行 `npx vercel` 或通过 Vercel 一键克隆部署，项目的 Root Directory 设成 `packages/vercel`。
-2. 必需环境变量：
-   - `MODEL_OPENROUTER_API_KEY`：聊天模型的密钥（默认 OpenRouter；其他服务商用各自的 `MODEL_{实例}_*`，由 `MODEL_PROVIDER` 选）
-   - `QQ_APP_ID` / `QQ_APP_SECRET`（或 Telegram / HTTP 渠道凭据）
-   - `SUPABASE_URL` / `SUPABASE_SECRET_KEY`（执行 `packages/adapters/src/supabase/schema.sql` 初始化表结构）
-3. 健康检查：访问 `GET /api/health` 确认存储、渠道和模型就绪。
+## 能力
+
+- **多渠道接入**：QQ（单聊、群聊、频道，Ed25519 验签）、Telegram、通用 HTTP。渠道都实现同一个适配器接口（`packages/core/src/channels/types.ts`），适配器在 `packages/adapters/src/` 里。
+- **像真人一样聊天**：`send_message` 分几条连发、`reply_to` 回复指定消息、`send_sticker` 发表情包、`end_turn` 主动挂断；在群里旁观没 @ 它的消息，自己判断要不要插话。
+- **看图、听语音**：图片缩小后入库，以前的图片也能再看；QQ 语音使用平台自带的转写文字。
+- **联网**：搜索和网页抓取，另有余额和额度查询工具。
+- **长期记忆**：基于 Upstash Vector 的语义检索，所有聊天共用一个记忆库，并记录每条记忆的来源。
+- **沙盒工作区**：在 Vercel Sandbox 里跑 bash、Python、Node，每个聊天有一块自己的持久盘，能读图、能把文件发回聊天。
+- **画图、修图**：通过 OpenRouter 或 OpenAI 的 Image API 生成图片，可以把群友发来的照片当参考图来改。
+- **发语音**：用固定的嗓音把文字念出来，支持用 `[语气]` 指挥演绎，在 QQ 里是能直接播放的语音条。
+- **四种模型协议**：通过 pi-ai 支持 OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Google Gemini，默认走 OpenRouter。思维链整个回传，请求体可以按层级覆盖任意字段（锁定供应商、设置推理强度等）。
+- **上下文自动压缩**：上下文用到预算（默认 20 万 token）的 80% 时自动压缩成摘要。
+- **花费上限**：模型和画图各有每日、每月的花费上限（美元），每个聊天还能单独设每日额度。只报 token、不报金额的调用按仓库自带的模型价目表计价，价目表每天自动同步。
+
+## 管理端
+
+部署后访问 `/admin`，用环境变量 `ADMIN_PASSWORD` 设的密码登录。
+
+- **新手引导**：建表、填模型 Key、接渠道、开可选模块，一直走到收到第一条消息。
+- **配置存进数据库**：除了管理密码和数据库连接，其余配置（模型、渠道、各模块的 Key 和参数）都在管理端里填，改完 30 秒内生效，不用重新部署；也可以照旧只用环境变量。
+- **聊天记录与事件流**：模型读到了什么、调了哪些工具、花了多少，逐轮可查。
+- **代发与悄悄话**：以机器人的身份直接说，或者告诉它要说什么，让它用自己的口气说。
+- **每个聊天单独设置**：是否处理这个聊天的消息、回复方式、能用的模块、额外设定和每日额度。
+
+## 费用
+
+- 部署和存储免费：Vercel Hobby 加 Supabase、Upstash Vector 的免费版就够，没有常驻进程，没人说话就不运行。
+- 模型调用按用量付给 OpenRouter 等供应商，可以用花费上限封顶。
+
+## 快速开始
+
+1. **部署**：通过 Vercel 的 Deploy 按钮克隆部署，或者克隆仓库后在根目录运行 `npx vercel`。项目的 Root Directory 设成 `packages/vercel`。
+2. **设密码、连数据库**：在 Vercel 项目里添加环境变量 `ADMIN_PASSWORD`，在 Storage 页面添加 Supabase（会自动注入数据库连接），然后重新部署。
+3. **打开管理端**：访问 `https://<你的域名>/admin`，按新手引导一步步来：建表、填模型 Key、接渠道、发条消息试试。`GET /api/health` 可以检查存储、渠道和模型是否就绪。
+
+在中国大陆接 QQ 必须绑定自定义域名（QQ 开放平台访问不了 `*.vercel.app`）；想让机器人看到群里没 @ 它的消息，还要群主在手机 QQ 里给机器人开启「接收全量消息」的权限。
+
+## 自定义
+
+- 人设（她是谁、示例对话、表情包、声音）：`packages/vercel/src/personas/`
+- 工具和模块：`packages/core/src/modules/`
+- 换一家服务、加渠道、换存储：`packages/adapters/src/`
+- 装哪些模块和实现：`packages/vercel/src/composition.ts`
+
+## 常见问题
+
+- **需要购买服务器吗？** 不需要。网关部署在 Vercel Functions 上，配合 Supabase 免费版存储事件流与会话锁，有消息推进来才运行。
+- **函数有 300 秒时限，复杂的工具调用超时怎么办？** 先回执、后在后台运行，状态实时写入事件流；临近时限时自动收尾，或者带着运行锁接力给新的 `/api/worker` 函数实例。
+- **改配置需要重新部署吗？** 不需要。除了 `ADMIN_PASSWORD` 和数据库连接，其余配置都在管理端里填，30 秒内生效。
+- **花费怎么控制？** 模型和画图各有每日、每月上限，每个聊天可以单独设额度；额度用完后，被 @ 时回一句额度用完了，平时不再插话。
+- **能换成自己的人设吗？** 可以。大肥鱼只是示例，人设的提示词、示例对话、表情包、形象和声音都在 `packages/vercel/src/personas/` 里，在 `composition.ts` 里换成自己的。
 
 ## 文档索引
 
-- [部署指南](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/deployment.md)：Vercel 部署、Supabase 与 Upstash 存储配置、中国大陆自定义域名绑定、免费额度与资源消耗
-- [渠道接入](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/channels.md)：QQ、Telegram、HTTP 配置方法，QQ 被动回复规则与群聊全量消息权限，新增渠道开发指南
-- [Agent 与对话](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/agent.md)：事件流格式、会话行租约锁、主动挂断机制、300s 跨实例接力、上下文自动压缩与崩溃恢复
-- [内置工具](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/tools.md)：联网、Upstash Vector 长期记忆、Vercel Sandbox 沙盒工作区、表情包与语音合成，新增工具指南
-- [配置参考](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/configuration.md)：全部环境变量说明及默认值
+- [架构](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/architecture.md)：三个包、组合、构建、新增一种部署
+- [部署](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/deployment.md)：Vercel 部署、存储、自定义域名、免费额度与资源消耗
+- [管理端](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/admin.md)：新手引导、配置存进数据库、聊天记录与事件流、代发、每群额度
+- [渠道接入](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/channels.md)：QQ、Telegram、HTTP 的配置方法，QQ 被动回复和主动消息，如何新增渠道
+- [Agent 与对话](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/agent.md)：事件流格式、一个聊天一个 agent、挂断机制、步数与时间、上下文压缩、崩溃恢复
+- [模块](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/modules.md)：模块、能力与实现；系统提示怎么拼；如何新增模块和实现
+- [工具](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/tools.md)：各模块的工具、长期记忆、沙盒工作区、表情包
+- [配置参考](https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/configuration.md)：全部环境变量及默认值

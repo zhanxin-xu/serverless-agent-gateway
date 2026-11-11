@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>免服务器 QQ / Telegram AI 机器人网关 · Serverless Agent Gateway</title>
-  <meta name="description" content="跑在 Vercel Functions 上的免费多渠道 AI 机器人网关（serverless-agent-gateway）。支持 QQ 群聊与 Telegram 接入，基于只追加事件流驱动，自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒，按消息触发零维护。">
-  <meta name="keywords" content="QQ 机器人, QQ 群聊 AI, Telegram Bot, AI 机器人网关, 免服务器 Agent, Serverless Agent Gateway, serverless-agent-gateway, Vercel Functions, OpenRouter, pi-ai, Responses API, Anthropic, Gemini, 大肥鱼">
+  <meta name="description" content="开源的免服务器 AI 机器人网关，部署在 Vercel Functions 上，接入 QQ 群聊与 Telegram。自带联网搜索、跨群长期记忆、画图修图、语音回复和 Linux 代码沙盒，配置在网页管理端里填，花费可设上限，有消息才运行。">
+  <meta name="keywords" content="QQ 机器人, QQ 群机器人, QQ 群聊 AI, Telegram Bot, AI 机器人网关, 免服务器 Agent, Serverless Agent Gateway, serverless-agent-gateway, Vercel Functions, Supabase, OpenRouter, AI 画图, 语音回复, 长期记忆, 代码沙盒, 管理端, 开源, 大肥鱼">
   <meta name="author" content="zhanxin-xu">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta name="color-scheme" content="light dark">
@@ -22,20 +22,20 @@
   <meta property="og:site_name" content="Serverless Agent Gateway">
   <meta property="og:locale" content="zh_CN">
   <meta property="og:title" content="免服务器的群聊全能 Agent 网关 · Serverless Agent Gateway">
-  <meta property="og:description" content="跑在 Vercel Functions 上的多渠道 AI 机器人网关：支持 QQ、Telegram 接入，自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒，部署免费。">
+  <meta property="og:description" content="跑在 Vercel Functions 上的开源 AI 机器人网关：接入 QQ、Telegram，自带联网搜索、长期记忆、画图修图、语音回复和 Linux 代码沙盒，配置都在管理端里填，部署免费。">
   <meta property="og:url" content="https://serverless-agent.cnday.cn/">
-  <meta property="og:image" content="https://serverless-agent.cnday.cn/og.png">
+  <meta property="og:image" content="https://serverless-agent.cnday.cn/og.png?v=2">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
-  <meta property="og:image:alt" content="Serverless Agent Gateway - 免服务器的群聊全能 Agent 网关">
+  <meta property="og:image:alt" content="Serverless Agent Gateway：免服务器的群聊全能 Agent 网关，接入 QQ、Telegram">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="免服务器的群聊全能 Agent 网关 · Serverless Agent Gateway">
-  <meta name="twitter:description" content="跑在 Vercel Functions 上的多渠道 AI 机器人网关：支持 QQ、Telegram 接入，自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒，部署免费。">
-  <meta name="twitter:image" content="https://serverless-agent.cnday.cn/og.png">
-  <meta name="twitter:image:alt" content="Serverless Agent Gateway - 免服务器的群聊全能 Agent 网关">
+  <meta name="twitter:description" content="跑在 Vercel Functions 上的开源 AI 机器人网关：接入 QQ、Telegram，自带联网搜索、长期记忆、画图修图、语音回复和 Linux 代码沙盒，配置都在管理端里填，部署免费。">
+  <meta name="twitter:image" content="https://serverless-agent.cnday.cn/og.png?v=2">
+  <meta name="twitter:image:alt" content="Serverless Agent Gateway：免服务器的群聊全能 Agent 网关，接入 QQ、Telegram">
 
   <link rel="preload" as="image" href="logo-100.webp" type="image/webp" fetchpriority="high">
   <link rel="stylesheet" href="styles.css?v=202611111500">
@@ -60,16 +60,16 @@
         "@id": "https://serverless-agent.cnday.cn/#code",
         "name": "serverless-agent-gateway",
         "alternateName": "Serverless Agent Gateway",
-        "description": "跑在 Vercel Functions 上的免费多渠道 AI 机器人网关。支持 QQ 群聊与 Telegram 接入，基于只追加事件流驱动，自带联网搜索、跨群长期记忆、表情包斗图与 Linux 代码沙盒，有消息才运行。",
+        "description": "开源的免服务器 AI 机器人网关，部署在 Vercel Functions 上，接入 QQ 群聊与 Telegram。自带联网搜索、跨群长期记忆、画图修图、语音回复和 Linux 代码沙盒，配置在网页管理端里填，花费可设上限，有消息才运行。",
         "url": "https://serverless-agent.cnday.cn/",
-        "image": "https://serverless-agent.cnday.cn/og.png",
+        "image": "https://serverless-agent.cnday.cn/og.png?v=2",
         "codeRepository": "https://github.com/zhanxin-xu/serverless-agent-gateway",
         "programmingLanguage": "TypeScript",
         "runtimePlatform": "Vercel Functions, Node.js 24",
         "license": "https://opensource.org/licenses/MIT",
         "version": "0.1.0",
         "dateModified": "2026-11-11",
-        "keywords": "Serverless, AI 机器人, QQ 机器人, Telegram 机器人, Vercel Functions, Agent",
+        "keywords": "Serverless, AI 机器人, QQ 机器人, Telegram 机器人, Vercel Functions, Agent, 长期记忆, AI 画图, 语音回复, 代码沙盒, 管理端",
         "author": {
           "@type": "Person",
           "name": "zhanxin-xu",
@@ -145,7 +145,7 @@
 
   <header class="nav" id="nav">
     <div class="nav-in">
-      <a class="brand" href="#top"><picture><source srcset="logo-100.webp 100w, logo-200.webp 200w" sizes="28px" type="image/webp"><img src="logo.png" alt="Serverless Agent Gateway 图标" width="28" height="28" fetchpriority="high"></picture><span>Serverless Agent <em>Gateway</em></span></a>
+      <a class="brand" href="#top" aria-label="Serverless Agent Gateway"><picture><source srcset="logo-100.webp 100w, logo-200.webp 200w" sizes="28px" type="image/webp"><img src="logo.png" alt="Serverless Agent Gateway 图标" width="28" height="28" fetchpriority="high"></picture><span>Serverless Agent <em>Gateway</em></span></a>
       <nav aria-label="主导航">
         <a href="#how">原理</a>
         <a href="#features">能力</a>
@@ -393,7 +393,7 @@ Storage → Supabase → Connect</code></pre></div>
 
   <footer>
     <div class="foot-in">
-      <a class="brand" href="#top"><picture><source srcset="logo-100.webp" type="image/webp"><img src="logo.png" alt="" width="24" height="24" loading="lazy" decoding="async"></picture><span>Serverless Agent <em>Gateway</em></span></a>
+      <a class="brand" href="#top" aria-label="Serverless Agent Gateway"><picture><source srcset="logo-100.webp" type="image/webp"><img src="logo.png" alt="" width="24" height="24" loading="lazy" decoding="async"></picture><span>Serverless Agent <em>Gateway</em></span></a>
       <nav class="foot-links" aria-label="文档">
         <a href="https://github.com/zhanxin-xu/serverless-agent-gateway" rel="noopener">GitHub</a>
         <a href="https://github.com/zhanxin-xu/serverless-agent-gateway/blob/main/docs/deployment.md" rel="noopener">部署</a>

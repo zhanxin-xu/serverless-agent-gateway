@@ -2,73 +2,33 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-const seg = (p, a, b) => clamp((p - a) / (b - a));
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-/** 1 inside [a, b], ramping over `f` at both ends. */
-const window_ = (p, a, b, f = 0.04) => Math.min(seg(p, a, a + f), 1 - seg(p, b - f, b));
 
-const show = (el, v) => {
-  el.style.opacity = v;
+/** Run `enter` when `el` scrolls into view and `leave` when it goes out (or the tab is hidden). */
+const whileVisible = (el, enter, leave, threshold = 0.25) => {
+  let on = false, inView = false;
+  const update = () => {
+    const now = inView && document.visibilityState === "visible";
+    if (now === on) return;
+    on = now;
+    (on ? enter : leave)();
+  };
+  new IntersectionObserver(([e]) => { inView = e.isIntersecting; update(); }, { threshold }).observe(el);
+  document.addEventListener("visibilitychange", update);
 };
 
-/* ══════════════════════════════════════════════════════════════
-   The take. One sticky stage; everything below is a pure function
-   of the scroll progress p ∈ [0, 1] through #take.
-   Demand-driven rAF interpolation: runs ONLY while scrolling in #take,
-   stops completely when idle or past #take (0% idle CPU/GPU).
-   ══════════════════════════════════════════════════════════════ */
-const take = $("#take"), stage = $("#stage");
-const hero = $("#hero"), orb = $("#orb"), bIn = $("#b-in"), log = $("#log"), logLines = $$("li", log);
-const tools = $("#tools"), toolEls = $$(".tool", tools), outs = [$("#b-out-1"), $("#b-out-2"), $("#b-out-3")];
-const caps = [0, 1, 2, 3].map((i) => $(`#cap-${i}`)), statement = $("#statement"), rail = $("#rail"), railDots = $$("span", rail);
-
-const T = {               // timeline (fractions of the take)
-  hero: [0, 0.13],        // hero copy fades, orb slides to centre
-  inb: [0.09, 0.23],      // user message travels into the orb
-  cap0: [0.10, 0.28],
-  log: [0.25, 0.43],      // event lines appear one after another
-  cap1: [0.27, 0.47],
-  tools: [0.45, 0.63],    // tool chips orbit
-  cap2: [0.47, 0.67],
-  outs: [0.65, 0.85],     // replies fly out
-  cap3: [0.67, 0.87],
-  end: [0.87, 1],         // orb rises, statement appears
-};
-
-let mobile = false, R = 90, offIn = { x: 0, y: 0 }, offOuts = [], orbHero = { x: 0, y: 0 }, toolAngles = [];
-let takeTop = 0, takeRange = 1;
-
-function measure() {
-  const vw = innerWidth, vh = innerHeight, sy = scrollY;
-  mobile = vw <= 900;
-  R = Math.round(clamp(vw * 0.11, 56, 96));
-  const sr = stage.getBoundingClientRect();
-  const tr = take.getBoundingClientRect();
-  const o = { x: sr.left + sr.width * (mobile ? 0.5 : 0.62), y: sr.top + sr.height * (mobile ? 0.44 : 0.5) };
-  const c = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
-  const bi = c(bIn);
-  offIn = { x: o.x - bi.x, y: o.y - bi.y };
-  offOuts = outs.map((el) => { const r = c(el); return { x: o.x - r.x, y: o.y - r.y }; });
-  orbHero = mobile ? { x: 0, y: sr.height * 0.3 } : { x: Math.min(vw * 0.16, 300), y: 0 };
-  toolAngles = toolEls.map((el) => parseFloat(el.style.getPropertyValue("--a")) || 0);
-  takeTop = tr.top + sy;
-  takeRange = Math.max(1, tr.height - sr.height);
-}
-
-// Measure layout FIRST while the initial layout tree is clean (before .split mutates DOM) -> 0ms forced reflow
-if (!reduced) measure();
-
-/* ── split text: every <br>-separated line rises out of its own clip ── */
-for (const node of $$(".split")) {
-  const lines = [[]];
-  for (const c of [...node.childNodes]) (c.nodeName === "BR" ? lines.push([]) : lines.at(-1).push(c));
-  node.replaceChildren(...lines.map((nodes, i) => {
-    const line = document.createElement("span"), ln = document.createElement("span");
-    line.className = "line"; ln.className = "ln"; ln.style.setProperty("--i", i);
-    ln.append(...nodes); line.append(ln); return line;
-  }));
-}
+/* ── nav: a glass pill once the page scrolls; the section in view is marked ── */
+const nav = $("#nav");
+const onScroll = () => nav.classList.toggle("stuck", scrollY > 8);
+addEventListener("scroll", onScroll, { passive: true });
+onScroll();
+const links = new Map($$(".nav nav a").map((a) => [a.getAttribute("href").slice(1), a]));
+const mark = (id) => links.forEach((a, key) => a.classList.toggle("on", key === id));
+const spy = new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) mark(links.has(e.target.id) ? e.target.id : null);
+}, { rootMargin: "-45% 0px -50% 0px" });
+// Every section is watched, so the mark clears over the ones the nav doesn't link to.
+$$("main > section").forEach((s) => spy.observe(s));
 
 /* ── reveal on enter ── */
 const reveal = new IntersectionObserver((entries) => {
@@ -95,143 +55,89 @@ for (const btn of $$(".copy")) btn.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = "已复制"; setTimeout(() => (btn.textContent = "复制"), 1400); } catch {}
 });
 const typed = $("#typed");
-if (typed) {
+if (typed && !reduced) {
   const text = typed.dataset.text;
-  if (reduced) typed.textContent = text;
-  else {
-    new IntersectionObserver((entries, obs) => {
-      if (!entries.some((e) => e.isIntersecting)) return;
-      obs.disconnect();
-      typed.textContent = "";
-      let i = 0;
-      const step = () => { typed.textContent = text.slice(0, ++i); if (i < text.length) setTimeout(step, 70 + Math.random() * 90); };
-      setTimeout(step, 250);
-    }, { threshold: 0.6 }).observe(typed);
-  }
+  new IntersectionObserver((entries, obs) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    obs.disconnect();
+    typed.textContent = "";
+    let i = 0;
+    const step = () => { typed.textContent = text.slice(0, ++i); if (i < text.length) setTimeout(step, 70 + Math.random() * 90); };
+    setTimeout(step, 250);
+  }, { threshold: 0.6 }).observe(typed);
 }
 
-function render(p) {
-  // hero
-  const h = seg(p, ...T.hero);
-  show(hero, 1 - easeOut(h));
-  hero.style.transform = `translateY(${mobile ? 0 : -50}%) translate3d(0, ${-40 * easeOut(h)}px, 0)`;
-  hero.style.pointerEvents = h < 0.5 ? "" : "none";
-
-  // orb: from the hero position to the centre, then up and smaller for the statement
-  const e = seg(p, ...T.end), ee = easeInOut(e);
-  const ox = orbHero.x * (1 - easeInOut(h)), oy = orbHero.y * (1 - easeInOut(h));
-  const pulse = 1 + 0.06 * Math.sin(seg(p, ...T.tools) * Math.PI * 4) * window_(p, ...T.tools, 0.05);
-  orb.style.transform = `translate3d(${ox}px, ${oy - ee * innerHeight * (mobile ? 0.3 : 0.32)}px, 0) scale(${(1 - 0.45 * ee) * pulse})`;
-
-  // user message travels into the orb and is absorbed
-  const i = seg(p, ...T.inb), ie = easeInOut(i);
-  const inOp = Math.min(seg(i, 0, 0.18), 1 - seg(i, 0.82, 1));
-  show(bIn, inOp);
-  if (inOp > 0.002) {
-    bIn.style.transform = `${mobile ? "translateX(-50%) " : ""}translate3d(${offIn.x * ie}px, ${offIn.y * ie}px, 0) scale(${1 - 0.6 * ie})`;
-  }
-
-  // event log: one line per slice, then everything fades before the tools
-  const l = seg(p, ...T.log), lv = l > 0 ? 1 - seg(p, T.log[1] + 0.02, T.log[1] + 0.06) : 0;
-  show(log, lv);
-  if (lv > 0.002) {
-    logLines.forEach((li, k) => {
-      const a = easeOut(seg(l, k / logLines.length, (k + 1) / logLines.length));
-      li.style.opacity = a * lv;
-      li.style.transform = `translate3d(0, ${(1 - a) * 10}px, 0)`;
-    });
-  }
-
-  // tools orbit while the agent "thinks"
-  const t = seg(p, ...T.tools), tv = window_(p, ...T.tools, 0.05);
-  const rad = R + (mobile ? 54 : 72);
-  toolEls.forEach((el, k) => {
-    const s = easeOut(seg(t, k * 0.08, k * 0.08 + 0.22));
-    const op = s * tv;
-    show(el, op);
-    if (op > 0.002) {
-      const a = (toolAngles[k] + t * 110) * Math.PI / 180;
-      const tx = Math.cos(a) * rad;
-      const ty = Math.sin(a) * rad * (mobile ? 0.75 : 0.62);
-      el.style.transform = `translate(-50%, -50%) translate3d(${tx}px, ${ty}px, 0) scale(${0.6 + 0.4 * s})`;
+/* ══════════════════════════════════════════════════════════════
+   The group chat in the hero. Each message carries when it appears
+   (data-at, ms) and, for the bot's, how long she types first
+   (data-typing). Plays on a loop while it's on screen.
+   ══════════════════════════════════════════════════════════════ */
+const demo = $("#demo");
+if (demo && !reduced) {
+  const body = $(".phone-body", demo), msgs = $$(".m", body);
+  const HOLD = 5200, WIPE = 600;
+  let timers = [];
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  /** "She's typing": her picture and three dots, where her message will be. */
+  const typingRow = (m) => {
+    const row = document.createElement("div"), box = document.createElement("div"), dots = document.createElement("p");
+    row.className = `m bot show typing${m.classList.contains("cont") ? " cont" : ""}`;
+    dots.className = "b dots";
+    dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+    box.append(dots);
+    row.append($("picture", m).cloneNode(true), box);
+    return row;
+  };
+  const clear = () => {
+    timers.forEach(clearTimeout);
+    timers = [];
+    $$(".typing", body).forEach((row) => row.replaceWith());
+    msgs.forEach((m) => m.classList.remove("show"));
+    body.classList.remove("wipe");
+  };
+  const play = () => {
+    clear();
+    let end = 0;
+    for (const m of msgs) {
+      const t = Number(m.dataset.at), typing = Number(m.dataset.typing ?? 0);
+      let row;
+      if (typing) at(t, () => body.insertBefore((row = typingRow(m)), m));
+      at(t + typing, () => { row?.replaceWith(); m.classList.add("show"); });
+      end = Math.max(end, t + typing);
     }
-  });
-
-  // replies fly out one after another, then clear for the statement
-  const o = seg(p, ...T.outs), ov = o > 0 ? 1 - seg(p, T.outs[1] + 0.02, T.outs[1] + 0.06) : 0;
-  outs.forEach((el, k) => {
-    const f = easeInOut(seg(o, k * 0.22, k * 0.22 + 0.34));
-    const op = Math.min(seg(f, 0, 0.3), 1) * ov;
-    show(el, op);
-    if (op > 0.002) {
-      el.style.transform = `${mobile ? "translateX(-50%) " : ""}translate3d(${offOuts[k].x * (1 - f)}px, ${offOuts[k].y * (1 - f)}px, 0) scale(${0.4 + 0.6 * f})`;
-    }
-  });
-
-  // captions
-  [T.cap0, T.cap1, T.cap2, T.cap3].forEach(([a, b], k) => {
-    const v = window_(p, a, b, 0.05);
-    show(caps[k], v);
-    if (v > 0.002) {
-      caps[k].style.transform = `${mobile ? "" : "translateY(-50%) "}translate3d(0, ${(1 - v) * 16}px, 0)`;
-    }
-  });
-
-  // statement
-  const stOp = easeOut(seg(e, 0.3, 1));
-  show(statement, stOp);
-  if (stOp > 0.002) {
-    statement.style.transform = `translate(-50%, -50%) translate3d(0, ${(1 - stOp) * 30}px, 0)`;
-  }
-
-  // rail
-  rail.style.setProperty("--p", p);
-  const idx = p < T.cap0[1] ? 0 : p < T.cap1[1] ? 1 : p < T.cap2[1] ? 2 : p < T.cap3[1] ? 3 : 4;
-  railDots.forEach((d, k) => d.classList.toggle("on", k === idx));
+    at(end + HOLD, () => body.classList.add("wipe"));
+    at(end + HOLD + WIPE, play);
+  };
+  whileVisible(demo, play, clear, 0.2);
 }
 
-if (!reduced) {
-  let targetP = 0, curP = 0, rafId = 0, lastT = 0;
-
-  const getTargetP = () => clamp((scrollY - takeTop) / takeRange);
-
-  const tick = (now) => {
-    const dt = lastT ? Math.min(32, now - lastT) : 16.67;
-    lastT = now;
-    const scale = dt / 16.67;
-    const diff = targetP - curP;
-    if (Math.abs(diff) > 0.00025) {
-      // Time-normalized gentle damping + velocity cap so 120Hz screens or fast wheel flicks never whip too fast
-      const step = clamp(diff * 0.075 * scale, -0.0075 * scale, 0.0075 * scale);
-      curP += step;
-      render(curP);
-      rafId = requestAnimationFrame(tick);
-    } else {
-      curP = targetP;
-      render(curP);
-      rafId = 0;
-      lastT = 0;
+/* ══════════════════════════════════════════════════════════════
+   How it works: four steps beside the event stream. The lines a step
+   wrote are lit; earlier ones stay dimmer, later ones dimmest. It
+   advances on its own while on screen until a step is clicked.
+   ══════════════════════════════════════════════════════════════ */
+const stepList = $("#how-steps");
+if (stepList) {
+  const steps = $$("button", stepList), lines = $$("#stream li");
+  const DWELL = 4200;
+  let cur = 0, timer = 0, auto = !reduced;
+  stepList.style.setProperty("--dwell", `${DWELL}ms`);
+  const set = (i) => {
+    cur = i;
+    steps.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-pressed", String(k === i)); });
+    for (const li of lines) {
+      const s = Number(li.dataset.step);
+      li.classList.toggle("lit", s < i);
+      li.classList.toggle("now", s === i);
     }
   };
-
-  const onScroll = () => {
-    const next = getTargetP();
-    if (next === targetP && rafId === 0) return;
-    targetP = next;
-    if (!rafId) {
-      lastT = 0;
-      rafId = requestAnimationFrame(tick);
-    }
+  const stop = () => { clearInterval(timer); timer = 0; stepList.classList.remove("auto"); };
+  const start = () => {
+    if (!auto || timer) return;
+    stepList.classList.add("auto");
+    timer = setInterval(() => set((cur + 1) % steps.length), DWELL);
   };
-
-  targetP = curP = getTargetP();
-  render(curP);
-
-  addEventListener("scroll", onScroll, { passive: true });
-  addEventListener("resize", () => {
-    for (const el of [bIn, ...outs]) el.style.transform = "";
-    measure();
-    targetP = curP = getTargetP();
-    render(curP);
-  });
+  steps.forEach((b, i) => b.addEventListener("click", () => { auto = false; stop(); set(i); }));
+  set(0);
+  whileVisible($(".how-grid"), start, stop, 0.3);
 }

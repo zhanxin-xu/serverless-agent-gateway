@@ -10,13 +10,13 @@
       "name": "langfuse",
       "repo": "langfuse/langfuse",
       "path": "worker/src/constants/default-model-prices.json",
-      "commit": "29671385dd239d6308ba009e04d08eee9c3961ed"
+      "commit": "933b5cdd496eb217441a045a3d165809459ae2b6"
     },
     {
       "name": "litellm",
       "repo": "BerriAI/litellm",
       "path": "model_prices_and_context_window.json",
-      "commit": "4b498d1bba768bd81e4a434a14ea7ae2870dd01f"
+      "commit": "8b8ec4e3a64facae7af657ab06bc214dd5bf9060"
     }
   ],
   "models": [
@@ -1138,10 +1138,10 @@
     },
     {
       "id": "text-embedding-3-small",
-      "match": "(?i)^(text-embedding-3-small)$",
+      "match": "(?i)^(openai/)?(text-embedding-3-small)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2024-01-26）",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
       "examples": [
         "text-embedding-3-small"
       ],
@@ -1157,10 +1157,10 @@
     },
     {
       "id": "text-embedding-3-large",
-      "match": "(?i)^(text-embedding-3-large)$",
+      "match": "(?i)^(openai/)?(text-embedding-3-large)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2024-01-26）",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
       "examples": [
         "text-embedding-3-large"
       ],
@@ -1547,6 +1547,63 @@
             "output": 17.0,
             "cache_read": 2.125,
             "cache_write_5m": 4.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpt-audio-1.5",
+      "match": "(?i)^(openai/)?(gpt-audio-1\\.5)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-audio-1.5"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 2.5,
+            "output": 10.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpt-audio",
+      "match": "(?i)^(openai/)?(gpt-audio|gpt-audio-2025-08-28)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-audio"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 2.5,
+            "output": 10.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpt-audio-mini",
+      "match": "(?i)^(openai/)?(gpt-audio-mini|gpt-audio-mini-2025-10-06|gpt-audio-mini-2025-12-15)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-audio-mini"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 0.6,
+            "output": 2.4
           }
         }
       ]
@@ -2410,7 +2467,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-2.5-flash)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-2.5-flash"
       ],
@@ -2430,7 +2487,8 @@
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -2448,7 +2506,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-2.5-flash-lite)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-2.5-flash-lite"
       ],
@@ -2468,7 +2526,8 @@
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -2619,6 +2678,27 @@
             "output": 5.0,
             "cache_read": 0.0625,
             "cache_write_5m": 0.625
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpt-5-search-api",
+      "match": "(?i)^(openai/)?(gpt-5-search-api)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-5-search-api"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 1.25,
+            "output": 10.0,
+            "cache_read": 0.125,
+            "cache_write_5m": 1.25
           }
         }
       ]
@@ -3499,7 +3579,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-2.5-pro)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-2.5-pro"
       ],
@@ -3519,7 +3599,8 @@
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             },
@@ -3542,7 +3623,8 @@
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -3612,7 +3694,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.1-pro-preview(-customtools)?)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.1-pro-preview"
       ],
@@ -3627,12 +3709,13 @@
         },
         {
           "name": "priority 长上下文",
-          "priority": 30,
+          "priority": 50,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             },
@@ -3650,12 +3733,13 @@
         },
         {
           "name": "priority",
-          "priority": 20,
+          "priority": 40,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -3664,6 +3748,49 @@
             "input": 3.6,
             "output": 21.6,
             "cache_read": 0.36
+          }
+        },
+        {
+          "name": "flex 长上下文",
+          "priority": 30,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            },
+            {
+              "input_tokens": {
+                "gt": 200000
+              }
+            }
+          ],
+          "rates": {
+            "input": 2.0,
+            "output": 9.0,
+            "cache_read": 0.4
+          }
+        },
+        {
+          "name": "flex",
+          "priority": 20,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 1.0,
+            "output": 6.0,
+            "cache_read": 0.2
           }
         },
         {
@@ -4962,6 +5089,44 @@
       ]
     },
     {
+      "id": "gpt-5.6-cyber",
+      "match": "(?i)^(openai/)?(gpt-5.6-cyber)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-5.6-cyber"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 12.5,
+            "output": 75.0,
+            "cache_read": 1.25,
+            "cache_write_5m": 15.625
+          }
+        },
+        {
+          "name": "长上下文 (>272K)",
+          "priority": 10,
+          "when": [
+            {
+              "input_tokens": {
+                "gt": 272000
+              }
+            }
+          ],
+          "rates": {
+            "input": 25.0,
+            "output": 112.5,
+            "cache_read": 2.5,
+            "cache_write_5m": 31.25
+          }
+        }
+      ]
+    },
+    {
       "id": "gpt-6-astra",
       "match": "(?i)^(openai/)?(gpt-6-astra)$",
       "unit": "mtok",
@@ -5126,6 +5291,44 @@
             "output": 75.0,
             "cache_read": 2.0,
             "cache_write_5m": 25.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpt-6-cyber",
+      "match": "(?i)^(openai/)?(gpt-6-cyber)$",
+      "unit": "mtok",
+      "currency": "USD",
+      "source": "langfuse default-model-prices.json（2026-11-10）",
+      "examples": [
+        "gpt-6-cyber"
+      ],
+      "tiers": [
+        {
+          "name": "标准",
+          "rates": {
+            "input": 20.0,
+            "output": 100.0,
+            "cache_read": 2.0,
+            "cache_write_5m": 25.0
+          }
+        },
+        {
+          "name": "长上下文 (>272K)",
+          "priority": 10,
+          "when": [
+            {
+              "input_tokens": {
+                "gt": 272000
+              }
+            }
+          ],
+          "rates": {
+            "input": 40.0,
+            "output": 150.0,
+            "cache_read": 4.0,
+            "cache_write_5m": 40.0
           }
         }
       ]
@@ -5682,7 +5885,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.5-flash)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.5-flash"
       ],
@@ -5697,12 +5900,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5712,6 +5916,25 @@
             "output": 16.2,
             "cache_read": 0.27
           }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.75,
+            "output": 4.5,
+            "cache_read": 0.075
+          }
         }
       ]
     },
@@ -5720,7 +5943,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3-flash-preview)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3-flash-preview"
       ],
@@ -5735,12 +5958,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5750,6 +5974,25 @@
             "output": 5.4,
             "cache_read": 0.09
           }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.25,
+            "output": 1.5,
+            "cache_read": 0.05
+          }
         }
       ]
     },
@@ -5758,7 +6001,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.1-flash-lite)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.1-flash-lite"
       ],
@@ -5773,12 +6016,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5787,6 +6031,25 @@
             "input": 0.45,
             "output": 2.7,
             "cache_read": 0.045
+          }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.125,
+            "output": 0.75,
+            "cache_read": 0.0125
           }
         }
       ]
@@ -5816,7 +6079,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.6-flash)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.6-flash"
       ],
@@ -5831,12 +6094,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5846,6 +6110,25 @@
             "output": 6.75,
             "cache_read": 0.135
           }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.375,
+            "output": 1.875,
+            "cache_read": 0.0375
+          }
         }
       ]
     },
@@ -5854,7 +6137,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.7-flash)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.7-flash"
       ],
@@ -5869,12 +6152,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5884,6 +6168,25 @@
             "output": 6.75,
             "cache_read": 0.135
           }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.375,
+            "output": 1.875,
+            "cache_read": 0.0375
+          }
         }
       ]
     },
@@ -5892,7 +6195,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.8-flash)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.8-flash"
       ],
@@ -5907,12 +6210,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 20,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5922,6 +6226,25 @@
             "output": 6.75,
             "cache_read": 0.135
           }
+        },
+        {
+          "name": "flex",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex",
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.375,
+            "output": 1.875,
+            "cache_read": 0.0375
+          }
         }
       ]
     },
@@ -5930,7 +6253,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-4-argon)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-10-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-4-argon"
       ],
@@ -5950,7 +6273,8 @@
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5968,7 +6292,7 @@
       "match": "(?i)^(google(ai)?/)?(gemini-3.5-flash-lite)$",
       "unit": "mtok",
       "currency": "USD",
-      "source": "langfuse default-model-prices.json（2026-09-14）",
+      "source": "langfuse default-model-prices.json（2026-11-11）",
       "examples": [
         "gemini-3.5-flash-lite"
       ],
@@ -5983,12 +6307,13 @@
         },
         {
           "name": "priority",
-          "priority": 10,
+          "priority": 30,
           "when": [
             {
               "service_tier": {
                 "in": [
-                  "priority"
+                  "priority",
+                  "ON_DEMAND_PRIORITY"
                 ]
               }
             }
@@ -5997,6 +6322,42 @@
             "input": 0.54,
             "output": 4.5,
             "cache_read": 0.05
+          }
+        },
+        {
+          "name": "flex",
+          "priority": 20,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "flex"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.15,
+            "output": 1.25,
+            "cache_read": 0.02
+          }
+        },
+        {
+          "name": "flex (Vertex AI)",
+          "priority": 10,
+          "when": [
+            {
+              "service_tier": {
+                "in": [
+                  "ON_DEMAND_FLEX"
+                ]
+              }
+            }
+          ],
+          "rates": {
+            "input": 0.15,
+            "output": 1.25,
+            "cache_read": 0.015
           }
         }
       ]
@@ -6344,44 +6705,6 @@
       ]
     },
     {
-      "id": "openai-gpt-5.6-cyber",
-      "match": "(?i)^(openai/)?(gpt\\-5\\.6\\-cyber)$",
-      "unit": "mtok",
-      "currency": "USD",
-      "source": "litellm model_prices_and_context_window.json（openai/）",
-      "examples": [
-        "gpt-5.6-cyber"
-      ],
-      "tiers": [
-        {
-          "name": "标准",
-          "rates": {
-            "input": 12.5,
-            "output": 75.0,
-            "cache_read": 1.25,
-            "cache_write_5m": 15.625
-          }
-        },
-        {
-          "name": "长上下文 >272K",
-          "priority": 10,
-          "when": [
-            {
-              "input_tokens": {
-                "gt": 272000
-              }
-            }
-          ],
-          "rates": {
-            "input": 25.0,
-            "output": 112.5,
-            "cache_read": 2.5,
-            "cache_write_5m": 31.25
-          }
-        }
-      ]
-    },
-    {
       "id": "openai-gpt-5.5-cyber",
       "match": "(?i)^(openai/)?(gpt\\-5\\.5\\-cyber|gpt\\-5\\.5\\-cyber\\-preview)$",
       "unit": "mtok",
@@ -6436,43 +6759,6 @@
             "output": 112.5,
             "cache_read": 3.0,
             "cache_write_5m": 37.5
-          }
-        }
-      ]
-    },
-    {
-      "id": "openai-gpt-6-cyber",
-      "match": "(?i)^(openai/)?(gpt\\-6\\-cyber)$",
-      "unit": "mtok",
-      "currency": "USD",
-      "source": "litellm model_prices_and_context_window.json（openai/）",
-      "examples": [
-        "gpt-6-cyber"
-      ],
-      "tiers": [
-        {
-          "name": "标准",
-          "rates": {
-            "input": 20.0,
-            "output": 100.0,
-            "cache_read": 2.0,
-            "cache_write_5m": 25.0
-          }
-        },
-        {
-          "name": "长上下文 >272K",
-          "priority": 10,
-          "when": [
-            {
-              "input_tokens": {
-                "gt": 272000
-              }
-            }
-          ],
-          "rates": {
-            "input": 40.0,
-            "output": 150.0,
-            "cache_read": 4.0
           }
         }
       ]

@@ -7,6 +7,7 @@
  * Each protocol's pi-ai module is loaded on first use, so a function only
  * loads the SDK of the protocol it talks.
  */
+import { createHash } from "node:crypto";
 import type { ToolChoice } from "@gateway/core";
 import type { Api, AssistantMessageEventStream, Model, StreamOptions, TranscriptContext } from "@earendil-works/pi-ai";
 
@@ -36,15 +37,42 @@ const openaiEndUser = (endUser?: string): Payload => (endUser ? { safety_identif
 
 const forced = (choice: ToolChoice): string | undefined => (typeof choice === "object" ? choice.tool : undefined);
 
+/** The id pi-ai makes up for an assistant message that has none of its own: its place in the request. */
+const PLACED_ID = /^msg_pi_\d+(?:_\d+)?$/;
+
+/**
+ * An assistant message the model in use didn't write (one an admin sent in the
+ * bot's name, one from another model or provider) carries no id from OpenAI,
+ * and pi-ai numbers it by its place in the request (msg_pi_<n>). With
+ * store: true OpenAI keeps every input item by its id, so once the history
+ * shifts (compaction, a trim) the same id comes with other text, and every
+ * call fails with "An input item conflicts with an existing record" until the
+ * chat is reset. Each such message gets an id from its text instead: the same
+ * text always carries the same id, and two equal ones in a request differ by
+ * which of them it is.
+ */
+function ownIds(input: unknown): unknown {
+  if (!Array.isArray(input)) return input;
+  const seen = new Map<string, number>();
+  return input.map((item: Payload) => {
+    if (item?.type !== "message" || item.role !== "assistant" || typeof item.id !== "string" || !PLACED_ID.test(item.id)) return item;
+    const text = (Array.isArray(item.content) ? item.content : []).map((c: Payload) => (typeof c?.text === "string" ? c.text : "")).join("\n");
+    const n = seen.get(text) ?? 0;
+    seen.set(text, n + 1);
+    return { ...item, id: `msg_${createHash("sha256").update(`${n}\n${text}`).digest("hex").slice(0, 48)}` };
+  });
+}
+
 export const PROTOCOLS = {
   "openai-responses": {
     load: async () => (await import("@earendil-works/pi-ai/api/openai-responses")).stream as StreamFunction,
     toolChoice: (choice) => (typeof choice === "object" ? { type: "function", name: choice.tool } : choice),
     // Every call carries the whole conversation (pi-ai sends store: false), so reasoning is asked for
-    // encrypted, and that whole item is what the next request must carry.
+    // encrypted, and that whole item is what the next request must carry. The body override can
+    // turn store on: the messages that have no id from OpenAI get one that stays theirs (ownIds).
     patch: (payload, { endUser }) => {
       const include = new Set([...(Array.isArray(payload.include) ? payload.include : []), "reasoning.encrypted_content"]);
-      return { ...payload, include: [...include], ...openaiEndUser(endUser) };
+      return { ...payload, input: ownIds(payload.input), include: [...include], ...openaiEndUser(endUser) };
     },
   },
   "openai-completions": {

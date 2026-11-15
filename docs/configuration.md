@@ -23,7 +23,8 @@
 任何字段都能改，网关自己生成的字段（消息、工具、用户标识、`include`）也一样，改坏了请求会出错。比如：
 
 ```bash
-# 让 OpenAI 存下请求，在后台 Logs 里能看到（对话内容会在 OpenAI 保存 30 天）
+# 让 OpenAI 存下请求，在后台 Logs 里能看到（对话内容会在 OpenAI 保存 30 天；
+# 代发和旧模型的消息会换成固定的 id，见 Agent 与对话的“无状态”）
 MODEL_OPENAI_EXTRA_BODY='{"store":true}'
 # 在 pi-ai 的推理参数上只改强度，其余保留
 MODEL_OPENAI_EXTRA_BODY='{"reasoning":{"effort":"high"}}'

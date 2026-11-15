@@ -75,7 +75,7 @@
 Vercel 部署的实现是 pi-ai（[`packages/adapters/src/pi-ai/chat-model/`](../packages/adapters/src/pi-ai/chat-model/)），用法参照 DeepSeek Harness 的 `llm-pi-ai`：
 
 - **四种协议**：`openai-responses`、`openai-completions`、`anthropic-messages`、`google-generative-ai`，每个实例有默认协议，可以用 `MODEL_{实例}_API` 改；用哪个实例由 `MODEL_PROVIDER` 选，见[配置参考](configuration.md#模型)。只加载所选协议的 SDK。
-- **无状态**：每次请求带上从事件流推导出的完整对话，不用服务端会话（Responses 设 `store: false`）。
+- **无状态**：每次请求带上从事件流推导出的完整对话，不用服务端会话（Responses 设 `store: false`）。用请求体覆盖打开 `store` 后，OpenAI 会按 id 保存请求里的每一项；不是当前模型写的助手消息（管理端代发的、换模型或换服务商之前的）没有 OpenAI 给的 id，pi-ai 会按它在请求里的位置编一个 `msg_pi_<n>`，历史一挪动（压缩、裁剪）同一个 id 就对上了别的文字，之后每次调用都报 “An input item conflicts with an existing record”。所以发出前把这种 id 换成由文字算出的 `msg_<哈希>`：同样的文字总是同一个 id，一次请求里两条相同的按先后区分（`packages/adapters/src/pi-ai/chat-model/protocols.ts` 的 `ownIds`）。
 - **思维链整个回传**：服务商要求回传的数据原样存在消息块里，下次请求原样带回：Responses 的整个 reasoning 对象（请求时总带上 `include: ["reasoning.encrypted_content"]`）、Anthropic 思考块的签名和被隐藏的思考、Gemini 的 thought signature、OpenRouter 的 `reasoning_details`、DeepSeek 的 `reasoning_content`。只回传给同一个“身份”（协议、服务地址、模型三者都相同）；换了任何一项，只保留文字和工具调用。
 - **缓存**：每个聊天一个固定的缓存键（Responses 里是 `prompt_cache_key`）；Anthropic 由 pi-ai 在系统提示、工具和最后一条消息上打缓存断点。
 - **安全标识**：每次调用都带上“这一轮在回应谁”（默认回复对象的发消息人），格式是 `渠道.聊天哈希.发消息人哈希`（如 `qq.3f9c….a81e…`，各取 SHA-256 前 16 位）。OpenAI 两种协议发 `safety_identifier` 和 `user`（OpenRouter 用 `user` 生成上游标识），Anthropic 发 `metadata.user_id`，Gemini 没有对应字段；画图请求也带 `user`。服务商只看到哈希，出了问题能只封那一个人；我们能反查：管理端聊天列表的搜索框粘贴标识就能找到那个群，事件页每一轮的标题栏显示这一轮用的标识（记在 `step/start` 的 `endUser` 里），下面就是那个人的消息。实现见 `packages/core/src/llm/end-user.ts`。

@@ -121,6 +121,23 @@ await test("responses: the reasoning item goes back whole to the same model, not
   assert.ok(input.some((i: any) => i.type === "function_call_output" && i.call_id === call.call_id), "still paired with its output");
 });
 
+await test("responses: a message with no id of its own gets one from its text, not its place", async () => {
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"store":true}' });
+  reply = () => responsesStream([fnCall], RESPONSES_USAGE);
+  const first = await complete([user("hi")]);
+  // What an admin said in the bot's name, or another model wrote: no id from OpenAI.
+  const said = (text: string): AssistantMessage => ({ ...first, api: "gateway", provider: "gateway", model: "admin", content: [{ type: "text", text }] });
+  const ids = (body: any) => body.input.filter((i: any) => i.type === "message" && i.role === "assistant").map((i: any) => [i.content[0].text, i.id]);
+  await complete([user("a"), said("行吧"), user("b"), said("问就是不知道"), user("c"), said("行吧")]);
+  // The history shifted (compaction, a trim): the same messages at other places.
+  await complete([user("b"), said("问就是不知道"), user("c"), said("行吧")]);
+  const [before, after] = seen.slice(1).map((s) => ids(s.body));
+  assert.ok([...before!, ...after!].every(([, id]) => /^msg_[0-9a-f]{48}$/.test(id)), "no msg_pi_<place> ids");
+  assert.notEqual(before![0][1], before![2][1], "two equal messages in a request don't share an id");
+  assert.equal(after![0][1], before![1][1], "a message keeps its id when its place changes");
+  assert.equal(after![1][1], before![0][1], "the first of its text keeps the first one's id");
+});
+
 await test("responses: failures are classified (rate limit and 5xx transient, credit and bad request not)", async () => {
   configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x");
   const fail = async (status: number, message: string) => {

@@ -24,7 +24,7 @@
 
 ```bash
 # 让 OpenAI 存下请求，在后台 Logs 里能看到（对话内容会在 OpenAI 保存 30 天；
-# 代发和旧模型的消息会换成固定的 id，见 Agent 与对话的“无状态”）
+# 代发和旧模型的消息会换成固定的 id；OpenAI 拒收已存过的项时那次改成不存再发，见 Agent 与对话的“无状态”）
 MODEL_OPENAI_EXTRA_BODY='{"store":true}'
 # 在 pi-ai 的推理参数上只改强度，其余保留
 MODEL_OPENAI_EXTRA_BODY='{"reasoning":{"effort":"high"}}'

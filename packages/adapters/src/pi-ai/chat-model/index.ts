@@ -71,19 +71,37 @@ async function complete(config: PiAiConfig, request: LlmRequest): Promise<Assist
   });
   const toolChoice = request.tools.length ? protocol.toolChoice(request.toolChoice) : undefined;
   const signal = AbortSignal.timeout(request.timeoutMs);
-  const stream = (await protocol.load())(piModel(config), context, {
-    apiKey,
-    headers: extraHeaders,
-    signal,
-    maxRetries: 0,
-    ...(request.cacheKey ? { sessionId: request.cacheKey } : {}),
-    ...(maxOutputTokens ? { maxTokens: maxOutputTokens } : {}),
-    ...(toolChoice !== undefined ? { toolChoice } : {}),
-    // What the gateway adds, then the instance's override, level by level, last.
-    onPayload: (payload) => overrideBody(protocol.patch(payload as Record<string, unknown>, { choice: request.toolChoice, endUser: request.endUser }), override),
-  });
-  return answer(await stream.result(), request.timeoutMs, signal.aborted);
+  const stream = await protocol.load();
+  let stored = false;
+  const call = (unstored: boolean) =>
+    stream(piModel(config), context, {
+      apiKey,
+      headers: extraHeaders,
+      signal,
+      maxRetries: 0,
+      ...(request.cacheKey ? { sessionId: request.cacheKey } : {}),
+      ...(maxOutputTokens ? { maxTokens: maxOutputTokens } : {}),
+      ...(toolChoice !== undefined ? { toolChoice } : {}),
+      // What the gateway adds, then the instance's override, level by level, last.
+      onPayload: (payload) => {
+        const body: Record<string, unknown> = overrideBody(protocol.patch(payload as Record<string, unknown>, { choice: request.toolChoice, endUser: request.endUser }), override);
+        stored = body.store === true;
+        return unstored ? { ...body, store: false } : body;
+      },
+    }).result();
+  let message = await call(false);
+  if (message.stopReason === "error" && stored && ITEM_CONFLICT.test(message.errorMessage ?? "")) message = await call(true);
+  return answer(message, request.timeoutMs, signal.aborted);
 }
+
+/**
+ * OpenAI refusing to store an input item again ("An input item conflicts with
+ * an existing record"). It only happens with store on (the body override), and
+ * once a conversation hits it every later call does, whatever the ids: the
+ * same request with store: false goes through, so it is sent again that way
+ * (that call is missing from OpenAI's logs; the conversation goes on).
+ */
+const ITEM_CONFLICT = /conflicts with an existing record/i;
 
 /**
  * One chat model endpoint as a provider. A deployment composes as many as it

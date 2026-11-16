@@ -138,6 +138,27 @@ await test("responses: a message with no id of its own gets one from its text, n
   assert.equal(after![1][1], before![0][1], "the first of its text keeps the first one's id");
 });
 
+await test("responses: a stored item OpenAI won't take again: the same call once more, not stored", async () => {
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"store":true}' });
+  const CONFLICT = "An input item conflicts with an existing record.";
+  reply = (req) => (req.body.store ? Response.json({ error: { message: CONFLICT } }, { status: 400 }) : responsesStream([fnCall], RESPONSES_USAGE));
+  const answer = await complete([user("hi")]);
+  assert.equal(callOf(answer).name, "send_message", "the conversation goes on");
+  assert.deepEqual(seen.map((s) => s.body.store), [true, false]);
+  assert.deepEqual(seen[1]!.body.input, seen[0]!.body.input, "the same request otherwise");
+
+  // Without store it's not that, and the failure stands, after one call.
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x");
+  reply = () => Response.json({ error: { message: CONFLICT } }, { status: 400 });
+  await assert.rejects(complete([user("hi")]), (err: any) => err instanceof ModelCallError && !err.transient);
+  assert.equal(seen.length, 1);
+  // Nor any other failure with store on.
+  configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x", { EXTRA_BODY: '{"store":true}' });
+  reply = () => Response.json({ error: { message: "invalid tool schema" } }, { status: 400 });
+  await assert.rejects(complete([user("hi")]));
+  assert.equal(seen.length, 1);
+});
+
 await test("responses: failures are classified (rate limit and 5xx transient, credit and bad request not)", async () => {
   configure("openai-responses", "https://or.example.com/api/v1", "openai/gpt-x");
   const fail = async (status: number, message: string) => {
